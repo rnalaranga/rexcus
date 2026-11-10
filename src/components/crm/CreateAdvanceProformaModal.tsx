@@ -796,28 +796,30 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Price Basis Selector (FOB / CIF) */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-muted uppercase">Price Basis:</span>
-                <div className="inline-flex rounded border border-theme-subtle p-0.5 bg-surface">
-                  <button
-                    type="button"
-                    onClick={() => setPriceBasis('FOB')}
-                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'FOB' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
-                    title="Free On Board"
-                  >
-                    FOB
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPriceBasis('CIF')}
-                    className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'CIF' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
-                    title="Cost, Insurance & Freight"
-                  >
-                    CIF
-                  </button>
+              {/* Price Basis Selector (FOB / CIF) - Only relevant for foreign / USD exports */}
+              {currency === 'USD' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted uppercase">Price Basis:</span>
+                  <div className="inline-flex rounded border border-theme-subtle p-0.5 bg-surface">
+                    <button
+                      type="button"
+                      onClick={() => setPriceBasis('FOB')}
+                      className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'FOB' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                      title="Free On Board"
+                    >
+                      FOB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPriceBasis('CIF')}
+                      className={`px-2.5 py-0.5 text-[10px] font-bold rounded ${priceBasis === 'CIF' ? 'bg-blue-600 text-white shadow-xs' : 'text-muted hover:text-primary'}`}
+                      title="Cost, Insurance & Freight"
+                    >
+                      CIF
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {currency === 'USD' && (
                 <div className="flex items-center gap-1.5">
@@ -951,7 +953,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
                     <th className="p-2 w-10 text-center">#</th>
                     <th className="p-2">Product Description & Technical Specifications</th>
                     <th className="p-2 w-28 text-center">Qty & UoM</th>
-                    <th className="p-2 w-28 text-right">Unit Price ({priceBasis}) ({currency === 'USD' ? '$' : 'Rs.'})</th>
+                    <th className="p-2 w-28 text-right">Unit Price {currency === 'USD' ? `(${priceBasis})` : ''} ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-28 text-right">Total ({currency === 'USD' ? '$' : 'Rs.'})</th>
                     <th className="p-2 w-10 text-center"></th>
                   </tr>

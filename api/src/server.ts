@@ -1136,6 +1136,21 @@ async function runDatabaseSync() {
       INDEX idx_po_cust (customerId),
       INDEX idx_po_status (status)
     )`,
+    `CREATE TABLE IF NOT EXISTS system_notifications (
+      id VARCHAR(50) PRIMARY KEY,
+      type VARCHAR(50) NOT NULL,
+      severity VARCHAR(20) DEFAULT 'warning',
+      title VARCHAR(255) NOT NULL,
+      message TEXT NOT NULL,
+      link VARCHAR(255) NULL,
+      recipientUser VARCHAR(100) NULL,
+      recipientRole VARCHAR(100) NULL,
+      senderUser VARCHAR(100) NULL,
+      isRead TINYINT(1) DEFAULT 0,
+      createdAt DATETIME NULL,
+      INDEX idx_notif_recip (recipientUser),
+      INDEX idx_notif_time (createdAt)
+    )`,
     `CREATE TABLE IF NOT EXISTS cashbook_entries (
       id VARCHAR(50) PRIMARY KEY,
       date DATE NOT NULL,
@@ -5378,6 +5393,78 @@ app.delete('/api/customer-po-pool/:id', async (req, res) => {
     res.json({ success: true, message: 'PO deleted from pool.' });
   } catch (error: any) {
     console.error('Failed to delete PO from pool:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// Notify Quotation Creator / Sales Team when warehouse attempts to dispatch an order with PO Pending
+app.post('/api/finished-goods-orders/:id/notify-po-pending', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { attemptedBy, customerName, orderNo, quoteNo, quoteId } = req.body;
+
+    // Look up the order and associated quote to identify the quotation creator/salesperson
+    const [ordRows]: any = await db.query(
+      'SELECT id, orderNo, quoteId, quotationNo, customerName, customerCompany, createdBy, notes FROM finished_goods_orders WHERE id = ? OR orderNo = ? LIMIT 1',
+      [id, id]
+    );
+    const ord = ordRows && ordRows[0] ? ordRows[0] : null;
+
+    let targetQuoteId = quoteId || ord?.quoteId;
+    let targetQuoteNo = quoteNo || ord?.quotationNo;
+    let quoteCreatorUser = null;
+    let quoteCreatorName = null;
+
+    if (targetQuoteId || targetQuoteNo) {
+      const [qRows]: any = await db.query(
+        'SELECT id, quotationNo, createdBy, createdByName, data FROM quotations WHERE id = ? OR quotationNo = ? LIMIT 1',
+        [targetQuoteId || '___', targetQuoteNo || '___']
+      );
+      if (qRows && qRows[0]) {
+        quoteCreatorUser = qRows[0].createdBy;
+        quoteCreatorName = qRows[0].createdByName;
+        targetQuoteNo = qRows[0].quotationNo || targetQuoteNo;
+      }
+    }
+
+    const notifId = `NOTIF-PO-${Date.now()}`;
+    const cust = customerName || ord?.customerCompany || ord?.customerName || 'Customer';
+    const soNo = orderNo || ord?.orderNo || id;
+    const sender = attemptedBy || 'Warehouse / Store Keeper';
+
+    const notifTitle = `⚠️ PO Required for Dispatch: ${soNo}`;
+    const notifMessage = `${sender} attempted to dispatch Order #${soNo} (${cust}), but Customer PO is PENDING! Please record or upload the Customer PO immediately.`;
+
+    await db.query(
+      `INSERT INTO system_notifications (
+        id, type, severity, title, message, link, recipientUser, recipientRole, senderUser, isRead, createdAt
+      ) VALUES (?, 'po_dispatch_blocked', 'warning', ?, ?, ?, ?, 'sales', ?, 0, NOW())`,
+      [
+        notifId,
+        notifTitle,
+        notifMessage,
+        `/crm/quotations?search=${encodeURIComponent(targetQuoteNo || soNo)}`,
+        quoteCreatorUser || null,
+        sender
+      ]
+    );
+
+    // Also log to approval/activity logs
+    try {
+      await db.query(
+        `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
+         VALUES (?, ?, ?, ?, 0, 'Dispatch Blocked (PO Pending)', ?, NOW(), ?, NOW())`,
+        ['Sales Order', ord?.id || id, soNo, cust, sender, notifMessage]
+      );
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      message: 'Notification sent to quotation creator / sales team successfully.',
+      notifiedUser: quoteCreatorName || quoteCreatorUser || 'Sales Team'
+    });
+  } catch (error: any) {
+    console.error('Failed to notify PO pending dispatch:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
@@ -15516,6 +15603,31 @@ app.get('/api/notifications', async (req, res) => {
           createdBy: po.createdBy,
           createdByName: po.createdByName,
           timestamp: po.poReceivedAt ? new Date(po.poReceivedAt).getTime() : (po.createdAt ? new Date(po.createdAt).getTime() : Date.now())
+        });
+      }
+    } catch(e) {}
+
+    // 6. Explicit System Notifications (e.g. PO Pending Dispatch Block Alerts for Quotation Owners)
+    try {
+      const [customNotifs] = await db.query(
+        `SELECT id, type, severity, title, message, link, recipientUser, recipientRole, senderUser, createdAt
+         FROM system_notifications
+         WHERE isRead = 0
+         ORDER BY createdAt DESC LIMIT 15`
+      ) as any[];
+
+      for (const cn of (customNotifs || [])) {
+        list.push({
+          id: cn.id,
+          type: cn.type || 'po_alert',
+          severity: cn.severity || 'warning',
+          title: cn.title,
+          message: cn.message,
+          time: 'Action required',
+          link: cn.link || '/crm/sales-orders',
+          recipientUser: cn.recipientUser,
+          recipientRole: cn.recipientRole,
+          timestamp: cn.createdAt ? new Date(cn.createdAt).getTime() : Date.now()
         });
       }
     } catch(e) {}

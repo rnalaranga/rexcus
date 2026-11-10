@@ -15,6 +15,7 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { useCustomers, useLeads, useInventory } from '@/hooks/useData';
 import { useTaxes, useTaxProfiles } from '@/hooks/useFinance';
+import { useAuth } from '@/contexts/AuthContext';
 import { createInvoice, updateInvoice, fetchPaymentReceipts } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -30,6 +31,12 @@ const tableInputClass = "w-full bg-transparent border-b border-transparent hover
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const InvoiceBuilder: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = Boolean(
+    user?.role === 'admin' ||
+    user?.roleName?.toLowerCase() === 'admin' ||
+    user?.role === 'system_admin'
+  );
   const { data: customers = [] } = useCustomers();
   const { data: leads = [] } = useLeads();
   const { data: taxRates } = useTaxes();
@@ -1219,6 +1226,12 @@ export const InvoiceBuilder: React.FC = () => {
     if (items.some(i => !i.description)) return showError('Please enter a description for all items.');
     const cleanDocNo = (docNo || '').trim().replace(/\s+/g, '');
     if (!cleanDocNo) return showError('Please provide a valid invoice number.');
+
+    // Commercial Rule: Creating a tax invoice without prior dispatch/gate pass is strictly restricted to Admin!
+    // (Proforma invoices starting with PI- are exempt, as they are advance payment requests)
+    if (!isProforma && !dispatchNo && !isAdmin) {
+      return showError('Tax Invoice cannot be created without a Goods Dispatch / Gate Pass number! Only Admin is authorized to issue advance commercial invoices without dispatch.');
+    }
     try {
       if (customCustomer && customCustomer.id === customerId && !customers.some(c => c.id === customerId) && !leads.some(l => l.id === customerId)) {
         try {

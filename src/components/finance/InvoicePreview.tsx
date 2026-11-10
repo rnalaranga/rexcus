@@ -292,7 +292,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     value: cleanPaymentTerms
   });
 
-  if (isProforma) {
+  if (isUSD && (isProforma || propPriceBasis)) {
     infoItems.push({
       label: 'Price Basis',
       value: effectivePriceBasis
@@ -739,7 +739,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               Quantity
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', borderRight: tableBorder, width: '14%' }}>
-              {isProforma ? <>Unit Price<br/>({effectivePriceBasis})</> : <>Unit<br/>Price</>}
+              {isUSD && isProforma ? <>Unit Price<br/>({effectivePriceBasis})</> : <>Unit<br/>Price</>}
             </th>
             <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: '700', width: '14%' }}>
               {isProforma || isVatHidden

@@ -426,6 +426,12 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       return
     }
 
+    // Commercial Rule: Creating an invoice without prior dispatch/gate pass is strictly restricted to Admin!
+    if (!orderDispatches.length && !order.isDispatched && !isAdmin) {
+      toast('Commercial Tax Invoice can only be created after goods are dispatched (Gate Pass generated). Contact Admin to invoice in advance.', 'warning');
+      return;
+    }
+
     navigate(`/finance/invoices/new?orderId=${order.id}&soNo=${encodeURIComponent(order.orderNo || '')}`)
   }
 
@@ -1757,6 +1763,38 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   };
 
   const handleOpenDispatchModal = (order: any) => {
+    // Check if customer PO is pending
+    if (isOrderPoPending(order)) {
+      // Trigger notification to sales team / quotation creator
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders/${order.id}/notify-po-pending`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attemptedBy: user?.name || user?.username || 'Store Keeper',
+          customerName: order.customerName || order.customerCompany,
+          orderNo: order.orderNo,
+          quoteNo: order.quotationNo,
+          quoteId: order.quoteId
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          toast(`Customer PO is PENDING! Notification sent to ${data.notifiedUser || 'Sales Team'} to record PO.`, 'warning');
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to send PO pending dispatch notification:', err);
+      });
+
+      if (!isAdmin) {
+        toast(`Customer PO is Pending! You cannot dispatch this order until the Sales Team records the official Customer PO. A notification has been sent to them.`, 'error');
+        return;
+      } else {
+        toast('Admin Override: Dispatching order with PO Pending status.', 'info');
+      }
+    }
+
     const totalOrderQty = Math.max(1, Number(order.qty || 1))
     const prevDispatched = Number(order.dispatchedQty || (order.isDispatched ? totalOrderQty : 0))
     const remainingToDispatch = Math.max(0, totalOrderQty - prevDispatched)
