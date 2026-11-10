@@ -1914,7 +1914,12 @@ async function runDatabaseSync() {
     "ALTER TABLE cashbook_entries ADD COLUMN rejectionReason TEXT DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN assignedCashAccountId VARCHAR(50) DEFAULT NULL",
-    "ALTER TABLE invoices ADD COLUMN hideVatSeparately TINYINT(1) DEFAULT 0"
+    "ALTER TABLE invoices ADD COLUMN hideVatSeparately TINYINT(1) DEFAULT 0",
+    "ALTER TABLE invoices ADD COLUMN discount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN discountType VARCHAR(20) DEFAULT 'percent'",
+    "ALTER TABLE invoices ADD COLUMN discountAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE invoices ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000"
   ];
 
   for (const patch of patches) {

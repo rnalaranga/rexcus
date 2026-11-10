@@ -513,13 +513,27 @@ export const InvoiceBuilder: React.FC = () => {
             setLoadedSourceQuote(q);
             const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
 
+            let matchedSoForQuote: any = null;
+            try {
+              const soRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders`);
+              if (soRes.ok) {
+                const allSos = await soRes.json();
+                matchedSoForQuote = (allSos || []).find((s: any) =>
+                  (s.quoteId && String(s.quoteId) === String(q.id)) ||
+                  (qNo && s.quotationNo && String(s.quotationNo).trim().toLowerCase() === String(qNo).trim().toLowerCase())
+                );
+              }
+            } catch (soFindErr) {
+              console.warn('Could not query sales orders for quote:', soFindErr);
+            }
+
             // Customer Resolution
-            const qCustId = q.matchedCustomerId || q.leadId || parsed.leadId || '';
-            const qCustName = q.leadCompany || q.leadName || parsed.customerCompany || parsed.customerName || '';
-            const qCustAddress = q.leadAddress || parsed.customerAddress || '';
+            const qCustId = (matchedSoForQuote && matchedSoForQuote.customerId) || q.matchedCustomerId || q.leadId || parsed.leadId || '';
+            const qCustName = (matchedSoForQuote && (matchedSoForQuote.customerName || matchedSoForQuote.customerCompany)) || q.leadCompany || q.leadName || parsed.customerCompany || parsed.customerName || '';
+            const qCustAddress = (matchedSoForQuote && matchedSoForQuote.deliveryAddress) || q.leadAddress || parsed.customerAddress || '';
             const qCustPhone = q.leadPhone || '';
             const qCustEmail = q.leadEmail || '';
-            const qVat = parsed.vatNo || parsed.tinNo || q.leadVat || '';
+            const qVat = (matchedSoForQuote && matchedSoForQuote.vatNo) || parsed.vatNo || parsed.tinNo || q.leadVat || '';
 
             const matchedCust = (qCustId ? customers.find(c => c.id === qCustId) : null) ||
               (qCustName ? customers.find(c => (c.name && c.name.toLowerCase() === qCustName.toLowerCase()) || (c.company && c.company.toLowerCase() === qCustName.toLowerCase())) : null) ||
@@ -547,47 +561,140 @@ export const InvoiceBuilder: React.FC = () => {
 
             const qNo = q.quotationNo || q.docNo || parsed.quotationNo || q.quoNo || '';
             if (qNo) setQuotationNo(qNo);
-            const rawQuotePo = q.customerPoNo || parsed.customerPoNo || q.poNo || parsed.poNo || '';
+            const rawQuotePo = (matchedSoForQuote && matchedSoForQuote.customerPoNo) || q.customerPoNo || parsed.customerPoNo || q.poNo || parsed.poNo || '';
             if (rawQuotePo) setPoNo(rawQuotePo);
             if (parsed.attention || q.attention) setAttention(parsed.attention || q.attention);
             if (parsed.custTerms || parsed.paymentTerms || parsed.terms) setNotes(parsed.custTerms || parsed.paymentTerms || parsed.terms);
-            if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
-            if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
-            if (parsed.bankDetailId) setBankDetailId(parsed.bankDetailId);
-            if (parsed.custDiscount !== undefined) setDiscount(parsed.custDiscount);
-            if (parsed.custDiscountType) setDiscountType(parsed.custDiscountType);
-            if (parsed.custDiscountAmount !== undefined) setDiscountAmount(parsed.custDiscountAmount);
-            else if (parsed.custTotals?.discount !== undefined) setDiscountAmount(parsed.custTotals.discount);
 
-            // Auto-detect Product Quotation (prices are tax inclusive)
-            const isProdQuote = Boolean(
-              q.isProductQuotation ||
-              parsed.isProductQuotation ||
-              q.quotationCategory === 'product' ||
-              parsed.quotationCategory === 'product' ||
-              String(qNo).startsWith('PQ') ||
-              Array.isArray(parsed.custItems)
-            );
-            if (isProdQuote) {
-              setIsTaxInclusive(true);
+            // If Sales Order exists for this quotation, STRICTLY use Sales Order's rates, discounts, taxes & items!
+            if (matchedSoForQuote) {
+              const soHasTax = Boolean(
+                Number(matchedSoForQuote.taxAmount) > 0 ||
+                (matchedSoForQuote.taxProfileId && matchedSoForQuote.taxProfileId !== 'none' && matchedSoForQuote.taxProfileId !== 'no_tax')
+              );
+              setTaxEnabled(soHasTax);
+              if (matchedSoForQuote.taxProfileId && matchedSoForQuote.taxProfileId !== 'none' && matchedSoForQuote.taxProfileId !== 'no_tax') {
+                setTaxProfileId(matchedSoForQuote.taxProfileId);
+              } else if (!soHasTax) {
+                setTaxProfileId('none');
+              }
+              if (matchedSoForQuote.currency) setCurrency(matchedSoForQuote.currency);
+              if (matchedSoForQuote.exchangeRate) setExchangeRate(Number(matchedSoForQuote.exchangeRate) || 1);
+
+              if (matchedSoForQuote.isTaxInclusive !== undefined && matchedSoForQuote.isTaxInclusive !== null) {
+                setIsTaxInclusive(Boolean(Number(matchedSoForQuote.isTaxInclusive)));
+              }
+
+              // Discount from Sales Order
+              const soDiscType = String(matchedSoForQuote.discountType || 'amount').toLowerCase() === 'percent' ? 'percent' : 'amount';
+              const soDisc = Number(matchedSoForQuote.discount || 0);
+              const soDiscAmount = Number(matchedSoForQuote.discountAmount || 0);
+              setDiscountType(soDiscType);
+              setDiscount(soDisc);
+              setDiscountAmount(soDiscAmount);
+            } else {
+              if (parsed.selectedProfileId || parsed.taxProfileId) setTaxProfileId(parsed.selectedProfileId || parsed.taxProfileId);
+              if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
+              if (parsed.bankDetailId) setBankDetailId(parsed.bankDetailId);
+
+              // Auto-detect Product Quotation (prices are tax inclusive)
+              const isProdQuote = Boolean(
+                q.isProductQuotation ||
+                parsed.isProductQuotation ||
+                q.quotationCategory === 'product' ||
+                parsed.quotationCategory === 'product' ||
+                String(qNo).startsWith('PQ') ||
+                Array.isArray(parsed.custItems)
+              );
+              if (isProdQuote) {
+                setIsTaxInclusive(true);
+              }
+
+              // Calculate loaded line items sum
+              const rawCustItems = parsed.custItems || parsed.items || [];
+              const tempLines: any[] = [];
+              if (Array.isArray(rawCustItems) && rawCustItems.length > 0) {
+                for (const it of rawCustItems) {
+                  const desc = it.desc || it.description || it.name || it.text || '';
+                  if (!desc && !it.unitPrice && !it.amount) continue;
+                  tempLines.push({
+                    qty: Number(it.qty) || 1,
+                    unitPrice: Number(it.unitPrice ?? it.price ?? it.unitCost ?? 0)
+                  });
+                }
+              }
+              const quoteItemsSum = tempLines.reduce((s, it) => s + (Number(it.qty || 1) * Number(it.unitPrice || 0)), 0);
+              const quoteSubtotal = Number(parsed.custTotals?.subtotal || parsed.subtotal || quoteItemsSum);
+
+              // Discount Resolution from quotation
+              const rawQuoteDiscType = (parsed.custDiscountType || parsed.discountType) === 'amount' ? 'amount' : 'percent';
+              let rawQuoteDiscount = Number(parsed.custDiscount || parsed.discount || 0);
+              let rawQuoteDiscountAmount = Number(parsed.custDiscountAmount || parsed.custTotals?.discount || parsed.discountAmount || 0);
+
+              let resolvedQuoteDiscountType: 'percent' | 'amount' = rawQuoteDiscType;
+              let resolvedQuoteDiscount: number | string = 0;
+              let resolvedQuoteDiscountAmount: number | string = 0;
+
+              if (rawQuoteDiscType === 'percent' && rawQuoteDiscount > 0 && rawQuoteDiscount <= 100) {
+                resolvedQuoteDiscountType = 'percent';
+                resolvedQuoteDiscount = rawQuoteDiscount;
+                resolvedQuoteDiscountAmount = rawQuoteDiscountAmount > 0 
+                  ? rawQuoteDiscountAmount 
+                  : (quoteSubtotal > 0 ? Number(((quoteSubtotal * rawQuoteDiscount) / 100).toFixed(2)) : 0);
+              } else if (rawQuoteDiscountAmount > 0) {
+                resolvedQuoteDiscountType = 'amount';
+                resolvedQuoteDiscountAmount = rawQuoteDiscountAmount;
+                resolvedQuoteDiscount = quoteSubtotal > 0 ? Number(((rawQuoteDiscountAmount / quoteSubtotal) * 100).toFixed(2)) : 0;
+              } else if (rawQuoteDiscount > 0) {
+                if (rawQuoteDiscount > 100) {
+                  resolvedQuoteDiscountType = 'amount';
+                  resolvedQuoteDiscountAmount = rawQuoteDiscount;
+                  resolvedQuoteDiscount = quoteSubtotal > 0 ? Number(((rawQuoteDiscount / quoteSubtotal) * 100).toFixed(2)) : 0;
+                } else {
+                  resolvedQuoteDiscountType = 'percent';
+                  resolvedQuoteDiscount = rawQuoteDiscount;
+                  resolvedQuoteDiscountAmount = quoteSubtotal > 0 ? Number(((quoteSubtotal * rawQuoteDiscount) / 100).toFixed(2)) : 0;
+                }
+              }
+
+              setDiscountType(resolvedQuoteDiscountType);
+              setDiscount(resolvedQuoteDiscount);
+              setDiscountAmount(resolvedQuoteDiscountAmount);
             }
 
-            // Extract Line items
-            const rawCustItems = parsed.custItems || parsed.items || [];
-            const lineItems: any[] = [];
+            // Extract Line items: Check if Sales Order items exist first so modified rates take precedence!
+            let lineItems: any[] = [];
+            if (matchedSoForQuote && matchedSoForQuote.items) {
+              try {
+                const soItems = typeof matchedSoForQuote.items === 'string' ? JSON.parse(matchedSoForQuote.items) : matchedSoForQuote.items;
+                if (Array.isArray(soItems) && soItems.length > 0) {
+                  lineItems = soItems.map((it: any) => ({
+                    id: crypto.randomUUID(),
+                    inventoryId: it.productId || it.inventoryId || '',
+                    description: it.description || it.productName || it.desc || it.name || 'Order Item',
+                    qty: Number(it.qty) || 1,
+                    unitPrice: Number(it.unitPrice ?? it.price ?? 0),
+                    taxRateId: ''
+                  }));
+                }
+              } catch (e) {}
+            }
 
-            if (Array.isArray(rawCustItems) && rawCustItems.length > 0) {
-              for (const it of rawCustItems) {
-                const desc = it.desc || it.description || it.name || it.text || '';
-                if (!desc && !it.unitPrice && !it.amount) continue;
-                lineItems.push({
-                  id: crypto.randomUUID(),
-                  inventoryId: it.productId || it.inventoryId || '',
-                  description: desc || 'Quotation Item',
-                  qty: Number(it.qty) || 1,
-                  unitPrice: Number(it.unitPrice ?? it.price ?? it.unitCost ?? 0),
-                  taxRateId: ''
-                });
+            if (lineItems.length === 0) {
+              const rawCustItems = parsed.custItems || parsed.items || [];
+              if (Array.isArray(rawCustItems) && rawCustItems.length > 0) {
+                for (const it of rawCustItems) {
+                  const desc = it.desc || it.description || it.name || it.text || '';
+                  if (!desc && !it.unitPrice && !it.amount) continue;
+                  lineItems.push({
+                    id: crypto.randomUUID(),
+                    inventoryId: it.productId || it.inventoryId || '',
+                    description: desc || 'Quotation Item',
+                    qty: Number(it.qty) || 1,
+                    unitPrice: Number(it.unitPrice ?? it.price ?? it.unitCost ?? 0),
+                    taxRateId: ''
+                  });
+                }
               }
             }
 
@@ -622,24 +729,26 @@ export const InvoiceBuilder: React.FC = () => {
 
             // Auto-detect linked Sales Order & Gate Pass / Dispatch No for this quotation
             try {
-              let matchedSo: any = null;
-              // 1. Look for linked Finished Goods / Sales Order
-              const soRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders`);
-              if (soRes.ok) {
-                const allSos = await soRes.json();
-                matchedSo = (allSos || []).find((s: any) =>
-                  (s.quoteId && String(s.quoteId) === String(q.id)) ||
-                  (qNo && s.quotationNo && String(s.quotationNo).trim().toLowerCase() === String(qNo).trim().toLowerCase())
-                );
-                if (matchedSo && isMounted) {
-                  if (matchedSo.orderNo) setOrderNo(matchedSo.orderNo);
-                  if (matchedSo.deliveryAddress) setPlaceOfSupply(matchedSo.deliveryAddress);
-                  // Always default delivery/supply date to invoice date when creating new invoice
-                  setDeliveryDate(date);
-                  const soDispatch = matchedSo.gatePassNo || matchedSo.gatePassId || matchedSo.dispatchNo;
-                  if (soDispatch) {
-                    setDispatchNo(soDispatch);
-                  }
+              let matchedSo: any = matchedSoForQuote;
+              if (!matchedSo) {
+                // 1. Look for linked Finished Goods / Sales Order
+                const soRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finished-goods-orders`);
+                if (soRes.ok) {
+                  const allSos = await soRes.json();
+                  matchedSo = (allSos || []).find((s: any) =>
+                    (s.quoteId && String(s.quoteId) === String(q.id)) ||
+                    (qNo && s.quotationNo && String(s.quotationNo).trim().toLowerCase() === String(qNo).trim().toLowerCase())
+                  );
+                }
+              }
+              if (matchedSo && isMounted) {
+                if (matchedSo.orderNo) setOrderNo(matchedSo.orderNo);
+                if (matchedSo.deliveryAddress) setPlaceOfSupply(matchedSo.deliveryAddress);
+                // Always default delivery/supply date to invoice date when creating new invoice
+                setDeliveryDate(date);
+                const soDispatch = matchedSo.gatePassNo || matchedSo.gatePassId || matchedSo.dispatchNo;
+                if (soDispatch) {
+                  setDispatchNo(soDispatch);
                 }
               }
 
