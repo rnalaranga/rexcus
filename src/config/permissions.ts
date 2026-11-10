@@ -30,7 +30,8 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'crm.leads.delete', label: 'Delete Leads', description: 'Remove obsolete or spam leads from pipeline' },
       { id: 'crm.leads.manage', label: 'Manage Leads & Pipeline', description: 'Comprehensive lead administration, assignments, and conversion to customers' },
       { id: 'crm.deals.manage', label: 'Pipeline & Deals', description: 'Track deal stages, values, and sales milestones' },
-      { id: 'crm.followups.manage', label: 'Follow-ups & Reminders', description: 'Log interactions, call notes, and schedule client reminders' }
+      { id: 'crm.followups.manage', label: 'Follow-ups & Reminders', description: 'Log interactions, call notes, and schedule client reminders' },
+      { id: 'sales_orders.create', label: 'Create Direct Sales Orders', description: 'Create and issue direct Sales Orders from the Sales Orders Hub list' }
     ]
   },
   {
@@ -192,6 +193,8 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'crm.leads.edit': ['crm.leads.edit', 'crm.leads.manage'],
   'crm.leads.delete': ['crm.leads.delete', 'crm.leads.manage'],
   'crm.leads.manage': ['crm.leads.manage', 'crm.leads.view'],
+  'sales_orders.create': ['sales_orders.create', 'crm.sales_orders.create'],
+  'crm.sales_orders.create': ['sales_orders.create', 'crm.sales_orders.create'],
   'sales_orders.edit': ['approvals.sales_order_edit', 'production.work_orders.edit', 'sales_orders.edit'],
   'approvals.sales_order_edit': ['approvals.sales_order_edit', 'sales_orders.edit'],
   'admin.approvals.manage': [

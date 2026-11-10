@@ -97,7 +97,7 @@ export const EXCEL_DEPARTMENTS: ExcelDepartmentConfig[] = [
         name: 'Sales Order',
         department: 'sales',
         permissionMap: {
-          add: ['production.work_orders.create', 'inventory.items.view'],
+          add: ['sales_orders.create'],
           edit: ['approvals.sales_order_edit', 'production.work_orders.edit'],
           view: ['production.work_orders.view', 'inventory.items.view'],
           cancel: ['production.work_orders.delete'],

@@ -87,6 +87,11 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
   )
+  const canCreateSalesOrder = Boolean(
+    isAdmin ||
+    can('sales_orders.create') ||
+    can('crm.sales_orders.create')
+  )
   const isStoreRole = Boolean(
     isStoresView ||
     location.pathname.startsWith('/inventory/sales-orders') ||
@@ -590,6 +595,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   }
 
   const handleOpenCreateModal = (preselectedProduct?: any) => {
+    if (!canCreateSalesOrder) {
+      toast('You do not have permission to create direct sales orders. Please contact an administrator.', 'error');
+      return;
+    }
     setEditingOrder(null)
     const initialProduct = preselectedProduct
     const currentYY = String(new Date().getFullYear()).slice(-2);
@@ -3357,7 +3366,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 Customer PO Pool
               </Button>
             )}
-            {!isStoreRole && isAdmin && (
+            {!isStoreRole && canCreateSalesOrder && (
               <Button
                 variant="primary"
                 icon={Plus}
@@ -4248,7 +4257,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       >
                         Reset All Filters
                       </Button>
-                    ) : isAdmin ? (
+                    ) : canCreateSalesOrder ? (
                       <Button
                         variant="primary"
                         size="sm"
