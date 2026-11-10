@@ -5,11 +5,12 @@ import {
   X, ShoppingBag, FileText, Calendar, Building2, User, Phone, 
   MapPin, UploadCloud, Eye, Trash2, CheckCircle2, AlertCircle, 
   Package, DollarSign, AlertTriangle, ShieldCheck, Lock, Clock,
-  Plus, Edit3, Loader2
+  Plus, Edit3, Loader2, FileCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
-import { createFinishedGoodsOrder, fetchNextDocumentNumber, uploadFileToStorage } from '@/lib/api';
+import { createFinishedGoodsOrder, fetchNextDocumentNumber, uploadFileToStorage, assignCustomerPoFromPool } from '@/lib/api';
+import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useCustomers, useLeads, useInvoices, useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,6 +46,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const [withoutPoReason, setWithoutPoReason] = useState('Verbal / Phone Confirmation');
   const [adminOverrideWaiver, setAdminOverrideWaiver] = useState(false);
   const [advanceWaiverReason, setAdvanceWaiverReason] = useState('');
+  const [showPoPoolPicker, setShowPoPoolPicker] = useState(false);
+  const [pickedPoolId, setPickedPoolId] = useState<string | null>(null);
 
   const isAdminOrManager = Boolean(
     user?.role === 'admin' || 
@@ -792,6 +795,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       const res = await createFinishedGoodsOrder(payload);
       if (res && res.error) throw new Error(res.error);
 
+      // Assign PO from Pool if picked
+      if (pickedPoolId) {
+        assignCustomerPoFromPool(pickedPoolId, {
+          orderId: res.id,
+          orderNo: res.orderNo || formData.orderNo,
+          quoteId: quotationData?.quotation?.id,
+          quoteNo: quotationData?.group?.quoNo,
+          assignedBy: user?.name || user?.username || 'Sales Team'
+        }).catch(console.warn);
+      }
+
       // Invalidate frontend cache so sales order and quotations lists refresh instantly
       invalidateDataCache('fgo');
       invalidateDataCache('quotations');
@@ -1360,14 +1374,28 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               <div className="space-y-3 pt-1 animate-fade-in">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">
-                      Customer PO Number <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-secondary">
+                        Customer PO Number <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowPoPoolPicker(true)}
+                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Pick from Customer PO Pool"
+                      >
+                        <FileCheck size={12} className="text-blue-500" />
+                        <span>📂 Pick from PO Pool</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
                       required={poMode === 'received'}
                       value={formData.customerPoNo === 'PO PENDING' || formData.customerPoNo === 'WITHOUT PO' ? '' : formData.customerPoNo}
-                      onChange={e => setFormData({ ...formData, customerPoNo: e.target.value })}
+                      onChange={e => {
+                        setFormData({ ...formData, customerPoNo: e.target.value });
+                        setPickedPoolId(null);
+                      }}
                       placeholder="e.g. PO/2026/0891 or CUST-PO-774"
                       className={`w-full input-base font-mono text-xs font-semibold ${
                         duplicatePoOrder ? 'border-rose-500 focus:border-rose-500 bg-rose-500/5' : 'focus:border-emerald-500'
@@ -1608,6 +1636,31 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* CUSTOMER PO POOL PICKER MODAL */}
+      {showPoPoolPicker && (
+        <CustomerPoPoolModal
+          isOpen={showPoPoolPicker}
+          onClose={() => setShowPoPoolPicker(false)}
+          pickerMode
+          targetCustomerName={formData.customerName || (quotationData?.group?.clientCompany || quotationData?.group?.clientName)}
+          targetCustomerId={formData.customerId}
+          onSelectPo={(pickedPo) => {
+            setFormData(prev => ({
+              ...prev,
+              customerPoNo: pickedPo.poNumber,
+              customerPoDate: pickedPo.poDate || prev.customerPoDate,
+              customerPoAttachment: pickedPo.attachmentUrl || prev.customerPoAttachment,
+              customerPoAttachmentName: pickedPo.attachmentName || `PO_${pickedPo.poNumber}.pdf`,
+              notes: prev.notes ? `${prev.notes} | PO Ref: ${pickedPo.poNumber}` : `PO Ref: ${pickedPo.poNumber}`
+            }));
+            setPickedPoolId(pickedPo.id);
+            setPoMode('received');
+            setShowPoPoolPicker(false);
+            toast(`Customer PO #${pickedPo.poNumber} selected from pool!`, 'info');
+          }}
+        />
+      )}
     </div>,
     document.body
   );

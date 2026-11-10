@@ -1111,6 +1111,31 @@ async function runDatabaseSync() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uq_user_prefix (user_prefix)
     )`,
+    `CREATE TABLE IF NOT EXISTS customer_po_pool (
+      id VARCHAR(50) PRIMARY KEY,
+      poNumber VARCHAR(100) NOT NULL,
+      poDate VARCHAR(50) NULL,
+      customerId VARCHAR(50) NULL,
+      customerName VARCHAR(255) NULL,
+      customerCompany VARCHAR(255) NULL,
+      amount DECIMAL(15,2) DEFAULT 0.00,
+      currency VARCHAR(10) DEFAULT 'LKR',
+      attachmentUrl LONGTEXT NULL,
+      attachmentName VARCHAR(255) NULL,
+      notes TEXT NULL,
+      status VARCHAR(30) DEFAULT 'unassigned',
+      assignedQuoteId VARCHAR(50) NULL,
+      assignedQuoteNo VARCHAR(100) NULL,
+      assignedOrderId VARCHAR(50) NULL,
+      assignedOrderNo VARCHAR(100) NULL,
+      assignedAt DATETIME NULL,
+      assignedBy VARCHAR(100) NULL,
+      receivedBy VARCHAR(100) NULL,
+      createdAt DATETIME NULL,
+      updatedAt DATETIME NULL,
+      INDEX idx_po_cust (customerId),
+      INDEX idx_po_status (status)
+    )`,
     `CREATE TABLE IF NOT EXISTS cashbook_entries (
       id VARCHAR(50) PRIMARY KEY,
       date DATE NOT NULL,
@@ -5127,6 +5152,232 @@ app.get('/api/customers/:id/pos', async (req, res) => {
     });
   } catch (error: any) {
     console.error(error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CUSTOMER PO POOL API (Unassigned Customer PO Buffer Hub)
+// ══════════════════════════════════════════════════════════════════
+
+// GET all PO Pool items (optional ?status=unassigned or ?customerId=xyz)
+app.get('/api/customer-po-pool', async (req, res) => {
+  try {
+    const { status, customerId, search } = req.query;
+    let sql = 'SELECT * FROM customer_po_pool WHERE 1=1';
+    const params: any[] = [];
+
+    if (status && status !== 'all') {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
+    if (customerId) {
+      sql += ' AND (customerId = ? OR customerName = ? OR customerCompany = ?)';
+      params.push(customerId, customerId, customerId);
+    }
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = `%${search.trim()}%`;
+      sql += ' AND (poNumber LIKE ? OR customerName LIKE ? OR customerCompany LIKE ? OR notes LIKE ? OR assignedQuoteNo LIKE ? OR assignedOrderNo LIKE ?)';
+      params.push(term, term, term, term, term, term);
+    }
+
+    sql += ' ORDER BY createdAt DESC, id DESC';
+    const [rows]: any = await db.query(sql, params);
+    res.json(rows || []);
+  } catch (error: any) {
+    console.error('Failed to get customer PO pool:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// POST new PO to Pool
+app.post('/api/customer-po-pool', async (req, res) => {
+  try {
+    const {
+      poNumber,
+      poDate,
+      customerId,
+      customerName,
+      customerCompany,
+      amount,
+      currency,
+      attachmentUrl,
+      attachmentName,
+      notes,
+      receivedBy
+    } = req.body;
+
+    if (!poNumber || !String(poNumber).trim()) {
+      return res.status(400).json({ error: 'Customer PO Number is required.' });
+    }
+
+    const trimmedPoNo = String(poNumber).trim();
+    const id = `POOL-PO-${Date.now()}`;
+    const now = new Date();
+
+    await db.query(
+      `INSERT INTO customer_po_pool (
+        id, poNumber, poDate, customerId, customerName, customerCompany,
+        amount, currency, attachmentUrl, attachmentName, notes,
+        status, receivedBy, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unassigned', ?, ?, ?)`,
+      [
+        id,
+        trimmedPoNo,
+        poDate || now.toISOString().slice(0, 10),
+        customerId || null,
+        customerName || null,
+        customerCompany || null,
+        Number(amount) || 0,
+        currency || 'LKR',
+        attachmentUrl || null,
+        attachmentName || null,
+        notes || null,
+        receivedBy || 'Sales Team',
+        now,
+        now
+      ]
+    );
+
+    const [rows]: any = await db.query('SELECT * FROM customer_po_pool WHERE id = ?', [id]);
+    res.status(201).json(rows && rows[0] ? rows[0] : { id, poNumber: trimmedPoNo });
+  } catch (error: any) {
+    console.error('Failed to create customer PO in pool:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// POST assign PO from Pool to a Quotation or Sales Order
+app.post('/api/customer-po-pool/:id/assign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quoteId, quoteNo, orderId, orderNo, assignedBy, notes } = req.body;
+
+    const [poRows]: any = await db.query('SELECT * FROM customer_po_pool WHERE id = ?', [id]);
+    if (!poRows || poRows.length === 0) {
+      return res.status(404).json({ error: 'PO not found in pool.' });
+    }
+    const poolPo = poRows[0];
+
+    const now = new Date();
+
+    await db.query(
+      `UPDATE customer_po_pool SET
+        status = 'assigned',
+        assignedQuoteId = ?,
+        assignedQuoteNo = ?,
+        assignedOrderId = ?,
+        assignedOrderNo = ?,
+        assignedAt = ?,
+        assignedBy = ?,
+        notes = COALESCE(?, notes),
+        updatedAt = ?
+      WHERE id = ?`,
+      [
+        quoteId || null,
+        quoteNo || null,
+        orderId || null,
+        orderNo || null,
+        now,
+        assignedBy || 'Sales Team',
+        notes ? `${poolPo.notes ? poolPo.notes + ' | ' : ''}${notes}` : null,
+        now,
+        id
+      ]
+    );
+
+    // If assigned to a Quotation, automatically populate quotation's customerPo fields!
+    if (quoteId) {
+      const [qRows]: any = await db.query('SELECT id, data FROM quotations WHERE id = ?', [quoteId]);
+      if (qRows && qRows.length > 0) {
+        let qData: any = {};
+        try {
+          qData = typeof qRows[0].data === 'string' ? JSON.parse(qRows[0].data) : (qRows[0].data || {});
+        } catch (e) {}
+
+        qData.customerPoNo = poolPo.poNumber;
+        qData.customerPoDate = poolPo.poDate;
+        if (poolPo.attachmentUrl) {
+          qData.customerPoAttachment = poolPo.attachmentUrl;
+          qData.customerPoAttachmentName = poolPo.attachmentName || `PO_${poolPo.poNumber}.pdf`;
+        }
+
+        await db.query(
+          `UPDATE quotations SET
+            customerPoNo = ?,
+            customerPoDate = ?,
+            customerPoAttachment = COALESCE(?, customerPoAttachment),
+            data = ?
+          WHERE id = ?`,
+          [
+            poolPo.poNumber,
+            poolPo.poDate,
+            poolPo.attachmentUrl || null,
+            JSON.stringify(qData),
+            quoteId
+          ]
+        );
+      }
+    }
+
+    // If assigned to an existing Sales Order, update order's customerPo fields!
+    if (orderId) {
+      await db.query(
+        `UPDATE finished_goods_orders SET
+          customerPoNo = ?,
+          customerPoDate = ?,
+          customerPoAttachment = COALESCE(?, customerPoAttachment)
+        WHERE id = ? OR orderNo = ?`,
+        [
+          poolPo.poNumber,
+          poolPo.poDate,
+          poolPo.attachmentUrl || null,
+          orderId,
+          orderNo || orderId
+        ]
+      );
+    }
+
+    const [updated]: any = await db.query('SELECT * FROM customer_po_pool WHERE id = ?', [id]);
+    res.json({ success: true, poolPo: updated[0] });
+  } catch (error: any) {
+    console.error('Failed to assign customer PO from pool:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// POST unassign PO (return back to unassigned pool)
+app.post('/api/customer-po-pool/:id/unassign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query(
+      `UPDATE customer_po_pool SET
+        status = 'unassigned',
+        assignedQuoteId = NULL,
+        assignedQuoteNo = NULL,
+        assignedOrderId = NULL,
+        assignedOrderNo = NULL,
+        assignedAt = NULL,
+        assignedBy = NULL,
+        updatedAt = NOW()
+      WHERE id = ?`,
+      [id]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to unassign PO from pool:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+// DELETE PO from Pool
+app.delete('/api/customer-po-pool/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM customer_po_pool WHERE id = ?', [id]);
+    res.json({ success: true, message: 'PO deleted from pool.' });
+  } catch (error: any) {
+    console.error('Failed to delete PO from pool:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });

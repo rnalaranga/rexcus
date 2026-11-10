@@ -1598,3 +1598,86 @@ export const createEngineeringChangeOrder = async (data: any) => {
   return res.json();
 };
 
+// 5. Customer PO Pool APIs
+export interface CustomerPoPoolItem {
+  id: string;
+  poNumber: string;
+  poDate?: string;
+  customerId?: string;
+  customerName?: string;
+  customerCompany?: string;
+  amount?: number;
+  currency?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  notes?: string;
+  status: 'unassigned' | 'assigned';
+  assignedQuoteId?: string;
+  assignedQuoteNo?: string;
+  assignedOrderId?: string;
+  assignedOrderNo?: string;
+  assignedAt?: string;
+  assignedBy?: string;
+  receivedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const fetchCustomerPoPool = async (params?: { status?: string; customerId?: string; search?: string }): Promise<CustomerPoPoolItem[]> => {
+  const query = new URLSearchParams();
+  if (params?.status) query.append('status', params.status);
+  if (params?.customerId) query.append('customerId', params.customerId);
+  if (params?.search) query.append('search', params.search);
+  const res = await fetch(`${API_URL}/customer-po-pool?${query.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch customer PO pool');
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+};
+
+export const createCustomerPoPoolItem = async (data: Partial<CustomerPoPoolItem>): Promise<CustomerPoPoolItem> => {
+  const res = await fetch(`${API_URL}/customer-po-pool`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to add PO to pool');
+  }
+  return res.json();
+};
+
+export const assignCustomerPoFromPool = async (
+  poolId: string, 
+  data: { quoteId?: string; quoteNo?: string; orderId?: string; orderNo?: string; assignedBy?: string; notes?: string }
+) => {
+  const res = await fetch(`${API_URL}/customer-po-pool/${poolId}/assign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to assign PO from pool');
+  }
+  return res.json();
+};
+
+export const unassignCustomerPoFromPool = async (poolId: string) => {
+  const res = await fetch(`${API_URL}/customer-po-pool/${poolId}/unassign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) throw new Error('Failed to unassign PO from pool');
+  return res.json();
+};
+
+export const deleteCustomerPoPoolItem = async (poolId: string) => {
+  const res = await fetch(`${API_URL}/customer-po-pool/${poolId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Failed to delete PO from pool');
+  return res.json();
+};
+
+

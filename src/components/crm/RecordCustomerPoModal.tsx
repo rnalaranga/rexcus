@@ -9,7 +9,8 @@ import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFinishedGoodsOrders, invalidateDataCache } from '@/hooks/useData';
-import { updateFinishedGoodsOrder, uploadFileToStorage } from '@/lib/api';
+import { updateFinishedGoodsOrder, uploadFileToStorage, assignCustomerPoFromPool } from '@/lib/api';
+import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal';
 
 export type PoEntryMode = 'received' | 'pending' | 'without_po';
 
@@ -48,6 +49,8 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
   const [customerPoAttachmentName, setCustomerPoAttachmentName] = useState('');
   const [notes, setNotes] = useState('');
   const [isPreviouslyPending, setIsPreviouslyPending] = useState(false);
+  const [showPoPoolPicker, setShowPoPoolPicker] = useState(false);
+  const [pickedPoolId, setPickedPoolId] = useState<string | null>(null);
 
   const isOrderMode = Boolean(orderData);
 
@@ -259,6 +262,14 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           updatedBy: user?.name || (user as any)?.email || 'Sales Team'
         });
 
+        if (pickedPoolId) {
+          assignCustomerPoFromPool(pickedPoolId, {
+            orderId: orderData.id,
+            orderNo: orderData.orderNo,
+            assignedBy: user?.name || user?.username || 'Sales Team'
+          }).catch(console.warn);
+        }
+
         toast('Customer PO #' + finalPoNo + ' recorded for Order ' + orderData.orderNo + '!', 'success');
         invalidateDataCache('fgo');
         invalidateDataCache('quotations');
@@ -291,6 +302,14 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
 
         const data = await res.json();
         
+        if (pickedPoolId) {
+          assignCustomerPoFromPool(pickedPoolId, {
+            quoteId: quotation.id,
+            quoteNo: quotation.quotationNo || group?.quoNo,
+            assignedBy: user?.name || user?.username || 'Sales Team'
+          }).catch(console.warn);
+        }
+
         const successMsg = poMode === 'pending'
           ? 'Quotation marked as "PO Pending". You can now proceed to Sales Order.'
           : poMode === 'without_po'
@@ -415,14 +434,28 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           {poMode === 'received' && (
             <div className="space-y-3 p-3.5 bg-surface2/30 border border-theme-subtle">
               <div>
-                <label className="block text-xs font-semibold text-secondary mb-1">
-                  Customer PO Number <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-secondary">
+                    Customer PO Number <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPoPoolPicker(true)}
+                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    title="Select a received PO from the Customer PO Pool"
+                  >
+                    <FileCheck size={12} className="text-blue-500" />
+                    <span>📂 Pick from PO Pool</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   required
                   value={customerPoNo}
-                  onChange={e => setCustomerPoNo(e.target.value)}
+                  onChange={e => {
+                    setCustomerPoNo(e.target.value);
+                    setPickedPoolId(null);
+                  }}
                   placeholder="e.g. PO/2026/0891 or CUST-PO-774"
                   className={`w-full input-base font-mono text-xs font-semibold ${
                     duplicatePoOrder ? 'border-rose-500 focus:border-rose-500 bg-rose-500/5' : ''
@@ -603,6 +636,32 @@ export const RecordCustomerPoModal: React.FC<RecordCustomerPoModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* PO POOL PICKER MODAL */}
+      {showPoPoolPicker && (
+        <CustomerPoPoolModal
+          isOpen={showPoPoolPicker}
+          onClose={() => setShowPoPoolPicker(false)}
+          pickerMode
+          targetCustomerName={orderData?.customerName || orderData?.customerCompany || quotationData?.group?.clientName || quotationData?.group?.clientCompany}
+          targetCustomerId={orderData?.customerId || quotationData?.quotation?.leadId}
+          onSelectPo={(pickedPo) => {
+            setCustomerPoNo(pickedPo.poNumber);
+            if (pickedPo.poDate) setCustomerPoDate(pickedPo.poDate);
+            if (pickedPo.attachmentUrl) {
+              setCustomerPoAttachment(pickedPo.attachmentUrl);
+              setCustomerPoAttachmentName(pickedPo.attachmentName || `PO_${pickedPo.poNumber}.pdf`);
+            }
+            if (pickedPo.notes) {
+              setNotes(prev => prev ? `${prev} | ${pickedPo.notes}` : pickedPo.notes || '');
+            }
+            setPickedPoolId(pickedPo.id);
+            setPoMode('received');
+            setShowPoPoolPicker(false);
+            toast(`Customer PO #${pickedPo.poNumber} selected from pool!`, 'info');
+          }}
+        />
+      )}
     </div>,
     document.body
   );

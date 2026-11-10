@@ -7,7 +7,7 @@ import {
   Calendar, DollarSign, ArrowUpRight, CheckCircle2, ChevronRight, ChevronDown, X,
   Printer, Eye, FileText, Shield, Download, ExternalLink, Hash, Factory,
   ShoppingBag, Receipt, UploadCloud, Paperclip, Camera, Maximize2, Minimize2,
-  Star, XCircle, Ban, Edit3, RotateCcw, Tag
+  Star, XCircle, Ban, Edit3, RotateCcw, Tag, FileCheck
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -39,6 +39,7 @@ import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
+import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal'
 import { openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl } from '@/lib/utils'
 import { 
   createFinishedGoodsOrder, 
@@ -240,6 +241,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string } | null>(null)
   const [recordPoOrder, setRecordPoOrder] = useState<any | null>(null)
   const [viewPoOrder, setViewPoOrder] = useState<any | null>(null)
+  const [showPoPoolModal, setShowPoPoolModal] = useState(false)
 
   // Change Sales Order Number State
   const [changeNumberTarget, setChangeNumberTarget] = useState<any | null>(null)
@@ -3308,6 +3310,17 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             )}
             {!isStoreRole && (
               <Button
+                variant="outline"
+                icon={FileCheck}
+                onClick={() => setShowPoPoolModal(true)}
+                className="whitespace-nowrap h-8 text-xs font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/10"
+                title="Customer PO Buffer Hub (Unassigned POs)"
+              >
+                Customer PO Pool
+              </Button>
+            )}
+            {!isStoreRole && isAdmin && (
+              <Button
                 variant="primary"
                 icon={Plus}
                 onClick={() => handleOpenCreateModal()}
@@ -4197,7 +4210,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       >
                         Reset All Filters
                       </Button>
-                    ) : (
+                    ) : isAdmin ? (
                       <Button
                         variant="primary"
                         size="sm"
@@ -4207,6 +4220,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       >
                         Create First Order
                       </Button>
+                    ) : (
+                      <p className="mt-3 text-xs text-muted">
+                        Sales Orders must be created from an approved Quotation.
+                      </p>
                     )}
                   </td>
                 </tr>
@@ -6114,6 +6131,14 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             setViewPoOrder(null);
             setRecordPoOrder(ord);
           }}
+        />
+      )}
+
+      {/* CUSTOMER PO POOL MODAL */}
+      {showPoPoolModal && (
+        <CustomerPoPoolModal
+          isOpen={showPoPoolModal}
+          onClose={() => setShowPoPoolModal(false)}
         />
       )}
 
