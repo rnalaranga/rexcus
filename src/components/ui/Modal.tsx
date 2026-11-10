@@ -9,6 +9,7 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   className?: string
+  containerClassName?: string
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | 'full'
   allowMaximize?: boolean
 }
@@ -19,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
   title, 
   children, 
   className, 
+  containerClassName,
   size = 'md',
   allowMaximize = true
 }) => {
@@ -79,7 +81,7 @@ export const Modal: React.FC<ModalProps> = ({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-5">
+    <div className={cn('fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-5', containerClassName)}>
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-ice-blur bg-white/50 dark:bg-white/12 backdrop-blur-md transition-opacity" 

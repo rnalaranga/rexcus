@@ -209,6 +209,7 @@ export const ImageCropEditorModal: React.FC<ImageCropEditorModalProps> = ({
       onClose={onClose}
       title="Optimize Customer PO Document (Crop, Rotate & Enhance)"
       size="xl"
+      containerClassName="!z-[250]"
     >
       <div className="space-y-4">
         {/* Controls Toolbar */}
