@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { prefetchRoute } from '@/lib/prefetchRoute'
 
 interface NavItem {
   label: string
@@ -233,6 +234,8 @@ export const Sidebar: React.FC = () => {
                         key={item.label}
                         to={item.path}
                         end={item.path === '/crm' || item.path === '/finance'}
+                        onMouseEnter={() => prefetchRoute(item.path)}
+                        onTouchStart={() => prefetchRoute(item.path)}
                         className={({ isActive: navActive }) => cn(
                           'flex items-center gap-2.5 mx-2 px-3 py-1.5 mb-0.5 rounded transition-all duration-150 group',
                           (navActive || isActive)
