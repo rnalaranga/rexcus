@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Download, Plus, Filter, ArrowDownRight, FileText, ShoppingCart, 
   Truck, CheckCircle2, Clock, AlertCircle, RefreshCw, ExternalLink,
-  Building2, Search, DollarSign
+  Building2, Search, DollarSign, CreditCard
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -14,17 +14,21 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { useBills, usePurchaseOrders, useGRNs, useMaterialRequests } from '@/hooks/usePurchasing';
 import { useSuppliers, useWorkOrders } from '@/hooks/useData';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
+import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 type ActiveTab = 'aging' | 'bills' | 'pos';
 type SortDir = 'asc' | 'desc';
 
 export const PayablesHub: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useDialog();
   const [activeTab, setActiveTab] = useState<ActiveTab>('aging');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [agingData, setAgingData] = useState<any[]>([]);
   const [loadingAging, setLoadingAging] = useState(true);
+  const [paymentBill, setPaymentBill] = useState<any | null>(null);
 
   // Purchasing hooks
   const { data: bills = [], loading: loadingBills, refetch: refetchBills } = useBills();
@@ -618,14 +622,27 @@ export const PayablesHub: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs border border-theme-subtle hover:bg-surface2"
-                            onClick={() => navigate(`/purchasing/bill-builder/${b.id}`)}
-                          >
-                            View Bill
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs border border-theme-subtle hover:bg-surface2"
+                              onClick={() => navigate(`/purchasing/bill-builder/${b.id}`)}
+                            >
+                              View
+                            </Button>
+                            {b.status !== 'paid' && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 py-1 px-2.5 rounded-none"
+                                onClick={() => setPaymentBill(b)}
+                              >
+                                <CreditCard size={12} />
+                                <span>Pay</span>
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -741,6 +758,20 @@ export const PayablesHub: React.FC = () => {
             </div>
           )}
         </GlassCard>
+      )}
+
+      {/* Direct Bill Payment Modal */}
+      {paymentBill && (
+        <RecordBillPaymentModal
+          isOpen={!!paymentBill}
+          onClose={() => setPaymentBill(null)}
+          bill={paymentBill}
+          toast={toast}
+          onSuccess={() => {
+            refetchBills();
+            loadAging();
+          }}
+        />
       )}
     </div>
   );

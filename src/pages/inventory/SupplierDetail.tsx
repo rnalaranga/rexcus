@@ -221,7 +221,7 @@ export const SupplierDetail: React.FC = () => {
   }
 
   // Calculations for financial stats
-  const openingBalance = Number(supplier?.openingBalance || supplier?.balance || 0)
+  const openingBalance = Number(supplier?.openingBalance !== undefined && supplier?.openingBalance !== null ? supplier.openingBalance : (ledger.length === 0 ? (supplier?.balance || 0) : 0))
   const totalDebit = ledger.reduce((s: number, r: any) => s + Number(r.debit || 0), 0)
   const totalCredit = ledger.reduce((s: number, r: any) => s + Number(r.credit || 0), 0)
   const outstandingBalance = (totalDebit - totalCredit) + openingBalance

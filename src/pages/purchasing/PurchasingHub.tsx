@@ -25,6 +25,7 @@ import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdo
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill' | 'gate_pass';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
@@ -42,6 +43,7 @@ export const PurchasingHub: React.FC = () => {
   const [grnSourceFilter, setGrnSourceFilter] = useState<'all' | 'vendor' | 'sample'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [paymentBill, setPaymentBill] = useState<any | null>(null);
   const navigate = useNavigate();
 
   const { user } = useAuth();
@@ -754,11 +756,26 @@ export const PurchasingHub: React.FC = () => {
                 <button
                   type="button"
                   data-no-row-click="true"
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation(); 
+                    closeDropdown(); 
+                    setPaymentBill(row); 
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <CreditCard size={13} className="text-emerald-500" />
+                  <span>Record Bill Payment</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/inventory/suppliers/${row.supplierId}`); }}
                   className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                 >
                   <CreditCard size={13} className="text-amber-500" />
-                  <span>Supplier Ledger / Pay</span>
+                  <span>View Vendor Ledger</span>
                 </button>
 
                 {isAdmin && (
@@ -1822,6 +1839,19 @@ export const PurchasingHub: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Direct Bill Payment Modal */}
+      {paymentBill && (
+        <RecordBillPaymentModal
+          isOpen={!!paymentBill}
+          onClose={() => setPaymentBill(null)}
+          bill={paymentBill}
+          toast={toast}
+          onSuccess={() => {
+            refetchBills();
+          }}
+        />
+      )}
     </div>
   );
 };
