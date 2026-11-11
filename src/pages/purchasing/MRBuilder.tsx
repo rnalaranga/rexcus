@@ -14,8 +14,10 @@ import { createMR, updateMR, fetchMRs, fetchWorkOrders, fetchNextDocumentNumber 
 import { usePurchaseOrders } from '@/hooks/usePurchasing';
 import { formatCurrency, cn } from '@/lib/utils';
 import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { MRPrintView } from '@/components/purchasing/MRPrintView';
+import { printElement } from '@/lib/printElement';
+import { exportToPdf } from '@/lib/exportToPdf';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface MRItem {
   id: string;
@@ -243,6 +245,7 @@ export const WorkOrderSearchInput: React.FC<WorkOrderSearchInputProps> = ({
 };
 
 export const MRBuilder: React.FC = () => {
+  const { settings } = useSettings();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -559,19 +562,11 @@ export const MRBuilder: React.FC = () => {
   };
 
   const exportPDF = () => {
-    const element = document.getElementById('mr-pdf-content');
-    if (!element) return;
-    const clone = element.cloneNode(true) as HTMLElement;
-    clone.style.display = 'block';
-    document.body.appendChild(clone);
-    const opt: any = {
-      margin: 10,
-      filename: `Material_Request_${docNo}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().from(clone).set(opt).save().then(() => document.body.removeChild(clone));
+    exportToPdf('mr-print-section', `Material_Request_${docNo}.pdf`);
+  };
+
+  const handlePrint = () => {
+    printElement('mr-print-section', `Material_Request_${docNo}`);
   };
 
   if (loading) {
@@ -632,6 +627,9 @@ export const MRBuilder: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" icon={Printer} onClick={handlePrint}>
+            Print MR
+          </Button>
           <Button variant="ghost" size="sm" icon={Printer} onClick={exportPDF}>
             Export PDF
           </Button>
@@ -1163,136 +1161,32 @@ export const MRBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* HIDDEN PRINT / PDF TEMPLATE */}
-      <div id="mr-pdf-content" style={{ display: 'none', background: 'white', color: 'black', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '3px solid #1a202c', paddingBottom: '20px', marginBottom: '25px' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 900, color: '#1a202c', letterSpacing: '-0.5px' }}>
-              MATERIAL REQUISITION NOTE
-            </h1>
-            <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>MR Number</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{docNo}</p>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Date</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{date}</p>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Required By</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{requiredDate || 'Immediate'}</p>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Department</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{department}</p>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Work Order(s)</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#4c1d95' }}>
-                  {hasItemWorkOrders 
-                    ? 'Specified Per Line Item' 
-                    : workOrderNos.length > 0 ? workOrderNos.join(', ') : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>Linked PO(s)</p>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#047857' }}>{allPoIds.length > 0 ? allPoIds.join(', ') : 'Pending'}</p>
-              </div>
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#2b6cb0' }}>REX INDUSTRIES</h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#4a5568' }}>Internal Material Requisition</p>
-            <p style={{ margin: 0, fontSize: '11px', color: '#4a5568' }}>Requested by: <strong>{requestedBy}</strong></p>
-          </div>
-        </div>
-
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
-          <thead>
-            <tr style={{ background: '#edf2f7', borderBottom: '2px solid #cbd5e0' }}>
-              <th style={{ padding: '8px 12px', textAlign: 'center', width: '40px' }}>#</th>
-              <th style={{ padding: '8px 12px', textAlign: 'left' }}>Item & Specifications</th>
-              <th style={{ padding: '8px 12px', textAlign: 'center', width: '130px' }}>Job / WO #</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Req. Qty</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Ordered</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Balance</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Est. Cost</th>
-              <th style={{ padding: '8px 12px', textAlign: 'right', width: '100px' }}>Est. Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => {
-              const itemKey = it.inventoryId || it.desc || it.id;
-              const ord = orderedTotals[itemKey] || 0;
-              const req = Number(it.qty) || 0;
-              const bal = Math.max(0, req - ord);
-              return (
-                <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#718096' }}>{idx + 1}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <strong>{inventory.find(i => i.id === it.inventoryId)?.name || it.desc || it.inventoryId}</strong>
-                    {it.desc && <div style={{ fontSize: '10px', color: '#718096' }}>{it.desc}</div>}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#4c1d95', fontWeight: 'bold', fontSize: '11px' }}>
-                    {(it.workOrderNos && it.workOrderNos.length > 0)
-                      ? it.workOrderNos.join(', ')
-                      : workOrderNos.length > 0 ? workOrderNos.join(', ') : '-'}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
-                    {it.qty} {it.uom || 'units'}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', color: '#047857', fontWeight: 'bold' }}>
-                    {ord} {it.uom || 'units'}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', color: bal > 0 ? '#b45309' : '#047857', fontWeight: 'bold' }}>
-                    {bal} {it.uom || 'units'}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                    {formatCurrency(Number(it.unitCost) || 0)}
-                  </td>
-                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold' }}>
-                    {formatCurrency((Number(it.qty) || 0) * (Number(it.unitCost) || 0))}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: '#f7fafc', fontWeight: 'bold' }}>
-              <td colSpan={7} style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Total:</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#2b6cb0' }}>
-                {formatCurrency(totalEstimatedCost)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {notes && (
-          <div style={{ marginBottom: '30px', fontSize: '11px', color: '#4a5568', background: '#f7fafc', padding: '12px', borderLeft: '4px solid #2b6cb0' }}>
-            <strong>Purpose / Justification:</strong> {notes}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '60px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-          <div style={{ textAlign: 'center', width: '180px' }}>
-            <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-            <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Requested By</p>
-            <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>{requestedBy}</p>
-          </div>
-          <div style={{ textAlign: 'center', width: '180px' }}>
-            <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-            <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Department Head</p>
-            <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>Authorized Signature</p>
-          </div>
-          <div style={{ textAlign: 'center', width: '180px' }}>
-            <div style={{ borderBottom: '1px solid #a0aec0', paddingBottom: '30px' }}></div>
-            <p style={{ margin: '6px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#4a5568' }}>Purchasing Dept</p>
-            <p style={{ margin: 0, fontSize: '10px', color: '#718096' }}>
-              POs: {allPoIds.length > 0 ? allPoIds.join(', ') : 'Pending'}
-            </p>
-          </div>
-        </div>
+      {/* HIDDEN PRINT / PDF TEMPLATE (REX STANDARD FORMAT) */}
+      <div style={{ display: 'none' }}>
+        <MRPrintView
+          mr={{
+            id: docNo,
+            date,
+            requiredDate,
+            department,
+            priority,
+            requestedBy,
+            status,
+            workOrderNos,
+            workOrderNo: workOrderNos[0] || '',
+            items: items.map(it => ({
+              inventoryId: it.inventoryId,
+              desc: inventory.find(i => i.id === it.inventoryId)?.name || it.desc || it.inventoryId,
+              qty: it.qty,
+              unit: it.uom || 'Nos',
+              notes: (it.workOrderNos && it.workOrderNos.length > 0)
+                ? `Job/WO: ${it.workOrderNos.join(', ')}`
+                : (it.desc || '-')
+            })),
+            notes
+          }}
+          settings={settings}
+        />
       </div>
     </div>
   );

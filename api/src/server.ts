@@ -8982,35 +8982,95 @@ app.post('/api/purchasing/bills', async (req, res) => {
       // Sync supplier balance
       await syncSupplierBalance(data.supplierId);
 
-      // Auto GL: Record Expense / Raw Materials (Debit) and Accounts Payable (Credit)
+      // Auto GL: Record Expense / Inventory (Debit), Tax Receivables (Debit), and Accounts Payable (Credit)
       try {
-        const [expAcc]: any = await db.query(
-          'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Raw Material%" OR name LIKE "%Cost of Goods%" OR type = "Expense") LIMIT 1'
-        );
-        const [apAcc]: any = await db.query(
-          'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
-        );
+        const billAmount = Number(data.amount) || 0;
+        const taxAmount = Number(data.taxAmount) || 0;
+        let subtotal = Number(data.subtotal) || (billAmount - taxAmount);
+        if (subtotal <= 0) subtotal = billAmount;
 
-        if (expAcc.length > 0 && apAcc.length > 0) {
-          const billAmount = Number(data.amount) || 0;
+        // Parse tax breakdown if available to split Input VAT & Input SSCL
+        let vatAmount = 0;
+        let ssclAmount = 0;
+        if (data.taxBreakdown) {
+          try {
+            const tb = typeof data.taxBreakdown === 'string' ? JSON.parse(data.taxBreakdown) : data.taxBreakdown;
+            if (tb.tax1Rate > 0) ssclAmount = Number(tb.tax1Amount) || 0;
+            if (tb.tax2Rate > 0) vatAmount = Number(tb.tax2Amount) || 0;
+          } catch (e) {}
+        }
+        if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
+          vatAmount = taxAmount; // fallback all to input VAT
+        }
+
+        // 1. Expense or Raw Material Asset Account
+        let expAccId = data.expenseAccountId || null;
+        if (!expAccId) {
+          const categoryLower = (data.billCategory || '').toLowerCase();
+          if (categoryLower.includes('electricity') || categoryLower.includes('ceb')) {
+            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" LIMIT 1');
+            if (acc.length) expAccId = acc[0].id;
+          } else if (categoryLower.includes('diesel') || categoryLower.includes('fuel')) {
+            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" LIMIT 1');
+            if (acc.length) expAccId = acc[0].id;
+          } else if (categoryLower.includes('maintenance') || categoryLower.includes('repair')) {
+            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" LIMIT 1');
+            if (acc.length) expAccId = acc[0].id;
+          } else if (categoryLower.includes('subcontract') || categoryLower.includes('machin')) {
+            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" LIMIT 1');
+            if (acc.length) expAccId = acc[0].id;
+          } else {
+            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR (name LIKE "%Raw Material%" OR name LIKE "%Cost of Goods%" OR type = "Expense") LIMIT 1');
+            if (acc.length) expAccId = acc[0].id;
+          }
+        }
+        if (!expAccId) expAccId = 'acc_4000';
+
+        // 2. Tax Receivable Accounts
+        const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
+        const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1310" OR (name LIKE "%Input SSCL%" AND type = "Asset") LIMIT 1');
+        const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1300';
+        const inputSsclAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_1310';
+
+        // 3. Accounts Payable Account
+        const [apAcc]: any = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
+        );
+        const apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+
+        if (expAccId && apAccId && billAmount > 0) {
           const jeId = `JE-BILL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
           
           await db.query('INSERT INTO journal_entries SET ?', {
             id: jeId,
             date: ledgerEntry.date,
             reference: data.invoiceNo || data.id,
-            description: `Auto GL: Supplier Bill (${data.id}) - ${data.supplierId}`,
+            description: `Auto GL: Supplier Bill (${data.id}) [${data.billCategory || 'Purchase'}] - ${data.supplierId}`,
             totalAmount: billAmount
           });
 
-          const lines = [
-            [`JL-${Date.now().toString().slice(-6)}1`, jeId, expAcc[0].id, billAmount, 0, data.supplierId, 'Supplier'],
-            [`JL-${Date.now().toString().slice(-6)}2`, jeId, apAcc[0].id, 0, billAmount, data.supplierId, 'Supplier']
-          ];
-          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+          const lines: any[] = [];
+          // Debit: Net Expense / Inventory
+          lines.push([`JL-${Date.now().toString().slice(-6)}1`, jeId, expAccId, subtotal, 0, data.supplierId, 'Supplier']);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, expAccId]);
 
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, expAcc[0].id]);
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, apAcc[0].id]);
+          // Debit: Input VAT Receivable (if any)
+          if (vatAmount > 0) {
+            lines.push([`JL-${Date.now().toString().slice(-6)}2`, jeId, inputVatAccId, vatAmount, 0, data.supplierId, 'Supplier']);
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [vatAmount, inputVatAccId]);
+          }
+
+          // Debit: Input SSCL Receivable (if any)
+          if (ssclAmount > 0) {
+            lines.push([`JL-${Date.now().toString().slice(-6)}3`, jeId, inputSsclAccId, ssclAmount, 0, data.supplierId, 'Supplier']);
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, inputSsclAccId]);
+          }
+
+          // Credit: Total Accounts Payable
+          lines.push([`JL-${Date.now().toString().slice(-6)}4`, jeId, apAccId, 0, billAmount, data.supplierId, 'Supplier']);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, apAccId]);
+
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
         }
       } catch (eGl) {
         console.error('Error posting GL for supplier bill:', eGl);
@@ -9607,14 +9667,95 @@ app.post('/api/invoices', async (req, res) => {
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, equityId]);
       } else if (!isProformaInvoice && arAcc.length > 0 && salesAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random()*100);
-        const invTotal = Number(data.total) || 0;
-        const invSub = Number(data.subtotal) || invTotal;
+        const invTotal = Number(data.total) || Number(data.amount) || 0;
+        let invSub = Number(data.subtotal) || 0;
 
-        // Parse tax breakdown from taxProfileId
-        let taxBreakdown: any = null;
-        try { taxBreakdown = data.taxBreakdown ? JSON.parse(data.taxBreakdown) : null; } catch(e) {}
+        // Auto Tax Resolution Engine (VAT & SSCL - Inclusive & Exclusive):
+        // IRD Standard: If taxProfileId is selected, extract VAT (18%) and SSCL (2.5%) even if price is tax-inclusive!
+        let tax1Amt = 0; // SSCL Payable (2220)
+        let tax2Amt = 0; // Output VAT Payable (2210)
+        let totalCalculatedTax = 0;
 
-        await db.query('INSERT INTO journal_entries SET ?', { id: jeId, date: data.date, reference: data.invoiceNo || data.id, description: 'Auto GL: Invoice Issued', totalAmount: invTotal });
+        // 1. Try parsing incoming tax breakdown
+        let parsedBreakdown: any = null;
+        if (data.taxBreakdown) {
+          try {
+            parsedBreakdown = typeof data.taxBreakdown === 'string' ? JSON.parse(data.taxBreakdown) : data.taxBreakdown;
+            if (parsedBreakdown) {
+              tax1Amt = Number(parsedBreakdown.tax1Amount || parsedBreakdown.sscl || 0);
+              tax2Amt = Number(parsedBreakdown.tax2Amount || parsedBreakdown.vat || 0);
+            }
+          } catch (e) {}
+        }
+
+        // 2. If taxBreakdown wasn't pre-filled or is zero, compute dynamically from taxProfileId or taxType
+        const profileId = data.taxProfileId || (data.taxType === 'vat_sscl' ? 'tp_opt2_sscl_absorbed_vat_sep' : (data.taxType === 'vat' ? 'tp_vat18' : null));
+        if ((tax1Amt === 0 && tax2Amt === 0) && profileId && profileId !== 'none' && profileId !== 'no_tax' && profileId !== 'tp_export_zero_rated') {
+          try {
+            const [profiles]: any = await db.query('SELECT * FROM tax_profiles WHERE id = ?', [profileId]);
+            const prof = profiles[0];
+            if (prof) {
+              const t1 = Number(prof.tax1_rate || 0) / 100; // SSCL e.g. 2.5%
+              const t2 = Number(prof.tax2_rate || 0) / 100; // VAT e.g. 18%
+              const isCompound = Boolean(prof.tax2_compound);
+              const isOpt4 = prof.id === 'tp_opt4_sscl_included_vat_sep' || prof.name?.toLowerCase().includes('sscl included');
+              const isInclusive = Boolean(Number(data.isTaxInclusive) === 1 || data.isTaxInclusive === true || data.isTaxInclusive === '1');
+
+              if (isInclusive) {
+                // Price entered includes tax: back out Net Sales Subtotal, SSCL, and VAT mathematically
+                let baseSub = invTotal;
+                if (isOpt4 && t1 > 0) {
+                  baseSub = invTotal / (1 + t2);
+                  tax2Amt = invTotal - baseSub;
+                  const netBeforeSscl = baseSub / (1 + t1);
+                  tax1Amt = baseSub - netBeforeSscl;
+                  baseSub = netBeforeSscl;
+                } else {
+                  const divisor = isCompound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+                  if (divisor > 1) {
+                    baseSub = invTotal / divisor;
+                    tax1Amt = baseSub * t1;
+                    const baseForT2 = isCompound ? (baseSub + tax1Amt) : baseSub;
+                    tax2Amt = baseForT2 * t2;
+                  }
+                }
+                baseSub = Math.round(baseSub * 100) / 100;
+                tax1Amt = Math.round(tax1Amt * 100) / 100;
+                tax2Amt = Math.round((invTotal - baseSub - tax1Amt) * 100) / 100;
+                invSub = baseSub;
+              } else {
+                // Price entered is pre-tax base subtotal
+                const baseSub = invSub > 0 ? invSub : invTotal;
+                tax1Amt = Math.round((baseSub * t1) * 100) / 100;
+                const baseForT2 = isCompound ? (baseSub + tax1Amt) : baseSub;
+                tax2Amt = Math.round((baseForT2 * t2) * 100) / 100;
+                invSub = baseSub;
+              }
+            }
+          } catch (eCalc) {
+            console.error('Error calculating tax from profile in invoice post:', eCalc);
+          }
+        }
+
+        // 3. Fallback: If only generic taxAmount was sent
+        totalCalculatedTax = Math.round((tax1Amt + tax2Amt) * 100) / 100;
+        if (totalCalculatedTax === 0 && Number(data.taxAmount) > 0) {
+          totalCalculatedTax = Number(data.taxAmount);
+          tax2Amt = totalCalculatedTax; // Default to VAT
+        }
+
+        // If subtotal is still 0 or equals total while taxes exist, deduct taxes from revenue
+        if (invSub <= 0 || (invSub === invTotal && totalCalculatedTax > 0)) {
+          invSub = Math.max(0, invTotal - totalCalculatedTax);
+        }
+
+        await db.query('INSERT INTO journal_entries SET ?', {
+          id: jeId,
+          date: data.date,
+          reference: data.invoiceNo || data.id,
+          description: `Auto GL: Invoice Issued (${data.invoiceNo || data.id})`,
+          totalAmount: invTotal
+        });
 
         // LKAS 1 Subledger: Only Accounts Receivable holds customer partyId. Sales Revenue belongs to entity income (null partyId).
         const customerPartyId = data.customerId || data.leadId || null;
@@ -9629,34 +9770,32 @@ app.post('/api/invoices', async (req, res) => {
           return 'acc_2200';
         };
 
-        // Use tax profile accounts if available (IRD RAMIS Compliance: VAT 18% & SSCL 2.5%)
-        if (taxBreakdown && data.taxProfileId) {
-          const [profile] = await db.query('SELECT * FROM tax_profiles WHERE id = ?', [data.taxProfileId]) as any;
-          const prof = profile[0];
-          if (prof) {
-            const tax1Amt = Number(taxBreakdown.tax1Amount) || 0;
-            const tax2Amt = Number(taxBreakdown.tax2Amount) || 0;
+        // Post Output SSCL Payable (Liability Account 2220)
+        if (tax1Amt > 0) {
+          let tax1AccId = 'acc_2220';
+          const [exists1]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2220" OR name LIKE "%SSCL Payable%" LIMIT 1');
+          if (exists1.length > 0) tax1AccId = exists1[0].id;
+          else tax1AccId = await getOrCreateTaxAcc();
+          lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, tax1AccId, 0, tax1Amt, null, null]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax1Amt, tax1AccId]);
+        }
 
-            if (tax1Amt > 0) {
-              let tax1AccId = prof.tax1_accountId || 'acc_2220';
-              const [exists1]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ?', [tax1AccId]);
-              if (!exists1.length) tax1AccId = await getOrCreateTaxAcc();
-              lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, tax1AccId, 0, tax1Amt, null, null]);
-              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax1Amt, tax1AccId]);
-            }
-            if (tax2Amt > 0) {
-              let tax2AccId = prof.tax2_accountId || 'acc_2210';
-              const [exists2]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ?', [tax2AccId]);
-              if (!exists2.length) tax2AccId = await getOrCreateTaxAcc();
-              lines.push(['JL-' + Date.now().toString().slice(-5) + '4', jeId, tax2AccId, 0, tax2Amt, null, null]);
-              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax2Amt, tax2AccId]);
-            }
-          }
-        } else if (Number(data.taxAmount) > 0) {
-          // Fallback: generic tax payable
+        // Post Output VAT Payable (Liability Account 2210)
+        if (tax2Amt > 0) {
+          let tax2AccId = 'acc_2210';
+          const [exists2]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2210" OR name LIKE "%Output VAT%" OR name LIKE "%VAT Payable%" LIMIT 1');
+          if (exists2.length > 0) tax2AccId = exists2[0].id;
+          else tax2AccId = await getOrCreateTaxAcc();
+          lines.push(['JL-' + Date.now().toString().slice(-5) + '4', jeId, tax2AccId, 0, tax2Amt, null, null]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax2Amt, tax2AccId]);
+        }
+
+        // If generic tax remains
+        const remainingUnsplitTax = Math.round((totalCalculatedTax - (tax1Amt + tax2Amt)) * 100) / 100;
+        if (remainingUnsplitTax > 0) {
           const taxAccId = await getOrCreateTaxAcc();
-          lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, taxAccId, 0, Number(data.taxAmount), null, null]);
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [Number(data.taxAmount), taxAccId]);
+          lines.push(['JL-' + Date.now().toString().slice(-5) + '5', jeId, taxAccId, 0, remainingUnsplitTax, null, null]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [remainingUnsplitTax, taxAccId]);
         }
 
         // Account for advance receipts previously issued
@@ -9667,7 +9806,7 @@ app.post('/api/invoices', async (req, res) => {
             'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Customer Advance%" OR code = "2150") AND type = "Liability" LIMIT 1'
           );
           if (advAcc && advAcc.length > 0) {
-            lines.push(['JL-' + Date.now().toString().slice(-5) + '5', jeId, advAcc[0].id, advDeducted, 0, data.customerId, 'Customer']);
+            lines.push(['JL-' + Date.now().toString().slice(-5) + '6', jeId, advAcc[0].id, advDeducted, 0, data.customerId, 'Customer']);
             await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [advDeducted, advAcc[0].id]);
             netReceivable = Math.max(0, invTotal - advDeducted);
             lines[0][3] = netReceivable;
@@ -10482,6 +10621,236 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
     await conn.rollback();
     console.error('Customer settlement error:', error);
     res.status(500).json({ error: error.message || 'Failed to settle customer payment' });
+  } finally {
+    conn.release();
+  }
+});
+
+// ==========================================
+// MULTI-BILL VENDOR SETTLEMENT (AP KNOCK-OFF / CONSOLIDATED PAYMENT)
+// ==========================================
+app.post('/api/finance/payables/settle', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const {
+      supplierId,
+      paymentDate,
+      paymentMethod,
+      creditAccountId, // Bank or Cash account paying from
+      debitAccountId,  // Accounts Payable account
+      referenceNo,
+      notes,
+      totalAmount,
+      allocations,
+      chequeNo,
+      chequeDate,
+      bankName,
+      depositSlip
+    } = req.body;
+
+    const numTotal = Number(totalAmount || 0);
+    if (isNaN(numTotal) || numTotal <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid total payment amount greater than zero' });
+    }
+
+    if (!supplierId) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please select a vendor / supplier' });
+    }
+
+    if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one bill must be selected for payment allocation' });
+    }
+
+    const validAllocations = allocations.filter((a: any) => Number(a.allocatedAmount) > 0);
+    if (validAllocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one bill must have an allocated amount greater than zero' });
+    }
+
+    const totalAllocated = validAllocations.reduce((sum: number, a: any) => sum + Number(a.allocatedAmount), 0);
+    if (Math.abs(numTotal - totalAllocated) > 0.05) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Allocated sum (${totalAllocated.toFixed(2)}) does not match Total Payment Amount (${numTotal.toFixed(2)})`
+      });
+    }
+
+    const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const voucherRef = referenceNo || `PV-${Date.now().toString().slice(-6)}`;
+    const journalId = `JE-${voucherRef}`;
+
+    // 1. Resolve Credit Account (Cash or Bank)
+    let finalCreditAccId = creditAccountId || null;
+    let finalCreditAccName = 'Bank/Cash Account';
+    if (finalCreditAccId) {
+      const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [finalCreditAccId]);
+      if (accRows.length > 0) {
+        finalCreditAccId = accRows[0].id;
+        finalCreditAccName = accRows[0].name;
+      }
+    }
+    if (!finalCreditAccId) {
+      const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
+      const searchSubtype = isBank ? 'Bank' : 'Cash';
+      const [found]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
+        [searchSubtype, `%${searchSubtype}%`]
+      );
+      if (found.length > 0) {
+        finalCreditAccId = found[0].id;
+        finalCreditAccName = found[0].name;
+      } else {
+        finalCreditAccId = isBank ? 'acc_1000' : 'acc_1100';
+        finalCreditAccName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+      }
+    }
+
+    // 2. Resolve Debit Account (Accounts Payable)
+    let finalDebitAccId = debitAccountId || null;
+    let finalDebitAccName = 'Accounts Payable';
+    if (finalDebitAccId) {
+      const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [finalDebitAccId]);
+      if (accRows.length > 0) {
+        finalDebitAccId = accRows[0].id;
+        finalDebitAccName = accRows[0].name;
+      }
+    }
+    if (!finalDebitAccId) {
+      const [apRows]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
+      );
+      if (apRows.length > 0) {
+        finalDebitAccId = apRows[0].id;
+        finalDebitAccName = apRows[0].name;
+      } else {
+        finalDebitAccId = 'acc_2000';
+      }
+    }
+
+    const settledBillNumbers: string[] = [];
+    const updatedBillsList: any[] = [];
+
+    // 3. Knock off each allocated bill
+    for (const alloc of validAllocations) {
+      const allocAmt = Number(alloc.allocatedAmount);
+      const [billRows]: any = await conn.query(
+        'SELECT * FROM supplier_bills WHERE id = ? OR invoiceNo = ? LIMIT 1',
+        [alloc.billId, alloc.billId]
+      );
+
+      if (billRows.length === 0) continue;
+      const b = billRows[0];
+      const bTotal = Number(b.amount || 0);
+      const prevPaid = Number(b.paidAmount || 0);
+      const newPaid = prevPaid + allocAmt;
+      const isFullyPaid = newPaid >= (bTotal - 0.01);
+      const newStatus = isFullyPaid ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+
+      await conn.query(
+        'UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?',
+        [newPaid, newStatus, b.id]
+      );
+
+      settledBillNumbers.push(b.invoiceNo || b.id);
+      updatedBillsList.push({
+        billId: b.id,
+        invoiceNo: b.invoiceNo,
+        allocatedAmount: allocAmt,
+        previousPaid: prevPaid,
+        newPaid,
+        balanceRemaining: Math.max(0, bTotal - newPaid),
+        newStatus
+      });
+    }
+
+    const settledBillsText = settledBillNumbers.join(', ');
+
+    // 4. Create Supplier Ledger Entry
+    const ledgerPayload: any = {
+      id: `SL-${voucherRef}`,
+      supplierId,
+      date: `${formattedDate} 12:00:00`,
+      type: 'payment',
+      referenceNo: voucherRef,
+      description: notes?.trim() || `Payment for Bill(s): ${settledBillsText}`,
+      debit: 0,
+      credit: numTotal,
+      amount: numTotal,
+      paymentMethod: paymentMethod || 'Bank Transfer',
+      chequeNo: (paymentMethod === 'Cheque' ? (chequeNo || referenceNo) : null) || null,
+      chequeDate: paymentMethod === 'Cheque' ? (chequeDate || formattedDate) : null,
+      bankName: paymentMethod === 'Cheque' ? (bankName || null) : null,
+      chequeStatus: paymentMethod === 'Cheque' ? 'Pending' : null,
+      transactionRef: paymentMethod === 'Bank Transfer' ? (referenceNo || null) : null,
+      depositSlip: depositSlip || null,
+      debitAccountId: finalDebitAccId,
+      creditAccountId: finalCreditAccId,
+      debitAccountName: finalDebitAccName,
+      creditAccountName: finalCreditAccName,
+      createdAt: nowIso
+    };
+
+    await conn.query('INSERT INTO supplier_ledger SET ?', ledgerPayload);
+
+    // 5. Post General Ledger Journal Entry (Debit: AP, Credit: Bank/Cash)
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: journalId,
+      date: `${formattedDate} 12:00:00`,
+      reference: voucherRef,
+      description: `Vendor Bill Payment Voucher: ${voucherRef} (${settledBillsText})`,
+      totalAmount: numTotal
+    });
+
+    // Debit Line: Accounts Payable (Reduces Liability)
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-1`,
+      entryId: journalId,
+      accountId: finalDebitAccId,
+      debit: numTotal,
+      credit: 0,
+      description: `Settlement of AP for Bills: ${settledBillsText}`,
+      partyType: 'Supplier',
+      partyId: supplierId || null
+    });
+    await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalDebitAccId]);
+
+    // Credit Line: Cash or Bank Account (Reduces Asset)
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-2`,
+      entryId: journalId,
+      accountId: finalCreditAccId,
+      debit: 0,
+      credit: numTotal,
+      description: `Disbursement from ${finalCreditAccName} for: ${settledBillsText}`,
+      partyType: 'Supplier',
+      partyId: supplierId || null
+    });
+    await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalCreditAccId]);
+
+    await conn.commit();
+
+    // Sync supplier summary balance
+    try {
+      await syncSupplierBalance(supplierId);
+    } catch (eSync) {}
+
+    res.json({
+      success: true,
+      voucherRef,
+      settledBills: updatedBillsList,
+      totalAmount: numTotal,
+      journalEntryId: journalId
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Vendor settlement error:', error);
+    res.status(500).json({ error: error.message || 'Failed to settle vendor bills' });
   } finally {
     conn.release();
   }

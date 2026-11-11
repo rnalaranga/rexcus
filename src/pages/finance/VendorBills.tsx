@@ -14,6 +14,7 @@ import { useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
+import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
 import { deleteBill } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
@@ -46,6 +47,8 @@ export const VendorBills: React.FC = () => {
   const [endDate, setEndDate] = useState('');
 
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
+  const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
+  const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
 
   const getSupplierName = (id: string) => {
     const s = suppliers.find((sp: any) => sp.id === id);
@@ -346,6 +349,18 @@ export const VendorBills: React.FC = () => {
             Payables Hub
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            icon={CreditCard}
+            onClick={() => {
+              setMultiSettlementSupplier(null);
+              setShowMultiSettlement(true);
+            }}
+            className="text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20"
+          >
+            Pay Multiple Bills
+          </Button>
+          <Button
             variant="primary"
             size="sm"
             icon={Plus}
@@ -506,7 +521,7 @@ export const VendorBills: React.FC = () => {
         )}
       </GlassCard>
 
-      {/* Record Bill Payment Modal */}
+      {/* Record Bill Payment Modal (Single Bill) */}
       {paymentBill && (
         <RecordBillPaymentModal
           isOpen={Boolean(paymentBill)}
@@ -517,6 +532,24 @@ export const VendorBills: React.FC = () => {
             setPaymentBill(null);
           }}
           toast={toast}
+        />
+      )}
+
+      {/* Multi-Bill Settlement Modal (Bundle / Knock-Off) */}
+      {showMultiSettlement && (
+        <MultiBillSettlementModal
+          isOpen={showMultiSettlement}
+          onClose={() => {
+            setShowMultiSettlement(false);
+            setMultiSettlementSupplier(null);
+          }}
+          supplier={multiSettlementSupplier}
+          allSuppliers={suppliers}
+          openBills={bills}
+          onSuccess={() => {
+            refetch();
+            toast?.('Vendor bills settled successfully!', 'success');
+          }}
         />
       )}
     </div>

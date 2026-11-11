@@ -15,6 +15,7 @@ import { useBills, usePurchaseOrders, useGRNs, useMaterialRequests } from '@/hoo
 import { useSuppliers, useWorkOrders } from '@/hooks/useData';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
+import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 type ActiveTab = 'aging' | 'bills' | 'pos';
@@ -29,6 +30,8 @@ export const PayablesHub: React.FC = () => {
   const [agingData, setAgingData] = useState<any[]>([]);
   const [loadingAging, setLoadingAging] = useState(true);
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
+  const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
+  const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
 
   // Purchasing hooks
   const { data: bills = [], loading: loadingBills, refetch: refetchBills } = useBills();
@@ -383,6 +386,18 @@ export const PayablesHub: React.FC = () => {
             className="text-xs border-theme-subtle text-amber-600 font-bold"
           >
             AP Aging Reports
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={CreditCard}
+            onClick={() => {
+              setMultiSettlementSupplier(null);
+              setShowMultiSettlement(true);
+            }}
+            className="text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20"
+          >
+            Pay Multiple Bills
           </Button>
           <Button
             variant="primary"
@@ -779,6 +794,25 @@ export const PayablesHub: React.FC = () => {
           onSuccess={() => {
             refetchBills();
             loadAging();
+          }}
+        />
+      )}
+
+      {/* Multi-Bill Consolidated Settlement Modal */}
+      {showMultiSettlement && (
+        <MultiBillSettlementModal
+          isOpen={showMultiSettlement}
+          onClose={() => {
+            setShowMultiSettlement(false);
+            setMultiSettlementSupplier(null);
+          }}
+          supplier={multiSettlementSupplier}
+          allSuppliers={suppliers}
+          openBills={bills}
+          onSuccess={() => {
+            refetchBills();
+            loadAging();
+            toast?.('Vendor bills settled successfully!', 'success');
           }}
         />
       )}

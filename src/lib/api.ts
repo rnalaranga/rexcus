@@ -1076,6 +1076,36 @@ export const settleCustomerOutstanding = async (data: {
   return json;
 };
 
+export const settleVendorOutstanding = async (data: {
+  supplierId: string;
+  supplierName?: string;
+  paymentDate?: string;
+  paymentMethod: string;
+  creditAccountId?: string; // Bank or Cash
+  debitAccountId?: string;  // Accounts Payable
+  referenceNo?: string;
+  notes?: string;
+  totalAmount: number;
+  chequeNo?: string;
+  chequeDate?: string;
+  bankName?: string;
+  depositSlip?: string;
+  allocations: Array<{
+    billId: string;
+    invoiceNo?: string;
+    allocatedAmount: number;
+  }>;
+}) => {
+  const res = await fetch(`${API_URL}/finance/payables/settle`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to settle vendor payment');
+  return json;
+};
+
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());
 export const fetchMachiningOperations = async () => (await fetch(`${API_URL}/machining-operations`)).json();

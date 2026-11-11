@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, CreditCard, Building2, Calendar, 
   FileText, CheckCircle2, AlertTriangle, Layers, DollarSign, 
-  History, ExternalLink, Hash, Receipt, Paperclip, UploadCloud, Eye, Trash2
+  History, ExternalLink, Hash, Receipt, Paperclip, UploadCloud, Eye, Trash2,
+  Zap, Droplets, PhoneCall, Home, Wrench, Fuel, ShieldCheck, Plus, CheckSquare, Square
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +13,7 @@ import { useGRNs, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { POAutocomplete } from '@/components/purchasing/POAutocomplete';
 import { createBill, updateBill, uploadFileToStorage } from '@/lib/api';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 
@@ -35,7 +37,12 @@ export const BillBuilder: React.FC = () => {
   
   const [supplierId, setSupplierId] = useState('');
   const [billCategory, setBillCategory] = useState<string>('Raw Material / Inventory');
+  
+  // Single or Multiple PO linking
+  const [isMultiPoMode, setIsMultiPoMode] = useState<boolean>(false);
+  const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
   const [poId, setPoId] = useState(poIdParam || '');
+  
   const [grnId, setGrnId] = useState(grnIdParam || '');
   const [amount, setAmount] = useState<number>(0);
   const [notes, setNotes] = useState('');
@@ -50,6 +57,12 @@ export const BillBuilder: React.FC = () => {
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
   const [hideVatSeparately, setHideVatSeparately] = useState<boolean>(false);
 
+  // Helper: Get supplier name
+  const getSupplierName = (id: string) => {
+    const s = suppliers.find((sp: any) => sp.id === id);
+    return s?.company || s?.name || id || 'Unknown Vendor';
+  };
+
   // If opened with ?id=, load existing bill data
   useEffect(() => {
     if (idParam && bills.length > 0) {
@@ -59,7 +72,27 @@ export const BillBuilder: React.FC = () => {
         setInvoiceNo(existing.invoiceNo || '');
         setSupplierId(existing.supplierId || '');
         setBillCategory(existing.billCategory || 'Raw Material / Inventory');
-        setPoId(existing.poId || '');
+        
+        let loadedPoIds: string[] = [];
+        if (existing.poIds) {
+          try {
+            loadedPoIds = typeof existing.poIds === 'string' ? JSON.parse(existing.poIds) : existing.poIds;
+          } catch {
+            loadedPoIds = typeof existing.poIds === 'string' ? existing.poIds.split(',').map((s: string) => s.trim()) : [];
+          }
+        } else if (existing.poId) {
+          loadedPoIds = [existing.poId];
+        }
+
+        if (loadedPoIds.length > 1) {
+          setIsMultiPoMode(true);
+          setSelectedPoIds(loadedPoIds);
+          setPoId(loadedPoIds[0] || '');
+        } else {
+          setPoId(existing.poId || (loadedPoIds[0] || ''));
+          setSelectedPoIds(loadedPoIds);
+        }
+
         setGrnId(existing.grnId || '');
         setAmount(Number(existing.amount || 0));
         if (existing.date) setDate(existing.date.split('T')[0]);
@@ -85,6 +118,7 @@ export const BillBuilder: React.FC = () => {
   useEffect(() => {
     if (!idParam && poIdParam) {
       setPoId(poIdParam);
+      setSelectedPoIds([poIdParam]);
     }
   }, [idParam, poIdParam]);
 
@@ -94,7 +128,10 @@ export const BillBuilder: React.FC = () => {
       const grn = grns.find((g: any) => g.id === grnIdParam);
       if (grn) {
         setGrnId(grn.id);
-        if (grn.poId) setPoId(grn.poId);
+        if (grn.poId) {
+          setPoId(grn.poId);
+          setSelectedPoIds([grn.poId]);
+        }
         if (grn.supplierId) setSupplierId(grn.supplierId);
         if (grn.billAttachment && !billAttachment) {
           setBillAttachment(grn.billAttachment);
@@ -114,35 +151,79 @@ export const BillBuilder: React.FC = () => {
     }
   }, [idParam, grnIdParam, grns]);
 
-  // When PO changes, sync supplier and compute default amount
+  // Active Linked PO IDs (either single or multi)
+  const activeLinkedPoIds = useMemo(() => {
+    if (isMultiPoMode) {
+      return selectedPoIds;
+    }
+    return poId ? [poId] : [];
+  }, [isMultiPoMode, selectedPoIds, poId]);
+
+  // Objects for active POs
+  const activeLinkedPOs = useMemo(() => {
+    return pos.filter((p: any) => activeLinkedPoIds.includes(p.id));
+  }, [pos, activeLinkedPoIds]);
+
+  // Primary single selected PO (for single mode)
   const selectedPO = useMemo(() => {
-    return pos.find((p: any) => p.id === poId);
-  }, [poId, pos]);
+    return pos.find((p: any) => p.id === (activeLinkedPoIds[0] || ''));
+  }, [activeLinkedPoIds, pos]);
 
-  // Find all previous bills for the selected PO (Multiple Invoices per PO)
-  const poBills = useMemo(() => {
-    if (!poId) return [];
-    return bills.filter((b: any) => b.poId === poId);
-  }, [poId, bills]);
+  // Find all previous bills for the active POs
+  const activePoBills = useMemo(() => {
+    if (activeLinkedPoIds.length === 0) return [];
+    return bills.filter((b: any) => {
+      if (b.id === idParam) return false; // exclude current bill if editing
+      if (b.poId && activeLinkedPoIds.includes(b.poId)) return true;
+      if (b.poIds) {
+        try {
+          const arr = typeof b.poIds === 'string' ? JSON.parse(b.poIds) : b.poIds;
+          if (Array.isArray(arr) && arr.some(id => activeLinkedPoIds.includes(id))) return true;
+        } catch {
+          if (typeof b.poIds === 'string' && activeLinkedPoIds.some(id => b.poIds.includes(id))) return true;
+        }
+      }
+      return false;
+    });
+  }, [activeLinkedPoIds, bills, idParam]);
 
-  const poTotalAmount = useMemo(() => {
-    return Number(selectedPO?.totalAmount || 0);
-  }, [selectedPO]);
+  // Financial aggregates across linked POs
+  const combinedPoTotal = useMemo(() => {
+    return activeLinkedPOs.reduce((sum: number, p: any) => sum + Number(p.totalAmount || 0), 0);
+  }, [activeLinkedPOs]);
 
-  const totalBilledSoFar = useMemo(() => {
-    return poBills.reduce((sum: number, b: any) => sum + Number(b.amount || 0), 0);
-  }, [poBills]);
+  const combinedBilledSoFar = useMemo(() => {
+    return activePoBills.reduce((sum: number, b: any) => sum + Number(b.amount || 0), 0);
+  }, [activePoBills]);
 
   const remainingBalance = useMemo(() => {
-    return Math.max(0, Number((poTotalAmount - totalBilledSoFar).toFixed(2)));
-  }, [poTotalAmount, totalBilledSoFar]);
+    return Math.max(0, Number((combinedPoTotal - combinedBilledSoFar).toFixed(2)));
+  }, [combinedPoTotal, combinedBilledSoFar]);
 
-  // Set supplier from selected PO
+  // Unbilled / Open POs for current supplier
+  const unbilledPOsForVendor = useMemo(() => {
+    if (!supplierId) return [];
+    return pos.filter((p: any) => {
+      if (p.supplierId !== supplierId) return false;
+      const bForP = bills.filter((b: any) => {
+        if (b.id === idParam) return false;
+        if (b.poId === p.id) return true;
+        if (Array.isArray(b.poIds) && b.poIds.includes(p.id)) return true;
+        if (typeof b.poIds === 'string' && b.poIds.includes(p.id)) return true;
+        return false;
+      });
+      const billed = bForP.reduce((sum: number, b: any) => sum + Number(b.amount || 0), 0);
+      const total = Number(p.totalAmount || 0);
+      return (total - billed) > 0.01;
+    });
+  }, [pos, bills, supplierId, idParam]);
+
+  // If a single PO is chosen and supplier not set, auto-sync supplier
   useEffect(() => {
-    if (selectedPO && selectedPO.supplierId) {
+    if (selectedPO && selectedPO.supplierId && !supplierId) {
       setSupplierId(selectedPO.supplierId);
     }
-  }, [selectedPO]);
+  }, [selectedPO, supplierId]);
 
   // Calculate default amount based on GRN or remaining balance
   useEffect(() => {
@@ -162,7 +243,7 @@ export const BillBuilder: React.FC = () => {
           }
         }
 
-        if (calculatedAmt > 0) {
+        if (calculatedAmt > 0 && amount === 0) {
           setAmount(Number(calculatedAmt.toFixed(2)));
           return;
         }
@@ -175,27 +256,21 @@ export const BillBuilder: React.FC = () => {
     }
   }, [grnId, grns, selectedPO, remainingBalance]);
 
-  // Find GRNs matching the selected PO or Supplier
+  // Find GRNs matching the active POs or Supplier
   const matchingGRNs = useMemo(() => {
-    if (!poId) {
+    if (activeLinkedPoIds.length === 0) {
       if (supplierId) {
         return grns.filter((g: any) => g.supplierId === supplierId);
       }
       return grns;
     }
     return grns.filter((g: any) => {
-      if (g.poId === poId) return true;
-      if (Array.isArray(g.poIds) && g.poIds.includes(poId)) return true;
-      if (typeof g.poIds === 'string' && g.poIds.includes(poId)) return true;
+      if (activeLinkedPoIds.includes(g.poId)) return true;
+      if (Array.isArray(g.poIds) && g.poIds.some((id: string) => activeLinkedPoIds.includes(id))) return true;
+      if (typeof g.poIds === 'string' && activeLinkedPoIds.some(id => g.poIds.includes(id))) return true;
       return false;
     });
-  }, [poId, supplierId, grns]);
-
-  // Available POs (optionally filtered if supplier is already selected)
-  const availablePOs = useMemo(() => {
-    if (!supplierId) return pos;
-    return pos.filter((p: any) => p.supplierId === supplierId);
-  }, [supplierId, pos]);
+  }, [activeLinkedPoIds, supplierId, grns]);
 
   // Tax calculations for Bill
   const selectedTaxProfile = taxProfiles.find((t: any) => t.id === taxProfileId);
@@ -363,13 +438,17 @@ export const BillBuilder: React.FC = () => {
 
     setSaving(true);
     try {
+      const primaryPoId = activeLinkedPoIds[0] || null;
+      const poIdsPayload = activeLinkedPoIds.length > 0 ? JSON.stringify(activeLinkedPoIds) : null;
+
       const payload: any = { 
         id: docNo, 
         billNo: docNo,
         supplierId, 
         billCategory,
-        billType: (poId || grnId) ? 'grn' : 'manual',
-        poId: poId || null, 
+        billType: (activeLinkedPoIds.length > 0 || grnId) ? 'grn' : 'manual',
+        poId: primaryPoId, 
+        poIds: poIdsPayload,
         grnId: grnId || null, 
         invoiceNo: invoiceNo.trim(), 
         date, 
@@ -400,16 +479,25 @@ export const BillBuilder: React.FC = () => {
     }
   };
 
-  const getSupplierName = (id: string) => suppliers.find((s: any) => s.id === id)?.name || id;
+  const isExceedingBalance = activeLinkedPOs.length > 0 && remainingBalance > 0 && amount > remainingBalance;
 
-  const isExceedingBalance = selectedPO && remainingBalance > 0 && amount > remainingBalance;
+  // Preset Utilities for Quick Category Selection
+  const categoryPresets = [
+    { label: 'Raw Materials', cat: 'Raw Material / Inventory', icon: Layers, color: 'text-amber-500' },
+    { label: 'Electricity (CEB)', cat: 'Electricity / CEB', icon: Zap, color: 'text-yellow-500' },
+    { label: 'Water (NWSDB)', cat: 'Water Utility', icon: Droplets, color: 'text-cyan-500' },
+    { label: 'Telco / Internet', cat: 'Telephone & Internet', icon: PhoneCall, color: 'text-blue-500' },
+    { label: 'Rent & Lease', cat: 'Rent & Lease', icon: Home, color: 'text-emerald-500' },
+    { label: 'Maintenance', cat: 'Machine Maintenance', icon: Wrench, color: 'text-rose-500' },
+    { label: 'Fuel / Transport', cat: 'Fuel & Transport', icon: Fuel, color: 'text-orange-500' },
+  ];
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative">
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-theme-subtle bg-surface/60 backdrop-blur shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/purchasing')} className="p-2 hover:bg-surface2 rounded-lg transition-colors text-muted hover:text-primary">
+          <button onClick={() => navigate('/finance/vendor-bills')} className="p-2 hover:bg-surface2 rounded-lg transition-colors text-muted hover:text-primary">
             <ArrowLeft size={17} />
           </button>
           <div>
@@ -418,18 +506,18 @@ export const BillBuilder: React.FC = () => {
                 {idParam ? 'Edit Supplier Bill / Invoice' : 'Record Supplier Bill / Invoice'}
               </h1>
               <span className="text-[10px] bg-amber-500/10 text-amber-500 font-bold px-2 py-0.5 rounded border border-amber-500/20">
-                {idParam ? 'Editing Existing Bill' : (poBills.length > 0 ? `Invoice #${poBills.length + 1} for PO` : 'New Bill')}
+                {idParam ? 'Editing Existing Bill' : (activePoBills.length > 0 ? `Invoice #${activePoBills.length + 1} for PO` : 'Direct Bill / PO Bill')}
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-0.5">{docNo} • UNPAID STATUS</p>
+            <p className="text-[11px] text-muted mt-0.5">{docNo} • AP BILL • UNPAID STATUS</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing')} className="text-xs">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/finance/vendor-bills')} className="text-xs">
             Cancel
           </Button>
           <Button variant="primary" size="sm" icon={Save} onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : (idParam ? 'Save Changes' : 'Post to Ledger')}
+            {saving ? 'Saving...' : (idParam ? 'Save Changes' : 'Post to AP Ledger')}
           </Button>
         </div>
       </div>
@@ -437,34 +525,69 @@ export const BillBuilder: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
         <div className="max-w-4xl mx-auto space-y-5">
 
-          {/* Top Multi-Invoice PO Status Banner (If PO Selected) */}
-          {selectedPO && (
+          {/* Quick Expense Category Quick-Pills */}
+          <GlassCard className="p-3 bg-surface/40">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted mb-2 flex items-center justify-between">
+              <span>Quick Select Bill Type / Category</span>
+              <span className="text-primary font-mono text-[11px] font-bold">{billCategory}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {categoryPresets.map((p) => {
+                const Icon = p.icon;
+                const isSelected = billCategory === p.cat;
+                return (
+                  <button
+                    key={p.cat}
+                    type="button"
+                    onClick={() => {
+                      setBillCategory(p.cat);
+                      // If it's utility/non-raw material, user usually doesn't need PO
+                      if (p.cat !== 'Raw Material / Inventory' && activeLinkedPoIds.length === 0) {
+                        setGrnId('');
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      isSelected 
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-sm' 
+                        : 'bg-surface2/60 text-secondary border-theme-subtle hover:border-amber-500/50 hover:text-primary'
+                    }`}
+                  >
+                    <Icon size={13} className={isSelected ? 'text-white' : p.color} />
+                    <span>{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </GlassCard>
+
+          {/* Multi-PO Financial Summary Banner (When PO(s) Linked) */}
+          {activeLinkedPOs.length > 0 && (
             <GlassCard className="p-4 border-l-4 border-l-amber-500 bg-amber-500/[0.03]">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-black uppercase text-amber-500 tracking-wider flex items-center gap-1.5">
-                      <Receipt size={14} /> Linked Purchase Order: {selectedPO.id}
+                      <Receipt size={14} /> Linked PO: {activeLinkedPoIds.join(', ')}
                     </span>
                     <Badge 
-                      value={totalBilledSoFar >= poTotalAmount - 0.01 && poTotalAmount > 0 ? 'Fully Billed' : totalBilledSoFar > 0 ? 'Partially Billed' : 'Unbilled'} 
+                      value={combinedBilledSoFar >= combinedPoTotal - 0.01 && combinedPoTotal > 0 ? 'Fully Billed' : combinedBilledSoFar > 0 ? 'Partially Billed' : 'Unbilled'} 
                       size="sm" 
                     />
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    Vendor: <strong className="text-primary">{getSupplierName(selectedPO.supplierId)}</strong> • Date: {selectedPO.date?.split('T')[0]}
+                    Vendor: <strong className="text-primary">{getSupplierName(supplierId || activeLinkedPOs[0]?.supplierId)}</strong> • {activeLinkedPOs.length} PO(s) linked
                   </p>
                 </div>
 
                 {/* Financial Summary */}
                 <div className="flex items-center gap-3 bg-surface/60 border border-theme-subtle p-2.5 rounded-lg">
                   <div className="text-right px-2 border-r border-theme-subtle">
-                    <div className="text-[10px] uppercase font-bold text-muted">PO Total</div>
-                    <div className="text-xs font-black text-primary font-mono">{formatCurrency(poTotalAmount, true)}</div>
+                    <div className="text-[10px] uppercase font-bold text-muted">Combined PO Total</div>
+                    <div className="text-xs font-black text-primary font-mono">{formatCurrency(combinedPoTotal, true)}</div>
                   </div>
                   <div className="text-right px-2 border-r border-theme-subtle">
-                    <div className="text-[10px] uppercase font-bold text-muted">Billed ({poBills.length} inv)</div>
-                    <div className="text-xs font-black text-amber-500 font-mono">{formatCurrency(totalBilledSoFar, true)}</div>
+                    <div className="text-[10px] uppercase font-bold text-muted">Billed ({activePoBills.length} inv)</div>
+                    <div className="text-xs font-black text-amber-500 font-mono">{formatCurrency(combinedBilledSoFar, true)}</div>
                   </div>
                   <div className="text-right px-2">
                     <div className="text-[10px] uppercase font-bold text-muted">Balance to Bill</div>
@@ -500,64 +623,31 @@ export const BillBuilder: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Vendor & PO References */}
             <GlassCard className="p-5 border-t-2 border-t-amber-500 space-y-4">
-              <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-2">
-                <Building2 size={16} /> Vendor & References
+              <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Building2 size={16} /> Vendor & PO References
+                </span>
+                <span className="text-[10px] font-mono text-muted lowercase">step 1</span>
               </h2>
 
+              {/* Vendor / Supplier Selector with Autocomplete */}
               <div>
-                <label className="block text-[11px] font-bold text-muted uppercase mb-1">
-                  Bill Category / Expense Type *
-                </label>
-                <select
-                  value={billCategory}
-                  onChange={e => setBillCategory(e.target.value)}
-                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-semibold focus:border-amber-500"
-                >
-                  <option value="Raw Material / Inventory">Raw Material / Stock Purchase</option>
-                  <option value="Electricity / CEB">Electricity / Power (CEB / LECO)</option>
-                  <option value="Water Utility">Water Supply (NWSDB)</option>
-                  <option value="Telephone & Internet">Telephone & Internet (SLT / Dialog)</option>
-                  <option value="Rent & Lease">Factory / Office Rent & Lease</option>
-                  <option value="Machining & Subcontract">Subcontract / Outwork Machining</option>
-                  <option value="Machine Maintenance">Machinery Repair & Spare Parts</option>
-                  <option value="Fuel & Transport">Fuel, Transport & Delivery</option>
-                  <option value="Consumables & Tools">Workshop Consumables & Tooling</option>
-                  <option value="Professional & Audit Fees">Professional, Legal & Audit Fees</option>
-                  <option value="General Operating Expense">General Operating Expense</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase mb-1">
-                  Select Purchase Order (Optional for Direct Bills)
-                </label>
-                <select 
-                  value={poId} 
-                  onChange={e => {
-                    setPoId(e.target.value);
-                    setGrnId('');
-                  }} 
-                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-medium focus:border-amber-500"
-                >
-                  <option value="">-- No Linked PO (Direct Bill) --</option>
-                  {availablePOs.map((p: any) => (
-                    <option key={p.id} value={p.id}>
-                      {p.id} • {getSupplierName(p.supplierId)} • {formatCurrency(Number(p.totalAmount || 0), true)} ({p.billingStatus || (p.billedAmount ? 'Partially Billed' : 'Unbilled')})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase mb-1">
-                  Supplier / Vendor *
+                <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center justify-between">
+                  <span>Supplier / Vendor *</span>
+                  {supplierId && unbilledPOsForVendor.length > 0 && (
+                    <span className="text-[10px] text-emerald-500 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                      {unbilledPOsForVendor.length} Unbilled PO(s) Available
+                    </span>
+                  )}
                 </label>
                 <SupplierAutocomplete
                   value={supplierId}
-                  onChange={sId => {
+                  onChange={(sId) => {
                     setSupplierId(sId);
-                    if (selectedPO && selectedPO.supplierId !== sId) {
+                    // Clear linked POs if from different vendor
+                    if (activeLinkedPOs.some((p: any) => p.supplierId !== sId)) {
                       setPoId('');
+                      setSelectedPoIds([]);
                     }
                   }}
                   suppliers={suppliers}
@@ -566,19 +656,120 @@ export const BillBuilder: React.FC = () => {
                 />
               </div>
 
+              {/* Unbilled POs Pill Suggestions for Selected Vendor */}
+              {supplierId && unbilledPOsForVendor.length > 0 && (
+                <div className="p-2.5 bg-emerald-500/[0.04] border border-emerald-500/20 rounded-lg">
+                  <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>⚡ Quick Add Unbilled POs for this Vendor:</span>
+                    <span className="text-[9px] text-muted font-normal">Click to link & auto-fill</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unbilledPOsForVendor.map((po: any) => {
+                      const isLinked = activeLinkedPoIds.includes(po.id);
+                      return (
+                        <button
+                          key={po.id}
+                          type="button"
+                          onClick={() => {
+                            if (isMultiPoMode) {
+                              if (isLinked) {
+                                setSelectedPoIds(prev => prev.filter(x => x !== po.id));
+                              } else {
+                                setSelectedPoIds(prev => [...prev, po.id]);
+                              }
+                            } else {
+                              if (isLinked) {
+                                setPoId('');
+                              } else {
+                                setPoId(po.id);
+                              }
+                            }
+                          }}
+                          className={`px-2 py-1 rounded text-[11px] font-mono flex items-center gap-1 border transition-all ${
+                            isLinked 
+                              ? 'bg-amber-500 text-white border-amber-500 font-bold' 
+                              : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle hover:border-amber-500/50'
+                          }`}
+                        >
+                          <span>{po.id}</span>
+                          <span className={isLinked ? 'text-amber-100' : 'text-emerald-500'}>
+                            ({formatCurrency(Number(po.totalAmount || 0), true)})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* PO Selection (Single vs Multiple Toggle) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-muted uppercase flex items-center gap-1.5">
+                    <Receipt size={13} /> Linked Purchase Order(s)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMultiPoMode(!isMultiPoMode);
+                      if (!isMultiPoMode && poId && !selectedPoIds.includes(poId)) {
+                        setSelectedPoIds([poId]);
+                      }
+                    }}
+                    className="text-[10px] font-bold text-amber-500 hover:text-amber-400 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20"
+                  >
+                    {isMultiPoMode ? <CheckSquare size={11} /> : <Square size={11} />}
+                    <span>{isMultiPoMode ? 'Multi-PO Mode: ON' : 'Multi-PO Mode: OFF'}</span>
+                  </button>
+                </div>
+
+                <POAutocomplete
+                  value={isMultiPoMode ? selectedPoIds : poId}
+                  multiple={isMultiPoMode}
+                  supplierId={supplierId || undefined}
+                  pos={pos}
+                  bills={bills}
+                  filterUnbilledOnly={false}
+                  placeholder={
+                    supplierId 
+                      ? (isMultiPoMode ? "Search & select POs for this vendor..." : "Search & select a PO for this vendor...") 
+                      : (isMultiPoMode ? "Search & select POs..." : "Search & select a PO...")
+                  }
+                  onChange={(val, objs) => {
+                    if (isMultiPoMode) {
+                      const arr = Array.isArray(val) ? val : [val].filter(Boolean);
+                      setSelectedPoIds(arr);
+                      if (arr.length > 0 && !poId) setPoId(arr[0]);
+                    } else {
+                      const singleId = typeof val === 'string' ? val : (val[0] || '');
+                      setPoId(singleId);
+                      setSelectedPoIds(singleId ? [singleId] : []);
+                    }
+                    if (objs && objs.length > 0 && !supplierId && objs[0].supplierId) {
+                      setSupplierId(objs[0].supplierId);
+                    }
+                  }}
+                />
+                <span className="text-[10px] text-muted block">
+                  Optional: Leave empty for direct utility, rent, or petty cash expense bills.
+                </span>
+              </div>
+
+              {/* Vendor Invoice / Reference # */}
               <div>
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                  <Hash size={12}/> Vendor Invoice # *
+                  <Hash size={12}/> Vendor Invoice # / Bill Reference *
                 </label>
                 <input 
                   type="text" 
                   value={invoiceNo} 
                   onChange={e => setInvoiceNo(e.target.value)} 
                   className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono font-bold text-primary focus:border-amber-500" 
-                  placeholder="e.g. INV-2024-001" 
+                  placeholder="e.g. INV-2024-001 or CEB-ACC-9823412" 
                 />
               </div>
 
+              {/* Corresponding GRN (Optional) */}
               <div>
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                   <Layers size={12}/> Corresponding GRN (Optional)
@@ -592,7 +783,10 @@ export const BillBuilder: React.FC = () => {
                       const g = grns.find((x: any) => x.id === selId);
                       if (g) {
                         if (g.supplierId && !supplierId) setSupplierId(g.supplierId);
-                        if (g.poId && !poId) setPoId(g.poId);
+                        if (g.poId && !poId) {
+                          setPoId(g.poId);
+                          setSelectedPoIds([g.poId]);
+                        }
                       }
                     }
                   }} 
@@ -610,40 +804,45 @@ export const BillBuilder: React.FC = () => {
 
             {/* Financials & Dates */}
             <GlassCard className="p-5 border-t-2 border-t-amber-500 space-y-4">
-              <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-2">
-                <CreditCard size={16} /> Financials & Dates
+              <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <CreditCard size={16} /> Financials & Dates
+                </span>
+                <span className="text-[10px] font-mono text-muted lowercase">step 2</span>
               </h2>
 
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                  <Calendar size={12}/> Bill / Invoice Date
-                </label>
-                <input 
-                  type="date" 
-                  value={date} 
-                  onChange={e => setDate(e.target.value)} 
-                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
-                />
-              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
+                    <Calendar size={12}/> Bill Date
+                  </label>
+                  <input 
+                    type="date" 
+                    value={date} 
+                    onChange={e => setDate(e.target.value)} 
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
-                  <Calendar size={12}/> Payment Due Date
-                </label>
-                <input 
-                  type="date" 
-                  value={dueDate} 
-                  onChange={e => setDueDate(e.target.value)} 
-                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
-                />
+                <div>
+                  <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
+                    <Calendar size={12}/> Due Date
+                  </label>
+                  <input 
+                    type="date" 
+                    value={dueDate} 
+                    onChange={e => setDueDate(e.target.value)} 
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
+                  />
+                </div>
               </div>
 
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-[11px] font-bold text-muted uppercase">
-                    Bill / Invoice Base Amount (LKR) *
+                    Bill Base Amount (LKR) *
                   </label>
-                  {selectedPO && (
+                  {activeLinkedPOs.length > 0 && (
                     <span className="text-[10px] text-muted font-mono">
                       PO Open: {formatCurrency(remainingBalance, true)}
                     </span>
@@ -662,7 +861,7 @@ export const BillBuilder: React.FC = () => {
               {/* Tax Settings Section */}
               <div className="pt-3 border-t border-theme-subtle space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes (IRD)</span>
                   <label className="text-xs font-semibold text-secondary flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -676,7 +875,7 @@ export const BillBuilder: React.FC = () => {
 
                 {taxEnabled && (
                   <div className="space-y-2 pt-1">
-                    {/* 6 IRD Quick Tax Preset Buttons */}
+                    {/* Quick IRD Presets */}
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
@@ -698,7 +897,7 @@ export const BillBuilder: React.FC = () => {
                             : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
                         }`}
                       >
-                        VAT Absorbed (18%)<br/><span className="text-[9px] font-normal opacity-80">Added / Not Separate</span>
+                        VAT Absorbed (18%)<br/><span className="text-[9px] font-normal opacity-80">Included / No Line</span>
                       </button>
                       <button
                         type="button"
@@ -721,28 +920,6 @@ export const BillBuilder: React.FC = () => {
                         }`}
                       >
                         Option 1<br/><span className="text-[9px] font-normal opacity-80">Both Absorbed</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setTaxProfileId('tp_opt3_both_separate'); setHideVatSeparately(false); }}
-                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          taxProfileId === 'tp_opt3_both_separate'
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
-                        }`}
-                      >
-                        Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setTaxProfileId('tp_opt4_sscl_included_vat_sep'); setHideVatSeparately(false); }}
-                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          taxProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile?.name?.toLowerCase().includes('sscl included')
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
-                        }`}
-                      >
-                        Option 4<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
                       </button>
                     </div>
 
@@ -820,7 +997,7 @@ export const BillBuilder: React.FC = () => {
           <GlassCard className="p-5 border-t-2 border-t-emerald-500 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-[12px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                <Paperclip size={16} /> Vendor Invoice / Bill Attachment
+                <Paperclip size={16} /> Vendor Invoice / Bill Copy Attachment
               </h2>
               <span className="text-[10px] text-muted font-mono">PDF, PNG, JPG (Max 25MB)</span>
             </div>
@@ -872,7 +1049,7 @@ export const BillBuilder: React.FC = () => {
                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-theme-subtle hover:border-emerald-500 bg-surface2/30 hover:bg-surface2/60 cursor-pointer transition-colors text-center rounded-lg">
                   <UploadCloud size={24} className="text-emerald-500 mb-1" />
                   <span className="text-xs font-semibold text-primary">Click or drag & drop to upload Vendor's Bill / Invoice Copy</span>
-                  <span className="text-[10px] text-muted mt-0.5">Supports scanned physical bills, supplier invoices, PDFs, JPG, PNG</span>
+                  <span className="text-[10px] text-muted mt-0.5">Scanned paper bill, electricity bill, utility receipt, PDF, or JPG</span>
                   <input 
                     type="file" 
                     accept="application/pdf,image/*" 
@@ -887,15 +1064,15 @@ export const BillBuilder: React.FC = () => {
             )}
           </GlassCard>
 
-          {/* Previous Invoices Table for This PO (If any exist) */}
-          {poBills.length > 0 && (
+          {/* Previous Invoices Table for Linked POs */}
+          {activePoBills.length > 0 && (
             <GlassCard className="p-5 border-t-2 border-t-blue-500 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-[12px] font-black uppercase tracking-wider text-blue-500 flex items-center gap-2">
-                  <History size={16} /> Existing Invoices Recorded for PO: {poId} ({poBills.length})
+                  <History size={16} /> Existing Bills Recorded for Linked PO(s) ({activePoBills.length})
                 </h3>
                 <span className="text-xs text-muted">
-                  Cumulative Total: <strong className="text-primary font-mono">{formatCurrency(totalBilledSoFar, true)}</strong>
+                  Cumulative Total: <strong className="text-primary font-mono">{formatCurrency(combinedBilledSoFar, true)}</strong>
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -911,7 +1088,7 @@ export const BillBuilder: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-theme-subtle font-mono">
-                    {poBills.map((b: any, index: number) => (
+                    {activePoBills.map((b: any, index: number) => (
                       <tr key={b.id} className="hover:bg-surface2/40">
                         <td className="py-2 px-3 text-muted">{index + 1}</td>
                         <td className="py-2 px-3 font-semibold text-primary">{b.id}</td>
@@ -933,13 +1110,13 @@ export const BillBuilder: React.FC = () => {
 
           {/* Remarks & Notes */}
           <GlassCard className="p-5">
-            <label className="block text-[11px] font-bold text-muted uppercase mb-2">Remarks / Notes</label>
+            <label className="block text-[11px] font-bold text-muted uppercase mb-2">Remarks / Accounting Notes</label>
             <textarea 
               value={notes} 
               onChange={e => setNotes(e.target.value)} 
               rows={3} 
               className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
-              placeholder="e.g. Advance invoice 30% / Progress billing / Invoice for GRN batch 1..." 
+              placeholder="e.g. Electricity bill for factory unit 2 / Advance 30% on PO-0012 / Final settlement..." 
             />
           </GlassCard>
 

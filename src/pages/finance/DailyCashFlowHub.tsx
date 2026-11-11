@@ -22,6 +22,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
 
 // Helper to convert number to English words for payment vouchers
 function numberToWords(num: number): string {
@@ -1705,180 +1706,13 @@ export const DailyCashFlowHub: React.FC = () => {
         </form>
       </Modal>
 
-      {/* MODAL 2: Printable Payment Voucher View */}
-      <Modal
+      {/* MODAL 2: Printable Payment Voucher View (Standard Half-Page Slip format matching Dispatch Note) */}
+      <PaymentVoucherPrintModal
+        voucher={activeVoucherForPrint}
         isOpen={!!activeVoucherForPrint}
         onClose={() => setActiveVoucherForPrint(null)}
-        title={`Payment Voucher - ${activeVoucherForPrint?.voucherNo || ''}`}
-        size="lg"
-      >
-        {activeVoucherForPrint && (
-          <div className="space-y-4">
-            {/* Printable Voucher Card */}
-            <div 
-              id="rex-payment-voucher-print" 
-              className="bg-white text-slate-900 p-6 rounded-lg border border-slate-300 shadow-sm font-sans"
-            >
-              {/* Header */}
-              <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between">
-                <div>
-                  <h2 className="text-xl font-bold tracking-tight text-slate-900 uppercase">
-                    {settings?.companyName || 'REX GROUP / REX WIRELESS (PVT) LTD'}
-                  </h2>
-                  <p className="text-[11px] text-slate-600">
-                    Industrial Zone, Colombo, Sri Lanka | Finance & Accounts Dept
-                  </p>
-                  <span className="inline-block mt-1 bg-slate-900 text-white px-2 py-0.5 text-[11px] font-bold tracking-widest uppercase">
-                    PAYMENT VOUCHER
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="text-base font-mono font-bold text-slate-900">
-                    Voucher #: {activeVoucherForPrint.voucherNo}
-                  </div>
-                  <div className="text-xs text-slate-600 font-mono mt-0.5">
-                    Date: {activeVoucherForPrint.date ? activeVoucherForPrint.date.slice(0, 10) : '-'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Payee Info */}
-              <div className="grid grid-cols-2 gap-4 py-3 border-b border-slate-200 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Paid To (Payee):</span>
-                  <span className="text-sm font-bold text-slate-900 block mt-0.5">
-                    {activeVoucherForPrint.payeeName}
-                  </span>
-                  <span className="text-[11px] text-slate-500 capitalize">
-                    {activeVoucherForPrint.payeeType || 'Beneficiary'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Amount Paid:</span>
-                  <span className="text-lg font-mono font-bold text-slate-900 block mt-0.5">
-                    {formatCurrency(activeVoucherForPrint.amount, true)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Amount in words */}
-              <div className="py-2.5 bg-slate-100 px-3 rounded text-xs border border-slate-200">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Amount in Words:</span>
-                <span className="font-semibold text-slate-900 italic">
-                  {numberToWords(Number(activeVoucherForPrint.amount))}
-                </span>
-              </div>
-
-              {/* Payment Method Details */}
-              <div className="grid grid-cols-3 gap-3 py-3 border-b border-slate-200 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Payment Mode:</span>
-                  <span className="font-bold text-slate-900">{activeVoucherForPrint.paymentMethod}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">
-                    {activeVoucherForPrint.paymentMethod === 'Cheque' ? 'Cheque # & Date:' : 'Ref / Transfer #: '}
-                  </span>
-                  <span className="font-mono font-semibold text-slate-900">
-                    {activeVoucherForPrint.chequeNo 
-                      ? `${activeVoucherForPrint.chequeNo} (${activeVoucherForPrint.chequeDate ? activeVoucherForPrint.chequeDate.slice(0,10) : ''})` 
-                      : (activeVoucherForPrint.transactionRef || '-')}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Bank / Source:</span>
-                  <span className="font-semibold text-slate-900">
-                    {activeVoucherForPrint.bankName || 'Direct Counter / Bank'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Description / Particulars */}
-              <div className="py-3 border-b border-slate-200 text-xs">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Account Particulars / Purpose:</span>
-                <p className="text-slate-800 mt-1 whitespace-pre-wrap">
-                  {activeVoucherForPrint.description || activeVoucherForPrint.category || 'Disbursement against authorized expense / invoice'}
-                </p>
-                {activeVoucherForPrint.relatedBillNo && (
-                  <span className="inline-block mt-1 text-[11px] font-mono font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                    Linked Supplier Bill: {activeVoucherForPrint.relatedBillNo}
-                  </span>
-                )}
-              </div>
-
-              {/* Signatures */}
-              <div className="grid grid-cols-4 gap-4 pt-8 text-center text-xs">
-                <div className="border-t border-slate-400 pt-1">
-                  <span className="text-[10px] uppercase text-slate-500 block">Prepared By</span>
-                  <span className="font-semibold text-slate-900">{activeVoucherForPrint.preparedBy || 'Accounts'}</span>
-                </div>
-                <div className="border-t border-slate-400 pt-1">
-                  <span className="text-[10px] uppercase text-slate-500 block">Checked By</span>
-                  <span className="font-semibold text-slate-900">Accountant</span>
-                </div>
-                <div className="border-t border-slate-400 pt-1">
-                  <span className="text-[10px] uppercase text-slate-500 block">Approved By</span>
-                  <span className="font-semibold text-slate-900">Director / GM</span>
-                </div>
-                <div className="border-t border-slate-400 pt-1">
-                  <span className="text-[10px] uppercase text-slate-500 block">Receiver's Signature</span>
-                  <span className="text-[10px] text-slate-400">(Date & ID)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setActiveVoucherForPrint(null)}
-              >
-                Close
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  const printContents = document.getElementById('rex-payment-voucher-print')?.innerHTML;
-                  if (!printContents) return;
-                  const win = window.open('', '', 'width=800,height=600');
-                  if (win) {
-                    win.document.write(`
-                      <html>
-                        <head>
-                          <title>Payment Voucher - ${activeVoucherForPrint.voucherNo}</title>
-                          <style>
-                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; }
-                            table { width: 100%; border-collapse: collapse; }
-                            @media print {
-                              body { padding: 0; }
-                            }
-                          </style>
-                          <script src="https://cdn.tailwindcss.com"></script>
-                        </head>
-                        <body>
-                          ${printContents}
-                        </body>
-                      </html>
-                    `);
-                    win.document.close();
-                    win.focus();
-                    setTimeout(() => {
-                      win.print();
-                      win.close();
-                    }, 500);
-                  }
-                }}
-                className="bg-rex-600 hover:bg-rex-700 text-white flex items-center gap-1.5"
-              >
-                <Printer size={14} />
-                <span>Print Physical Voucher</span>
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        settings={settings}
+      />
 
       {/* MODAL 3: Printable Daily Cash Flow Summary Report */}
       <Modal
