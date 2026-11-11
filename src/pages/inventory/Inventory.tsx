@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck, Tags, FileSpreadsheet, RefreshCw, RotateCcw } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck, Tags, FileSpreadsheet, RefreshCw, RotateCcw, ChevronDown, SlidersHorizontal, AlertTriangle } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -146,6 +146,22 @@ export const Inventory: React.FC = () => {
 
   const [resettingStock, setResettingStock] = useState(false)
   const [resettingPricing, setResettingPricing] = useState(false)
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false)
+      }
+    }
+    if (actionsMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [actionsMenuOpen])
 
   const handleResetAllStock = async () => {
     const ok = window.confirm(
@@ -1461,46 +1477,84 @@ export const Inventory: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PageHelpButton moduleId="inventory-stock" />
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleResetAllStock}
-            disabled={resettingStock}
-            className="text-xs text-rose-600 dark:text-rose-400 border border-rose-500/40 hover:bg-rose-500/10 font-bold"
-            title="Reset all stock quantities in inventory to 0"
-          >
-            <RotateCcw className="w-3.5 h-3.5 mr-1" />
-            {resettingStock ? 'Resetting...' : 'Reset Stock to 0'}
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleResetAllPricing}
-            disabled={resettingPricing}
-            className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 font-bold"
-            title="Reset all unit prices and unit costs in inventory to 0.00"
-          >
-            <DollarSign className="w-3.5 h-3.5 mr-1" />
-            {resettingPricing ? 'Resetting...' : 'Reset Pricing to 0'}
-          </Button>
+
+          {/* Actions Dropdown containing quick links & batch reset tools */}
+          <div className="relative" ref={actionsMenuRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActionsMenuOpen(!actionsMenuOpen)}
+              className="text-xs border-theme-subtle hover:bg-surface2 font-semibold flex items-center gap-1.5"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-rex-600 dark:text-rex-400" />
+              <span>Actions</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${actionsMenuOpen ? 'rotate-180' : ''}`} />
+            </Button>
+
+            {actionsMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-surface border border-theme-subtle rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in-50 zoom-in-95">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted uppercase tracking-wider">
+                  Quick Navigation
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setActionsMenuOpen(false); setShowCategoriesModal(true); }}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-surface2 text-primary transition-colors cursor-pointer"
+                >
+                  <Tags className="w-4 h-4 text-blue-500" />
+                  <span>Categories & Families</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActionsMenuOpen(false); navigate('/inventory/sales-orders'); }}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-surface2 text-primary transition-colors cursor-pointer"
+                >
+                  <ShoppingCart className="w-4 h-4 text-emerald-500" />
+                  <span>Stores Orders (Dispatch Only)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActionsMenuOpen(false); navigate('/inventory/gate-passes'); }}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-surface2 text-primary transition-colors cursor-pointer"
+                >
+                  <Truck className="w-4 h-4 text-amber-500" />
+                  <span>Gate Passes & Delivery</span>
+                </button>
+
+                <div className="my-1.5 border-t border-theme-subtle" />
+
+                <div className="px-3 py-1 text-[10px] font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 text-rose-500" />
+                  Batch Reset Tools
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setActionsMenuOpen(false); handleResetAllStock(); }}
+                  disabled={resettingStock}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-rose-500/10 text-rose-600 dark:text-rose-400 transition-colors font-medium cursor-pointer"
+                >
+                  <RotateCcw className="w-4 h-4 text-rose-500" />
+                  <span>{resettingStock ? 'Resetting Stock...' : 'Reset All Stock to 0'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActionsMenuOpen(false); handleResetAllPricing(); }}
+                  disabled={resettingPricing}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2.5 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 transition-colors font-medium cursor-pointer"
+                >
+                  <DollarSign className="w-4 h-4 text-amber-500" />
+                  <span>{resettingPricing ? 'Resetting Pricing...' : 'Reset All Pricing to 0.00'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {activeTab === 'customer_sample' ? (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
               Receive Customer Sample
             </Button>
           ) : activeTab === 'finished_product' ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button 
-                variant="primary" 
-                size="sm"
-                icon={Plus} 
-                onClick={() => {
-                  setSelectedFinishedProduct(null)
-                  setFinishedProductModalOpen(true)
-                }}
-                className="font-bold shadow-xs text-xs"
-              >
-                Add Ready-Made Product
-              </Button>
+            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -1517,9 +1571,21 @@ export const Inventory: React.FC = () => {
               >
                 Add Spare Part
               </Button>
+              <Button 
+                variant="primary" 
+                size="sm"
+                icon={Plus} 
+                onClick={() => {
+                  setSelectedFinishedProduct(null)
+                  setFinishedProductModalOpen(true)
+                }}
+                className="font-bold shadow-xs text-xs"
+              >
+                Add Ready-Made Product
+              </Button>
             </div>
           ) : activeTab === 'company_asset' ? null : activeTab === 'stock_ledger' ? null : activeTab === 'linear_remnants' ? null : (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -1528,36 +1594,6 @@ export const Inventory: React.FC = () => {
                 className="text-xs text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 font-bold"
               >
                 Material Issue Station
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                icon={Tags} 
-                onClick={() => setShowCategoriesModal(true)}
-                className="border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-bold text-xs"
-                title="Manage Raw Material Categories & Families"
-              >
-                Categories
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                icon={ShoppingCart} 
-                onClick={() => navigate('/inventory/sales-orders')}
-                className="text-xs text-secondary hover:text-primary border border-theme-subtle"
-                title="View Sales Orders for Stores (Dispatch Only)"
-              >
-                Stores Orders
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                icon={Truck} 
-                onClick={() => navigate('/inventory/gate-passes')}
-                className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10 font-medium"
-                title="View and issue Gate Passes / Dispatch Notes"
-              >
-                Gate Passes
               </Button>
               <Button 
                 variant="ghost" 

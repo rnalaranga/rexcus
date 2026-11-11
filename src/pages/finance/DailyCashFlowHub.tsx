@@ -4,7 +4,7 @@ import {
   Calendar, Search, Filter, Printer, Plus, CheckCircle2,
   Clock, AlertCircle, FileText, Check, X, RefreshCw,
   Building2, Landmark, CreditCard, ChevronRight, User,
-  Eye, Download, MoreHorizontal, ArrowUpDown
+  Eye, Download, MoreHorizontal, ArrowUpDown, Upload, Paperclip, ExternalLink, Image as ImageIcon
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +16,7 @@ import { useAccounts } from '@/hooks/useFinance';
 import { useSuppliers } from '@/hooks/useData';
 import { 
   getDailyCashFlow, getPaymentVouchers, createPaymentVoucher, 
-  updateChequeStatus 
+  updateChequeStatus, uploadFileToStorage 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -85,6 +85,8 @@ export const DailyCashFlowHub: React.FC = () => {
   const [activeVoucherForPrint, setActiveVoucherForPrint] = useState<any | null>(null);
   const [isPrintReportModalOpen, setIsPrintReportModalOpen] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [viewingSlip, setViewingSlip] = useState<{ url: string; title: string; tx?: any } | null>(null);
+  const [isUploadingVoucherSlip, setIsUploadingVoucherSlip] = useState(false);
 
   // Reference hooks
   const { data: accounts = [] } = useAccounts();
@@ -110,9 +112,33 @@ export const DailyCashFlowHub: React.FC = () => {
     relatedBillId: '',
     relatedBillNo: '',
     description: '',
+    depositSlip: '',
     preparedBy: user?.name || user?.username || 'Accounts Officer'
   };
   const [voucherForm, setVoucherForm] = useState(initialVoucherState);
+
+  const handleVoucherSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingVoucherSlip(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setVoucherForm(prev => ({ ...prev, depositSlip: rawDataUri }));
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'slips');
+        if (uploaded && uploaded.url) {
+          setVoucherForm(prev => ({ ...prev, depositSlip: uploaded.url }));
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingVoucherSlip(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Supplier Unpaid Bills for Voucher Form
   const [supplierBills, setSupplierBills] = useState<any[]>([]);
@@ -745,10 +771,21 @@ export const DailyCashFlowHub: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2.5 px-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge variant={tx.paymentMethod === 'Cash' ? 'default' : tx.paymentMethod === 'Cheque' ? 'warning' : 'info'}>
                               {tx.paymentMethod || 'Cash'}
                             </Badge>
+                            {tx.depositSlip && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingSlip({ url: tx.depositSlip, title: `${ref} — Bank Deposit Slip`, tx })}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-colors shadow-xs cursor-pointer"
+                                title="View Bank Deposit Slip (තැන්පතු ස්ලිප්පුව බලන්න)"
+                              >
+                                <Paperclip size={10} />
+                                <span>Slip</span>
+                              </button>
+                            )}
                           </div>
                           {tx.chequeNo && (
                             <div className="text-[10px] font-mono text-muted mt-0.5">
@@ -1024,7 +1061,20 @@ export const DailyCashFlowHub: React.FC = () => {
                           {tr.date ? tr.date.slice(0, 10) : '-'}
                         </td>
                         <td className="py-2.5 px-3 font-mono font-semibold text-primary">
-                          {tr.transactionRef || tr.reference || '-'}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{tr.transactionRef || tr.reference || '-'}</span>
+                            {tr.depositSlip && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingSlip({ url: tr.depositSlip, title: `${tr.transactionRef || tr.reference || 'Transfer'} — Bank Deposit Slip`, tx: tr })}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 border border-purple-500/30 transition-colors shadow-xs cursor-pointer"
+                                title="View Bank Deposit Slip (තැන්පතු ස්ලිප්පුව බලන්න)"
+                              >
+                                <Paperclip size={10} />
+                                <span>Slip</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 font-medium text-secondary">
                           {tr.bankName || 'Direct Bank Settlement'}
@@ -1115,10 +1165,21 @@ export const DailyCashFlowHub: React.FC = () => {
                           {v.category || 'Disbursement'}
                         </td>
                         <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge variant={v.paymentMethod === 'Cash' ? 'default' : v.paymentMethod === 'Cheque' ? 'warning' : 'info'}>
                               {v.paymentMethod}
                             </Badge>
+                            {v.depositSlip && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingSlip({ url: v.depositSlip, title: `Voucher ${v.voucherNo} — Bank Deposit Slip`, tx: v })}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-colors shadow-xs cursor-pointer"
+                                title="View Bank Deposit Slip (තැන්පතු ස්ලිප්පුව බලන්න)"
+                              >
+                                <Paperclip size={10} />
+                                <span>Slip</span>
+                              </button>
+                            )}
                           </div>
                           {v.chequeNo && (
                             <span className="text-[10px] font-mono text-muted block mt-0.5">
@@ -1138,15 +1199,29 @@ export const DailyCashFlowHub: React.FC = () => {
                           <Badge variant="success">Paid</Badge>
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setActiveVoucherForPrint(v)}
-                            className="h-7 px-2 text-xs text-secondary hover:text-primary flex items-center gap-1 ml-auto"
-                          >
-                            <Printer size={12} />
-                            <span>Print Voucher</span>
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {v.depositSlip && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewingSlip({ url: v.depositSlip, title: `Voucher ${v.voucherNo} — Bank Deposit Slip`, tx: v })}
+                                className="h-7 px-2 text-xs text-purple-400 hover:bg-purple-500/10 flex items-center gap-1"
+                                title="View Bank Deposit Slip"
+                              >
+                                <Paperclip size={12} />
+                                <span>Slip</span>
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setActiveVoucherForPrint(v)}
+                              className="h-7 px-2 text-xs text-secondary hover:text-primary flex items-center gap-1"
+                            >
+                              <Printer size={12} />
+                              <span>Print Voucher</span>
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1504,6 +1579,66 @@ export const DailyCashFlowHub: React.FC = () => {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Bank Transfer Slip Attachment */}
+              <div className="pt-2 border-t border-purple-500/20 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <Paperclip size={11} className="text-purple-400" />
+                    <span>Bank Deposit Slip / Wire Confirmation (ස්ලිප්පුව අමුණන්න)</span>
+                  </label>
+                  {voucherForm.depositSlip && (
+                    <span className="text-[10px] font-bold text-emerald-400">
+                      ✓ Attached
+                    </span>
+                  )}
+                </div>
+
+                {!voucherForm.depositSlip ? (
+                  <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-theme hover:border-purple-500/50 rounded-lg bg-surface/50 hover:bg-purple-500/5 transition-all cursor-pointer">
+                    <Upload size={14} className="text-secondary" />
+                    <span className="text-xs font-medium text-secondary">
+                      {isUploadingVoucherSlip ? 'Uploading slip...' : 'Attach Deposit / Transfer Slip (Image / PDF)'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      disabled={isUploadingVoucherSlip}
+                      onChange={handleVoucherSlipUpload}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between p-2 bg-surface border border-emerald-500/30 rounded-lg">
+                    <div className="flex items-center gap-2 truncate">
+                      {voucherForm.depositSlip.startsWith('data:image') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(voucherForm.depositSlip) ? (
+                        <img src={voucherForm.depositSlip} alt="Slip" className="w-8 h-8 object-cover rounded border border-theme" />
+                      ) : (
+                        <FileText size={16} className="text-purple-400" />
+                      )}
+                      <span className="text-xs font-medium truncate">Bank Slip Attached</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setViewingSlip({ url: voucherForm.depositSlip, title: 'Deposit Slip Preview' })}
+                        className="p-1 text-secondary hover:text-primary transition-colors cursor-pointer"
+                        title="Preview"
+                      >
+                        <Eye size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVoucherForm(prev => ({ ...prev, depositSlip: '' }))}
+                        className="p-1 text-rose-400 hover:text-rose-500 transition-colors cursor-pointer"
+                        title="Remove"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1875,6 +2010,89 @@ export const DailyCashFlowHub: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Deposit Slip Viewer Modal */}
+      {viewingSlip && (
+        <Modal
+          isOpen={true}
+          onClose={() => setViewingSlip(null)}
+          title={viewingSlip.title || "Bank Deposit Slip"}
+          size="xl"
+        >
+          <div className="p-4 space-y-4">
+            {/* Context details if tx is present */}
+            {viewingSlip.tx && (
+              <div className="p-3 bg-surface2/60 border border-theme rounded-lg flex items-center justify-between flex-wrap gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-muted block">Transaction / Ref</span>
+                  <span className="font-mono font-bold text-primary">
+                    {viewingSlip.tx.refNo || viewingSlip.tx.voucherNo || viewingSlip.tx.transactionRef || 'Record'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-muted block">Party</span>
+                  <span className="font-semibold text-primary">
+                    {viewingSlip.tx.partyName || viewingSlip.tx.payeeName || 'Direct'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-muted block">Payment Method</span>
+                  <span className="font-semibold text-secondary">
+                    {viewingSlip.tx.paymentMethod || 'Bank Transfer'}
+                  </span>
+                </div>
+                {viewingSlip.tx.amount !== undefined && (
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-muted block">Amount</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm">
+                      {formatCurrency(viewingSlip.tx.amount)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Slip Preview Area */}
+            <div className="border border-theme rounded-lg overflow-hidden bg-background/80 flex items-center justify-center min-h-[300px] max-h-[65vh] p-2">
+              {viewingSlip.url.startsWith('data:application/pdf') || viewingSlip.url.endsWith('.pdf') ? (
+                <iframe
+                  src={viewingSlip.url}
+                  title="PDF Slip Preview"
+                  className="w-full h-[60vh] border-0 rounded"
+                />
+              ) : (
+                <img
+                  src={viewingSlip.url}
+                  alt="Bank Deposit Slip"
+                  className="max-h-[60vh] max-w-full object-contain mx-auto rounded shadow-md"
+                />
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-theme-subtle">
+              <a
+                href={viewingSlip.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                download="deposit-slip"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme bg-surface hover:bg-surface2 text-xs font-semibold text-primary transition-colors cursor-pointer"
+              >
+                <ExternalLink size={13} />
+                <span>Open in New Tab / Download</span>
+              </a>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewingSlip(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

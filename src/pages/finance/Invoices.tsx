@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, Search, Plus, Edit3, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt, Hash, RefreshCw } from 'lucide-react'
+import { FileText, Search, Plus, Edit3, Filter, FileCheck, Trash2, ExternalLink, CheckCircle, Clock, AlertCircle, AlertTriangle, Mail, Printer, Receipt, Hash, RefreshCw, Upload, Paperclip, Eye, X } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
@@ -12,7 +12,7 @@ import { PaymentReceiptPrintModal } from '@/components/PaymentReceiptPrintModal'
 import { useInvoices, useLeads, useCustomers, useQuotations, useFinishedGoodsOrders, useWorkOrders } from '@/hooks/useData'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { useTaxProfiles, useAccounts } from '@/hooks/useFinance'
-import { updateInvoice, deleteInvoice, changeInvoiceNumber } from '@/lib/api'
+import { updateInvoice, deleteInvoice, changeInvoiceNumber, uploadFileToStorage } from '@/lib/api'
 import { formatCurrency, relativeTime } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -84,7 +84,31 @@ export const Invoices: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [paymentData, setPaymentData] = useState({ amount: '', method: 'Cash', accountId: '', reference: '' })
+  const [paymentData, setPaymentData] = useState({ amount: '', method: 'Cash', accountId: '', reference: '', depositSlip: '' })
+  const [isUploadingSlip, setIsUploadingSlip] = useState(false)
+
+  const handleInvoiceSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSlip(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setPaymentData(prev => ({ ...prev, depositSlip: rawDataUri }));
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'slips');
+        if (uploaded && uploaded.url) {
+          setPaymentData(prev => ({ ...prev, depositSlip: uploaded.url }));
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingSlip(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
 
   const [changeNoModalTarget, setChangeNoModalTarget] = useState<any | null>(null)
   const [newInvoiceNoInput, setNewInvoiceNoInput] = useState('')
@@ -256,7 +280,7 @@ export const Invoices: React.FC = () => {
       refetch();
       showToast('success', 'Payment recorded successfully');
       setShowPaymentModal(false);
-      setPaymentData({ amount: '', method: 'Cash', accountId: '', reference: '' });
+      setPaymentData({ amount: '', method: 'Cash', accountId: '', reference: '', depositSlip: '' });
       if (res && res.receipt) {
         setPrintReceiptData({
           ...res.receipt,
@@ -1215,7 +1239,8 @@ export const Invoices: React.FC = () => {
                           amount: '',
                           method: isUSD ? 'Bank Wire / TT' : 'Bank Transfer',
                           accountId: isUSD ? (settings?.usd_master_account_id || 'acc_1010') : '',
-                          reference: ''
+                          reference: '',
+                          depositSlip: ''
                         });
                         setShowPaymentModal(true);
                       }}
@@ -1639,6 +1664,74 @@ export const Invoices: React.FC = () => {
                   className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all"
                   placeholder={isUSD ? "e.g. TT-WIRE-902144 or USD-REF" : "Txn ID, Cheque No..."}
                 />
+              </div>
+
+              {/* Bank Deposit / Transfer Slip Attachment */}
+              <div className="space-y-1.5 p-3 rounded-lg bg-surface2/60 border border-purple-500/20">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                    <Paperclip size={13} className="text-purple-500" /> Bank Deposit / Transfer Slip (බැංකු තැන්පතු ස්ලිප්පුව)
+                  </label>
+                  {paymentData.depositSlip && (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle size={11} /> Attached
+                    </span>
+                  )}
+                </div>
+
+                {!paymentData.depositSlip ? (
+                  <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-theme-subtle hover:border-purple-500/50 rounded-lg bg-surface/50 hover:bg-purple-500/5 transition-all cursor-pointer group">
+                    <div className="flex items-center gap-2 text-secondary group-hover:text-purple-600 dark:group-hover:text-purple-400">
+                      <Upload size={16} />
+                      <span className="text-xs font-semibold">
+                        {isUploadingSlip ? 'Uploading deposit slip...' : 'Attach Deposit Slip (Image / PDF)'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted mt-0.5">JPG, PNG, WebP or PDF receipt</span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      disabled={isUploadingSlip}
+                      onChange={handleInvoiceSlipUpload}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between p-2 bg-surface border border-emerald-500/30 rounded-lg">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      {paymentData.depositSlip.startsWith('data:image') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(paymentData.depositSlip) ? (
+                        <img src={paymentData.depositSlip} alt="Deposit Slip" className="w-10 h-10 object-cover border border-theme-subtle rounded shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 bg-purple-500/10 text-purple-600 flex items-center justify-center rounded shrink-0">
+                          <FileText size={18} />
+                        </div>
+                      )}
+                      <div className="truncate">
+                        <span className="text-xs font-bold text-primary block truncate">Bank Deposit Slip Attached</span>
+                        <span className="text-[10px] text-muted">Will be visible in Cash Flow</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <a
+                        href={paymentData.depositSlip}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-secondary hover:text-primary transition-colors"
+                        title="Preview Slip"
+                      >
+                        <Eye size={14} />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentData(prev => ({ ...prev, depositSlip: '' }))}
+                        className="p-1.5 text-rose-500 hover:text-rose-600 transition-colors"
+                        title="Remove Slip"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-theme-subtle">

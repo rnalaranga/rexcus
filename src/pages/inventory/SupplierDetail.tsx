@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, FileText, Package,
   Calendar, ChevronDown, CreditCard, Truck, Edit, ShieldCheck,
   Globe, Users, User, ExternalLink, CheckCircle2, AlertCircle, Building,
-  Printer, Download, Search, Filter, X, RefreshCw
+  Printer, Download, Search, Filter, X, RefreshCw, Upload, Paperclip, Eye
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useSupplierLedger } from '@/hooks/useData'
 import { useAccounts } from '@/hooks/useFinance'
-import { fetchSupplierById, updateSupplier, createSupplierLedgerEntry, deleteSupplierLedgerEntry } from '@/lib/api'
+import { fetchSupplierById, updateSupplier, createSupplierLedgerEntry, deleteSupplierLedgerEntry, uploadFileToStorage } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 const TRANSACTION_TYPES = [
@@ -79,8 +79,33 @@ export const SupplierDetail: React.FC = () => {
     chequeDate: new Date().toISOString().slice(0, 10),
     transactionRef: '',
     debitAccountId: '',
-    creditAccountId: ''
+    creditAccountId: '',
+    depositSlip: ''
   })
+  const [isUploadingSlip, setIsUploadingSlip] = useState(false)
+
+  const handleSupplierSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSlip(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setPaymentForm(prev => ({ ...prev, depositSlip: rawDataUri }));
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'slips');
+        if (uploaded && uploaded.url) {
+          setPaymentForm(prev => ({ ...prev, depositSlip: uploaded.url }));
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingSlip(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
 
   // Edit Supplier Form state
   const initialSupplierForm = {
@@ -224,7 +249,8 @@ export const SupplierDetail: React.FC = () => {
       chequeDate: new Date().toISOString().slice(0, 10),
       transactionRef: '',
       debitAccountId: defaultDebit,
-      creditAccountId: defaultCredit
+      creditAccountId: defaultCredit,
+      depositSlip: ''
     })
     setShowPaymentModal(true)
   }
@@ -301,6 +327,7 @@ export const SupplierDetail: React.FC = () => {
       bankName: paymentForm.bankName || undefined,
       chequeStatus: paymentForm.paymentMethod === 'Cheque' ? 'Pending' : undefined,
       transactionRef: paymentForm.paymentMethod === 'Bank Transfer' ? (paymentForm.transactionRef || paymentForm.referenceNo || undefined) : undefined,
+      depositSlip: paymentForm.depositSlip || undefined,
       debitAccountId: paymentForm.debitAccountId || undefined,
       creditAccountId: paymentForm.creditAccountId || undefined,
       debitAccountName: debitAcc ? `${debitAcc.code} - ${debitAcc.name}` : undefined,
@@ -1055,7 +1082,20 @@ export const SupplierDetail: React.FC = () => {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted">
-                        {row.paymentMethod || '—'}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{row.paymentMethod || '—'}</span>
+                          {row.depositSlip && (
+                            <a
+                              href={row.depositSlip}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors"
+                              title="View Bank Deposit Slip"
+                            >
+                              <Paperclip size={10} /> Slip
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-sm">
                         {Number(row.debit) > 0 ? (
@@ -1311,6 +1351,65 @@ export const SupplierDetail: React.FC = () => {
                 className="w-full input-base text-xs" 
                 placeholder="Our bank account / source details (optional)" 
               />
+            </div>
+
+            {/* Deposit Slip Attachment (Bank Transfer / Wire) */}
+            <div className="col-span-2 space-y-1.5 p-2.5 rounded-lg bg-surface2/60 border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
+                  <Paperclip size={13} className="text-purple-500" /> Bank Deposit Slip / Transfer Receipt (තැන්පතු ස්ලිප්පුව)
+                </label>
+                {paymentForm.depositSlip && (
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    ✓ Attached
+                  </span>
+                )}
+              </div>
+              {!paymentForm.depositSlip ? (
+                <label className="flex items-center justify-center gap-2 p-2 border border-dashed border-theme-subtle hover:border-purple-500/50 rounded-lg bg-surface/50 hover:bg-purple-500/5 transition-all cursor-pointer">
+                  <Upload size={14} className="text-secondary" />
+                  <span className="text-xs font-medium text-secondary">
+                    {isUploadingSlip ? 'Uploading slip...' : 'Attach Deposit Slip (Image / PDF)'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    disabled={isUploadingSlip}
+                    onChange={handleSupplierSlipUpload}
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <div className="flex items-center justify-between p-1.5 bg-surface border border-emerald-500/30 rounded-lg">
+                  <div className="flex items-center gap-2 truncate">
+                    {paymentForm.depositSlip.startsWith('data:image') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(paymentForm.depositSlip) ? (
+                      <img src={paymentForm.depositSlip} alt="Slip" className="w-8 h-8 object-cover rounded border" />
+                    ) : (
+                      <FileText size={16} className="text-purple-500" />
+                    )}
+                    <span className="text-xs font-medium truncate">Bank Slip Attached</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <a
+                      href={paymentForm.depositSlip}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 text-secondary hover:text-primary transition-colors"
+                      title="Preview Slip"
+                    >
+                      <Eye size={13} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentForm(prev => ({ ...prev, depositSlip: '' }))}
+                      className="p-1 text-rose-500 hover:text-rose-600 transition-colors"
+                      title="Remove Slip"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="col-span-2">

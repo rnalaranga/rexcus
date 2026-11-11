@@ -505,19 +505,23 @@ export const fetchSuppliers = async () => {
 export const createSupplier = async (data: any) => {
   const res = await fetch(`${API_URL}/suppliers`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || json.details || 'Failed to create supplier');
+  return json;
 };
 
 export const updateSupplier = async (id: string, data: any) => {
   const res = await fetch(`${API_URL}/suppliers/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || json.details || 'Failed to update supplier');
+  return json;
 };
 
 export const deleteSupplier = async (id: string) => {
@@ -769,21 +773,50 @@ export const deletePO = async (id: string) => {
 export const fetchGRNs = async () => (await (await fetch(`${API_URL}/purchasing/grns`)).json());
 export const fetchGRNById = async (id: string) => (await (await fetch(`${API_URL}/purchasing/grns/${id}`)).json());
 export const createGRN = async (data: any) => {
-  const res = await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const res = await fetch(`${API_URL}/purchasing/grns`, { method: 'POST', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error || 'Failed to create GRN');
   return json;
 };
 export const updateGRN = async (id: string, data: any) => {
-  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'PUT', headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error || 'Failed to update GRN');
   return json;
 };
 export const deleteGRN = async (id: string) => {
-  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_URL}/purchasing/grns/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error || 'Failed to delete GRN');
+  return json;
+};
+
+// --- CREDIT & DEBIT NOTES ---
+export const fetchCreditDebitNotes = async (params?: Record<string, any>) => {
+  let url = `${API_URL}/finance/credit-debit-notes`;
+  if (params && Object.keys(params).length > 0) {
+    const cleanParams: Record<string, string> = {};
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        cleanParams[k] = String(v);
+      }
+    });
+    if (Object.keys(cleanParams).length > 0) {
+      url += `?${new URLSearchParams(cleanParams).toString()}`;
+    }
+  }
+  const res = await fetch(url, { headers: getAuthHeaders() });
+  return res.json();
+};
+
+export const createCreditDebitNote = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/credit-debit-notes`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(json.error || 'Failed to create Note');
   return json;
 };
 

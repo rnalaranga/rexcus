@@ -1971,6 +1971,10 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
     "ALTER TABLE payment_receipts ADD COLUMN invoiceId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
     `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
       id VARCHAR(50) PRIMARY KEY,
@@ -8594,7 +8598,17 @@ app.post('/api/purchasing/grns', async (req, res) => {
     if (!data.createdAt) data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     if (!data.updatedAt) data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-    await db.query('INSERT INTO grns SET ?', data);
+    // Filter against actual columns in grns table to ensure 100% resilient insert
+    const [grnCols]: any = await db.query('SHOW COLUMNS FROM grns');
+    const validGrnCols = new Set(grnCols.map((c: any) => c.Field));
+    const safeGrnData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validGrnCols.has(k)) {
+        safeGrnData[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO grns SET ?', safeGrnData);
 
     // Update inventory stock and record in stock ledger
     for (const item of itemsArray) {
@@ -8629,37 +8643,101 @@ app.post('/api/purchasing/grns', async (req, res) => {
             await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
 
             // Auto-log cut pieces into stock_remnants rack (ISO Raw Material Cut Tracking)
+            // Supports both single cut and multiple sheet/rod cut breakdowns:
+            // e.g. "20 mm sheet [Cut: 50x50 mm × 4 pcs; 20x40 mm × 5 pcs]" or item.cuts array
             const itemDesc = item.desc || item.name || '';
-            const cutMatch = itemDesc.match(/\[Cut:\s*(\d+(?:\.\d+)?)\s*mm\s*×\s*(\d+)\s*pcs\]/i);
-            const isCut = Boolean(item.isCutPiece || (item.cutLength && Number(item.cutLength) > 0) || cutMatch);
-            const cutLen = Number(item.cutLength || (cutMatch ? cutMatch[1] : 0));
-            const cutPcs = Number(item.pieces || (cutMatch ? cutMatch[2] : (qtyRecv > 0 && qtyRecv <= 100 ? Math.round(qtyRecv) : 1)));
+            const cutsList: Array<{ length: number; width?: number; thickness?: number; pieces: number; dimension: string; profileType: string }> = [];
 
-            if (isCut && cutLen > 0 && item.logToRemnants !== false) {
+            if (Array.isArray(item.cuts) && item.cuts.length > 0) {
+              for (const c of item.cuts) {
+                const cLen = Number(c.length || c.cutLength || 0);
+                const cW = Number(c.width || 0);
+                const cThick = Number(c.thickness || item.thickness || 0);
+                const cPcs = Number(c.pieces || c.qty || 1);
+                if (cLen > 0 && cPcs > 0) {
+                  const dimStr = cW > 0 
+                    ? (cThick > 0 ? `${cThick}mm Thk × ${cLen}×${cW} mm` : `${cLen}×${cW} mm`) 
+                    : `${cLen} mm`;
+                  cutsList.push({
+                    length: cLen,
+                    width: cW > 0 ? cW : undefined,
+                    thickness: cThick > 0 ? cThick : undefined,
+                    pieces: cPcs,
+                    dimension: dimStr,
+                    profileType: (cW > 0 || String(itemDesc).toLowerCase().includes('sheet') || String(itemDesc).toLowerCase().includes('plate')) ? 'plate' : 'bar'
+                  });
+                }
+              }
+            } else {
+              // Parse multi-cut notation from desc: e.g. [Cut: 50x50 mm × 4 pcs; 20x40 mm × 5 pcs] or [Cut: 200 mm × 3 pcs]
+              const multiMatch = itemDesc.match(/\[Cut:\s*([^\]]+)\]/i);
+              if (multiMatch && multiMatch[1]) {
+                const parts = multiMatch[1].split(';');
+                for (const p of parts) {
+                  // match: 50x50 mm x 4 pcs OR 200 mm x 4 pcs
+                  const dimMatch = p.match(/(\d+(?:\.\d+)?)\s*(?:x|×)\s*(\d+(?:\.\d+)?)\s*mm\s*(?:x|×)\s*(\d+)\s*pcs/i);
+                  const singleMatch = p.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:x|×)\s*(\d+)\s*pcs/i);
+                  if (dimMatch) {
+                    const l = Number(dimMatch[1]);
+                    const w = Number(dimMatch[2]);
+                    const pcs = Number(dimMatch[3]);
+                    cutsList.push({ length: l, width: w, pieces: pcs, dimension: `${l}×${w} mm`, profileType: 'plate' });
+                  } else if (singleMatch) {
+                    const l = Number(singleMatch[1]);
+                    const pcs = Number(singleMatch[2]);
+                    cutsList.push({ length: l, pieces: pcs, dimension: `${l} mm`, profileType: 'bar' });
+                  }
+                }
+              }
+            }
+
+            // Fallback for traditional single cut parameters
+            if (cutsList.length === 0) {
+              const isCut = Boolean(item.isCutPiece || (item.cutLength && Number(item.cutLength) > 0));
+              const cutLen = Number(item.cutLength || 0);
+              const cutW = Number(item.cutWidth || 0);
+              const cutPcs = Number(item.pieces || (qtyRecv > 0 && qtyRecv <= 100 ? Math.round(qtyRecv) : 1));
+              if (isCut && cutLen > 0) {
+                cutsList.push({
+                  length: cutLen,
+                  width: cutW > 0 ? cutW : undefined,
+                  thickness: Number(item.thickness || 0) || undefined,
+                  pieces: cutPcs,
+                  dimension: cutW > 0 ? `${cutLen}×${cutW} mm` : `${cutLen} mm`,
+                  profileType: (cutW > 0 || String(itemDesc).toLowerCase().includes('sheet') || String(itemDesc).toLowerCase().includes('plate')) ? 'plate' : 'bar'
+                });
+              }
+            }
+
+            if (cutsList.length > 0 && item.logToRemnants !== false) {
               try {
-                for (let p = 0; p < cutPcs; p++) {
-                  const remId = `REM-${String(data.id).replace(/[^A-Za-z0-9_-]/g, '')}-${Date.now().toString().slice(-4)}-${p + 1}`;
-                  await db.query(
-                    `INSERT INTO stock_remnants 
-                     (id, inventoryId, materialName, sku, profileType, dimension, standardLength, length, unit, location, sourceBarId, jobRef, status, notes, createdAt, updatedAt)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW(), NOW())
-                     ON DUPLICATE KEY UPDATE length = VALUES(length), updatedAt = NOW()`,
-                    [
-                      remId,
-                      invId || null,
-                      itemDesc || 'Raw Material Cut',
-                      item.sku || null,
-                      item.profileType || 'bar',
-                      `${cutLen} mm`,
-                      Number(item.standardLength || 6000),
-                      cutLen,
-                      item.cutUnit || 'mm',
-                      data.storageLocation || 'Offcut Rack A',
-                      data.id,
-                      `GRN: ${data.id} (PO: ${itemPoRef})`,
-                      `Received via GRN ${data.id} as cut piece (${cutLen} mm)`
-                    ]
-                  );
+                let pieceCounter = 1;
+                for (const cutEntry of cutsList) {
+                  for (let p = 0; p < cutEntry.pieces; p++) {
+                    const remId = `REM-${String(data.id).replace(/[^A-Za-z0-9_-]/g, '')}-${Date.now().toString().slice(-4)}-${pieceCounter++}`;
+                    await db.query(
+                      `INSERT INTO stock_remnants 
+                       (id, inventoryId, materialName, sku, profileType, dimension, length, width, thickness, unit, location, sourceBarId, jobRef, status, notes, createdAt, updatedAt)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW(), NOW())
+                       ON DUPLICATE KEY UPDATE length = VALUES(length), width = VALUES(width), thickness = VALUES(thickness), updatedAt = NOW()`,
+                      [
+                        remId,
+                        invId || null,
+                        itemDesc || 'Raw Material Cut',
+                        item.sku || null,
+                        cutEntry.profileType,
+                        cutEntry.dimension,
+                        cutEntry.length,
+                        cutEntry.width || null,
+                        cutEntry.thickness || null,
+                        item.cutUnit || 'mm',
+                        data.storageLocation || 'Offcut Rack A',
+                        data.id,
+                        `GRN: ${data.id} (PO: ${itemPoRef})`,
+                        `Received via GRN ${data.id} as cut piece (${cutEntry.dimension})`
+                      ]
+                    );
+                  }
                 }
               } catch (remErr) {
                 console.error('Error logging to stock_remnants from GRN:', remErr);
@@ -8727,7 +8805,17 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
     }
 
     data.updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.query('UPDATE grns SET ? WHERE id = ?', [data, req.params.id]);
+
+    const [grnCols]: any = await db.query('SHOW COLUMNS FROM grns');
+    const validGrnCols = new Set(grnCols.map((c: any) => c.Field));
+    const safeGrnData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validGrnCols.has(k)) {
+        safeGrnData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE grns SET ? WHERE id = ?', [safeGrnData, req.params.id]);
 
     if (targetPoIds.size > 0) {
       await syncPOReceiptStatus(Array.from(targetPoIds));
@@ -9083,14 +9171,41 @@ app.post('/api/suppliers', async (req, res) => {
     if (data.contacts && typeof data.contacts === 'object') {
       data.contacts = JSON.stringify(data.contacts);
     }
-    if (!data.id) {
-      const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM suppliers');
-      const nextNum = (countResult[0]?.c || 0) + 1;
-      data.id = 'SUP-' + nextNum.toString().padStart(4, '0');
+    
+    // Check if supplier ID exists or needs generation
+    let needNewId = !data.id || String(data.id).trim() === '';
+    if (data.id) {
+      const [ex]: any = await db.query('SELECT id FROM suppliers WHERE id = ?', [data.id]);
+      if (ex.length > 0) {
+        needNewId = true;
+      }
     }
+
+    if (needNewId) {
+      await db.query(`
+        INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) 
+        VALUES ('supplier', 'Suppliers', 'SUP-', 1, 4, NOW()) 
+        ON DUPLICATE KEY UPDATE updated_at = NOW()
+      `);
+      const [seq]: any = await db.query("SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'supplier'");
+      let nextNum = seq && seq[0] ? Number(seq[0].next_number) : 1;
+      const prefix = seq && seq[0] ? seq[0].prefix : 'SUP-';
+      const pad = seq && seq[0] ? Number(seq[0].padding) : 4;
+
+      // Check max existing number to avoid any duplicate primary key collision
+      const [maxRow]: any = await db.query("SELECT MAX(CAST(SUBSTRING(id, 5) AS UNSIGNED)) as maxId FROM suppliers WHERE id LIKE 'SUP-%'");
+      if (maxRow && maxRow[0] && maxRow[0].maxId && maxRow[0].maxId >= nextNum) {
+        nextNum = Number(maxRow[0].maxId) + 1;
+      }
+
+      data.id = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+      await db.query("UPDATE document_sequences SET next_number = ? WHERE id = 'supplier'", [nextNum + 1]);
+    }
+
     if (data.contactName && !data.contactPerson) data.contactPerson = data.contactName;
     if (data.contactPerson && !data.contactName) data.contactName = data.contactPerson;
     if (data.company && !data.name) data.name = data.company;
+    if (!data.name && data.contactPerson) data.name = data.contactPerson;
 
     const item = {
       ...data,
@@ -9965,7 +10080,8 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       method: payment.method || (isUSD ? 'Bank Wire / TT' : 'Cash'),
       accountId: depositAccountId || null,
       accountName: depositAccountName || null,
-      reference: payment.reference || ''
+      reference: payment.reference || '',
+      depositSlip: payment.depositSlip || payment.slipUrl || null
     };
     
     existingPayments.push(newPayment);
@@ -10088,6 +10204,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       accountId: depositAccountId,
       accountName: depositAccountName,
       reference: payment.reference || `Payment for Invoice #${invoice.invoiceNo || invoice.id}`,
+      depositSlip: payment.depositSlip || payment.slipUrl || null,
       receivedBy: payment.receivedBy || 'Accounts Officer',
       notes: payment.notes || `Payment received for Invoice #${invoice.invoiceNo || invoice.id}`,
       status: 'Received',
@@ -10416,7 +10533,8 @@ app.post('/api/supplier-ledger', async (req, res) => {
       bankName: data.bankName ? String(data.bankName).trim() : null,
       chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
       transactionRef: data.transactionRef ? String(data.transactionRef).trim() : null,
-      voucherNo: data.voucherNo ? String(data.voucherNo).trim() : null
+      voucherNo: data.voucherNo ? String(data.voucherNo).trim() : null,
+      depositSlip: data.depositSlip || data.slipUrl || null
     };
     if (data.bankAccountId) {
       item.bankAccountId = data.bankAccountId;
@@ -11327,6 +11445,7 @@ app.post('/api/finance/cashbook', async (req, res) => {
         source: 'mobile',
         status: 'pending',
         receiptPhoto: receiptPhoto || null,
+        depositSlip: req.body.depositSlip || receiptPhoto || null,
         notes: notes ? notes.trim() : null,
         paymentMethod: paymentMethod || 'Cash',
         chequeNo: chequeNo ? String(chequeNo).trim() : null,
@@ -11445,6 +11564,7 @@ app.post('/api/finance/cashbook', async (req, res) => {
       approvedBy: submitterName,
       approvedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       receiptPhoto: receiptPhoto || null,
+      depositSlip: req.body.depositSlip || receiptPhoto || null,
       notes: notes ? notes.trim() : null,
       paymentMethod: paymentMethod || 'Cash',
       chequeNo: chequeNo ? String(chequeNo).trim() : null,
@@ -11890,6 +12010,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pr.transactionRef,
         COALESCE(pr.accountName, 'Cash/Bank') as accountName,
         pr.receivedBy as handledBy,
+        pr.depositSlip,
         'payment_receipts' as sourceTable
       FROM payment_receipts pr
       WHERE DATE(pr.date) BETWEEN ? AND ?
@@ -11934,6 +12055,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
                     transactionRef: p.transactionRef || p.reference || null,
                     accountName: p.accountName || 'Cash/Bank',
                     handledBy: p.receivedBy || 'Accounts',
+                    depositSlip: p.depositSlip || p.attachment || p.slipUrl || null,
                     sourceTable: 'invoices'
                   });
                 }
@@ -11967,6 +12089,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         cb.transactionRef,
         COALESCE(cashAcc.name, 'Petty Cash') as accountName,
         COALESCE(cb.createdByName, cb.createdBy, 'Cashier') as handledBy,
+        COALESCE(cb.depositSlip, cb.receiptPhoto) as depositSlip,
         'cashbook_entries' as sourceTable
       FROM cashbook_entries cb
       LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
@@ -11996,6 +12119,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pv.transactionRef,
         COALESCE(acc.name, 'Bank/Cash') as accountName,
         COALESCE(pv.preparedBy, 'Finance') as handledBy,
+        pv.depositSlip,
         'payment_vouchers' as sourceTable
       FROM payment_vouchers pv
       LEFT JOIN chart_of_accounts acc ON pv.accountId = acc.id
@@ -12023,6 +12147,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         sl.transactionRef,
         COALESCE(sl.creditAccountName, 'Bank/Cash') as accountName,
         'Accounts' as handledBy,
+        sl.depositSlip,
         'supplier_ledger' as sourceTable
       FROM supplier_ledger sl
       LEFT JOIN suppliers s ON sl.supplierId = s.id
@@ -12241,6 +12366,7 @@ app.post('/api/finance/payment-vouchers', async (req, res) => {
       description: data.description ? String(data.description).trim() : null,
       preparedBy: data.preparedBy || 'Accounts Officer',
       approvedBy: data.approvedBy || null,
+      depositSlip: data.depositSlip || data.slipUrl || null,
       status: 'Paid'
     };
 
@@ -12267,6 +12393,7 @@ app.post('/api/finance/payment-vouchers', async (req, res) => {
           chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
           transactionRef: data.transactionRef || null,
           voucherNo,
+          depositSlip: data.depositSlip || data.slipUrl || null,
           notes: data.description || null
         });
 
@@ -12315,6 +12442,223 @@ app.post('/api/finance/payment-vouchers', async (req, res) => {
     await conn.rollback();
     console.error('Error creating payment voucher:', error);
     res.status(500).json({ error: error.message || 'Failed to create payment voucher' });
+  } finally {
+    conn.release();
+  }
+});
+
+// --- CREDIT & DEBIT NOTES (Sales & Purchase Returns / Adjustments with Auto GL) ---
+app.get('/api/finance/credit-debit-notes', async (req, res) => {
+  try {
+    const { type, partyType, startDate, endDate, search } = req.query;
+    let query = 'SELECT * FROM credit_debit_notes WHERE 1=1';
+    const params: any[] = [];
+
+    if (type) {
+      query += ' AND type = ?';
+      params.push(type);
+    }
+    if (partyType) {
+      query += ' AND partyType = ?';
+      params.push(partyType);
+    }
+    if (startDate && endDate) {
+      query += ' AND date BETWEEN ? AND ?';
+      params.push(startDate, endDate);
+    }
+    if (search && String(search).trim()) {
+      const q = `%${String(search).trim()}%`;
+      query += ' AND (noteNo LIKE ? OR partyName LIKE ? OR reason LIKE ? OR relatedDocNo LIKE ?)';
+      params.push(q, q, q, q);
+    }
+
+    query += ' ORDER BY date DESC, id DESC LIMIT 200';
+    const [rows]: any = await db.query(query, params);
+    res.json(rows);
+  } catch (err: any) {
+    console.error('Error fetching credit/debit notes:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/finance/credit-debit-notes', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const data = { ...req.body };
+    const numAmount = Number(data.totalAmount || data.amount) || 0;
+    if (numAmount <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid note amount greater than 0' });
+    }
+    if (!data.partyName || !data.partyName.trim()) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Party Name is required' });
+    }
+
+    const noteType = data.type === 'debit_note' ? 'debit_note' : 'credit_note';
+    const prefix = noteType === 'credit_note' ? 'CN-' : 'DN-';
+    const seqKey = noteType === 'credit_note' ? 'credit_note' : 'debit_note';
+
+    await conn.query(`
+      INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) 
+      VALUES (?, ?, ?, 1001, 4, NOW()) 
+      ON DUPLICATE KEY UPDATE updated_at = NOW()
+    `, [seqKey, noteType === 'credit_note' ? 'Credit Notes' : 'Debit Notes', prefix]);
+
+    const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = ?", [seqKey]);
+    const nextSeq = seqRow && seqRow[0] ? Number(seqRow[0].next_number) : 1001;
+    const padding = seqRow && seqRow[0] ? Number(seqRow[0].padding) : 4;
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    const noteNo = data.noteNo || `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
+
+    await conn.query("UPDATE document_sequences SET next_number = next_number + 1 WHERE id = ?", [seqKey]);
+
+    const docId = `NOTE-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // Auto GL Integration
+    const jeId = `JE-${docId}`;
+    try {
+      const jeData = {
+        id: jeId,
+        date: (data.date || new Date().toISOString().slice(0, 10)) + ' 12:00:00',
+        reference: noteNo,
+        description: `Auto GL: ${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} ${noteNo} - ${data.partyName} (${data.reason || 'Adjustment'})`,
+        totalAmount: numAmount,
+        createdBy: data.createdBy || 'Accounts Officer',
+        status: 'posted',
+        createdAt: nowIso
+      };
+      await conn.query('INSERT INTO journal_entries SET ?', jeData);
+
+      // Determine GL accounts based on party type and note type:
+      // Customer Credit Note (Sales Return): Debit Sales Returns/Revenue, Credit Accounts Receivable
+      // Customer Debit Note: Debit Accounts Receivable, Credit Sales
+      // Supplier Debit Note (Purchase Return): Debit Accounts Payable, Credit Inventory / Purchase Returns
+      // Supplier Credit Note: Debit Inventory / Expense, Credit Accounts Payable
+      let debitAccId = data.debitAccountId || '';
+      let creditAccId = data.creditAccountId || data.accountId || '';
+
+      if (!debitAccId || !creditAccId) {
+        if (data.partyType === 'customer') {
+          if (noteType === 'credit_note') {
+            // Debit Sales Return (or Revenue acc_4000), Credit AR (acc_1500)
+            debitAccId = 'acc_4000';
+            creditAccId = 'acc_1500';
+          } else {
+            // Debit AR (acc_1500), Credit Revenue (acc_4000)
+            debitAccId = 'acc_1500';
+            creditAccId = 'acc_4000';
+          }
+        } else {
+          // Supplier
+          if (noteType === 'debit_note') {
+            // Debit AP (acc_2000), Credit Inventory/Expense (acc_5000 or acc_1400)
+            debitAccId = 'acc_2000';
+            creditAccId = 'acc_5000';
+          } else {
+            // Debit Expense (acc_5000), Credit AP (acc_2000)
+            debitAccId = 'acc_5000';
+            creditAccId = 'acc_2000';
+          }
+        }
+      }
+
+      const line1 = `JL-${jeId}-1`;
+      const line2 = `JL-${jeId}-2`;
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: line1,
+        entryId: jeId,
+        accountId: debitAccId,
+        debit: numAmount,
+        credit: 0,
+        description: `${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} ${noteNo}`,
+        partyType: data.partyType === 'supplier' ? 'Supplier' : 'Customer',
+        partyId: data.partyId || null
+      });
+
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: line2,
+        entryId: jeId,
+        accountId: creditAccId,
+        debit: 0,
+        credit: numAmount,
+        description: `${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} ${noteNo}`,
+        partyType: data.partyType === 'supplier' ? 'Supplier' : 'Customer',
+        partyId: data.partyId || null
+      });
+
+      // Update Chart of Account balances
+      const [accs]: any = await conn.query('SELECT id, type, balance FROM chart_of_accounts WHERE id IN (?, ?)', [debitAccId, creditAccId]);
+      for (const a of (accs || [])) {
+        if (a.id === debitAccId) {
+          const delta = (a.type === 'Asset' || a.type === 'Expense') ? numAmount : -numAmount;
+          await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [delta, a.id]);
+        } else if (a.id === creditAccId) {
+          const delta = (a.type === 'Asset' || a.type === 'Expense') ? -numAmount : numAmount;
+          await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [delta, a.id]);
+        }
+      }
+    } catch (jeErr) {
+      console.warn('Auto journal for note partially skipped:', jeErr);
+    }
+
+    // If Supplier Note, record in supplier_ledger
+    if (data.partyType === 'supplier' && data.partyId) {
+      try {
+        const slId = `SL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const isReturn = noteType === 'debit_note';
+        await conn.query('INSERT INTO supplier_ledger SET ?', {
+          id: slId,
+          supplierId: data.partyId,
+          date: (data.date || new Date().toISOString().slice(0, 10)) + ' 12:00:00',
+          type: isReturn ? 'return' : 'adjustment',
+          referenceNo: noteNo,
+          description: data.reason || `${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} ${noteNo}`,
+          debit: isReturn ? numAmount : 0,
+          credit: !isReturn ? numAmount : 0,
+          amount: numAmount,
+          paymentMethod: noteType === 'credit_note' ? 'Credit Note' : 'Debit Note',
+          notes: data.notes || null
+        });
+      } catch (slErr) {
+        console.warn('Could not post to supplier ledger from note:', slErr);
+      }
+    }
+
+    const notePayload = {
+      id: docId,
+      noteNo,
+      type: noteType,
+      partyType: data.partyType || 'customer',
+      partyId: data.partyId || null,
+      partyName: data.partyName.trim(),
+      date: data.date || new Date().toISOString().slice(0, 10),
+      reason: data.reason || null,
+      relatedDocType: data.relatedDocType || null,
+      relatedDocNo: data.relatedDocNo || null,
+      accountId: data.accountId || null,
+      accountName: data.accountName || null,
+      subtotal: Number(data.subtotal || numAmount),
+      taxAmount: Number(data.taxAmount || 0),
+      totalAmount: numAmount,
+      taxProfileId: data.taxProfileId || null,
+      taxBreakdown: typeof data.taxBreakdown === 'object' ? JSON.stringify(data.taxBreakdown) : (data.taxBreakdown || null),
+      items: typeof data.items === 'object' ? JSON.stringify(data.items) : (data.items || null),
+      notes: data.notes || null,
+      status: 'issued',
+      journalEntryId: jeId,
+      createdBy: data.createdBy || 'Accounts Officer'
+    };
+
+    await conn.query('INSERT INTO credit_debit_notes SET ?', notePayload);
+    await conn.commit();
+    res.json({ success: true, id: docId, noteNo, note: notePayload });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Error creating credit/debit note:', err);
+    res.status(500).json({ error: err.message });
   } finally {
     conn.release();
   }
@@ -12589,6 +12933,7 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       chequeStatus: data.chequeStatus || (data.chequeNo ? 'Pending' : null),
       transactionRef: data.transactionRef ? String(data.transactionRef).trim() : null,
       receivedBy: data.receivedBy || 'Accounts Officer',
+      depositSlip: data.depositSlip || data.slipUrl || null,
       notes: data.notes || null,
       status: 'Received',
       journalEntryId: jeId,

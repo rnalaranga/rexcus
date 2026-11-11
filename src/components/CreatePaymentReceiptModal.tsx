@@ -18,11 +18,15 @@ import {
   Phone,
   Mail,
   MapPin,
-  FileText
+  FileText,
+  Upload,
+  Paperclip,
+  Eye,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, numberToWords } from "@/lib/utils";
-import { createPaymentReceipt, fetchPaymentReceipts } from "@/lib/api";
+import { createPaymentReceipt, fetchPaymentReceipts, uploadFileToStorage } from "@/lib/api";
 import { useAccounts } from "@/hooks/useFinance";
 import { useDialog } from "@/components/ui/DialogProvider";
 import { useAuth } from "@/contexts/AuthContext";
@@ -127,10 +131,35 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
   const [depositAccountId, setDepositAccountId] = useState("");
   const [reference, setReference] = useState("");
   const [chequeBank, setChequeBank] = useState("");
+  const [depositSlip, setDepositSlip] = useState("");
+  const [isUploadingSlip, setIsUploadingSlip] = useState(false);
   const [notes, setNotes] = useState("");
   const [attention, setAttention] = useState(customerAttention);
   const [receivedBy, setReceivedBy] = useState(user?.name || "Accounts Dept");
   const [submitting, setSubmitting] = useState(false);
+
+  const handleSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSlip(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setDepositSlip(rawDataUri);
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'slips');
+        if (uploaded && uploaded.url) {
+          setDepositSlip(uploaded.url);
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingSlip(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Filter deposit accounts: Asset accounts of subtype Bank or Cash
   const depositAccounts = accounts.filter(
@@ -290,6 +319,7 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
         accountName: selectedAccount ? selectedAccount.name : depositAccountId,
         depositAccountName: selectedAccount ? selectedAccount.name : depositAccountId,
         reference: finalReference || null,
+        depositSlip: depositSlip || null,
         notes: notes.trim() || (orderNo ? `Advance payment against Sales Order ${orderNo}` : `Advance payment against Quotation ${quotationNo}`),
         receivedBy: receivedBy.trim() || "Accounts Dept",
         totalQuoted: quotedTotal,
@@ -667,6 +697,76 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                     placeholder="e.g. Commercial Bank - Colombo / HNB - Negombo"
                     className="w-full px-3 py-2 bg-background border border-theme-subtle rounded-none text-xs font-semibold text-primary outline-none focus:border-amber-500"
                   />
+                </div>
+              )}
+
+              {/* Deposit Slip Attachment (Bank Transfer / Wire or any deposit) */}
+              {paymentMethod === "Bank Transfer" && (
+                <div className="space-y-1.5 p-3 rounded-none bg-surface2/60 border border-purple-500/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-primary flex items-center gap-1.5">
+                      <Paperclip size={13} className="text-purple-500" /> Bank Deposit Slip / Transfer Receipt (තැන්පතු ස්ලිප්පුව)
+                    </label>
+                    {depositSlip && (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle size={11} /> Attached
+                      </span>
+                    )}
+                  </div>
+
+                  {!depositSlip ? (
+                    <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-theme-subtle hover:border-purple-500/50 rounded-none bg-background/50 hover:bg-purple-500/5 transition-all cursor-pointer group">
+                      <div className="flex items-center gap-2 text-secondary group-hover:text-purple-600 dark:group-hover:text-purple-400">
+                        <Upload size={16} />
+                        <span className="text-xs font-semibold">
+                          {isUploadingSlip ? 'Uploading deposit slip...' : 'Upload Deposit Slip (Image / PDF)'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted mt-0.5">JPG, PNG, WebP or PDF slip</span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        disabled={isUploadingSlip}
+                        onChange={handleSlipUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  ) : (
+                    <div className="flex items-center justify-between p-2 bg-background border border-emerald-500/30 rounded-none">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        {depositSlip.startsWith('data:image') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(depositSlip) ? (
+                          <img src={depositSlip} alt="Deposit Slip" className="w-10 h-10 object-cover border border-theme-subtle rounded-none shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+                            <FileText size={18} />
+                          </div>
+                        )}
+                        <div className="truncate">
+                          <span className="text-xs font-bold text-primary block truncate">Bank Deposit Slip</span>
+                          <span className="text-[10px] text-muted">Ready to save with receipt</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a
+                          href={depositSlip}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 text-secondary hover:text-primary transition-colors"
+                          title="Preview Slip"
+                        >
+                          <Eye size={14} />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setDepositSlip("")}
+                          className="p-1.5 text-rose-500 hover:text-rose-600 transition-colors"
+                          title="Remove Slip"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

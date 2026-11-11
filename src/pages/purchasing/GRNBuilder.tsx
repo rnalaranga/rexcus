@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { usePurchaseOrders, useGRNs } from '@/hooks/usePurchasing';
 import { useSuppliers, useInventory } from '@/hooks/useData';
+import { useTaxProfiles } from '@/hooks/useFinance';
 import { useSettings } from '@/contexts/SettingsContext';
 import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
@@ -34,6 +35,7 @@ export const GRNBuilder: React.FC = () => {
   const { data: allGRNs } = useGRNs();
   const { data: suppliers, refetch: refetchSuppliers } = useSuppliers();
   const { data: inventory = [], refetch: refetchInventory } = useInventory();
+  const { data: taxProfiles = [] } = useTaxProfiles();
   const { settings } = useSettings();
 
   const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
@@ -108,8 +110,19 @@ export const GRNBuilder: React.FC = () => {
   const [addUnitCost, setAddUnitCost] = useState<number>(0);
   const [addCondition, setAddCondition] = useState<string>('Good');
   const [isDirectCutPiece, setIsDirectCutPiece] = useState<boolean>(false);
+  const [directCutProfile, setDirectCutProfile] = useState<'sheet' | 'rod'>('sheet');
+  const [directCutThickness, setDirectCutThickness] = useState<number>(20);
+  const [multiCutRows, setMultiCutRows] = useState<Array<{ id: string; length: number; width: number; pieces: number }>>([
+    { id: 'cut-1', length: 50, width: 50, pieces: 4 },
+    { id: 'cut-2', length: 20, width: 40, pieces: 5 }
+  ]);
   const [directCutLength, setDirectCutLength] = useState<number>(200);
   const [directStdLength, setDirectStdLength] = useState<number>(6000);
+
+  // Tax Management
+  const [taxEnabled, setTaxEnabled] = useState<boolean>(false);
+  const [taxProfileId, setTaxProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep');
+  const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
@@ -188,6 +201,19 @@ export const GRNBuilder: React.FC = () => {
           setMtrCertNo(grn.mtrCertNo || '');
           setBillAttachment(grn.billAttachment || '');
           setBillAttachmentName(grn.billAttachmentName || '');
+
+          if (grn.taxProfileId) {
+            setTaxProfileId(grn.taxProfileId);
+            setTaxEnabled(true);
+          }
+          if (grn.isTaxInclusive !== undefined && grn.isTaxInclusive !== null) {
+            setIsTaxInclusive(Boolean(Number(grn.isTaxInclusive) === 1));
+          } else if (grn.taxBreakdown) {
+            try {
+              const tb = typeof grn.taxBreakdown === 'string' ? JSON.parse(grn.taxBreakdown) : grn.taxBreakdown;
+              if (tb && tb.isTaxInclusive) setIsTaxInclusive(true);
+            } catch (e) {}
+          }
 
           const cleanNotes = rawNotes.replace(/Vehicle:[^|]+\|\s*Location:[^|]+\|\s*/, '').trim();
           setNotes(cleanNotes || rawNotes || 'All items inspected and received in good condition.');
@@ -326,6 +352,19 @@ export const GRNBuilder: React.FC = () => {
     if (detectedSupplierId && detectedSupplierId !== supplierId) {
       setSupplierId(detectedSupplierId);
     }
+
+    // Auto inherit tax profile from first selected PO if available
+    const primaryPo = pos?.find((p: any) => p.id === poIdList[0]);
+    if (primaryPo) {
+      if (primaryPo.taxProfileId) {
+        setTaxProfileId(primaryPo.taxProfileId);
+        setTaxEnabled(true);
+      }
+      if (primaryPo.isTaxInclusive !== undefined && primaryPo.isTaxInclusive !== null) {
+        setIsTaxInclusive(Boolean(Number(primaryPo.isTaxInclusive) === 1));
+      }
+    }
+
     setItems(consolidatedItems);
   };
 
@@ -356,6 +395,12 @@ export const GRNBuilder: React.FC = () => {
     setAddUnitCost(0);
     setAddCondition('Good');
     setIsDirectCutPiece(false);
+    setDirectCutProfile('sheet');
+    setDirectCutThickness(20);
+    setMultiCutRows([
+      { id: 'cut-1', length: 50, width: 50, pieces: 4 },
+      { id: 'cut-2', length: 20, width: 40, pieces: 5 }
+    ]);
     setDirectCutLength(200);
     setDirectStdLength(6000);
     setIsAddItemModalOpen(true);
@@ -366,9 +411,17 @@ export const GRNBuilder: React.FC = () => {
     if (!invId) return;
     const inv = inventory.find((i: any) => String(i.id) === String(invId));
     if (inv) {
-      setCustomItemDesc(inv.name || inv.desc || inv.item_name || '');
+      const nm = inv.name || inv.desc || inv.item_name || '';
+      setCustomItemDesc(nm);
       setAddUnit(inv.unit || 'Nos');
       setAddUnitCost(Number(inv.costPrice || inv.unitCost || inv.price || 0));
+      if (nm.toLowerCase().includes('sheet') || nm.toLowerCase().includes('plate')) {
+        setDirectCutProfile('sheet');
+        const thickMatch = nm.match(/(\d+(?:\.\d+)?)\s*mm/i);
+        if (thickMatch) setDirectCutThickness(Number(thickMatch[1]));
+      } else if (nm.toLowerCase().includes('bar') || nm.toLowerCase().includes('rod') || nm.toLowerCase().includes('shaft')) {
+        setDirectCutProfile('rod');
+      }
     }
   };
 
@@ -378,32 +431,66 @@ export const GRNBuilder: React.FC = () => {
       alert('Please enter or select a material description.');
       return;
     }
-    if (addQty <= 0) {
+
+    let finalDesc = desc;
+    let cutsArray: any[] = [];
+    let calculatedQty = addQty;
+
+    if (isDirectCutPiece) {
+      if (directCutProfile === 'sheet') {
+        const validRows = multiCutRows.filter(r => r.length > 0 && r.width > 0 && r.pieces > 0);
+        if (validRows.length === 0) {
+          alert('Please enter at least one cut piece dimension (Length, Width, and Pieces).');
+          return;
+        }
+        cutsArray = validRows.map(r => ({
+          length: Number(r.length),
+          width: Number(r.width),
+          thickness: Number(directCutThickness) || 0,
+          pieces: Number(r.pieces)
+        }));
+        const totalPcs = cutsArray.reduce((s, c) => s + c.pieces, 0);
+        const cutParts = cutsArray.map(c => `${c.length}x${c.width} mm × ${c.pieces} pcs`).join('; ');
+        finalDesc = `${desc.replace(/\s*\[Cut.*?\]/i, '').trim()} [Cut: ${cutParts}]`;
+        calculatedQty = totalPcs;
+      } else {
+        // Bar / Rod cut
+        const cLen = Number(directCutLength) || 200;
+        const cPcs = Number(addQty) || 1;
+        cutsArray = [{
+          length: cLen,
+          pieces: cPcs,
+          thickness: 0
+        }];
+        finalDesc = `${desc.replace(/\s*\[Cut.*?\]/i, '').trim()} [Cut: ${cLen} mm × ${cPcs} pcs]`;
+        calculatedQty = cPcs;
+      }
+    }
+
+    if (calculatedQty <= 0) {
       alert('Please enter a quantity greater than 0.');
       return;
     }
-
-    const cutLen = isDirectCutPiece ? Number(directCutLength) || 200 : 0;
-    const finalDesc = (isDirectCutPiece && cutLen > 0) 
-      ? `${desc.replace(/\s*\[Cut:.*?\]/i, '').trim()} [Cut: ${cutLen} mm × ${addQty} pcs]`
-      : desc;
 
     const newItem = {
       id: selectedInvId || `DIRECT-${Date.now().toString().slice(-4)}-${items.length + 1}`,
       inventoryId: selectedInvId || '',
       desc: finalDesc,
       poId: '',
-      qty: Number(addQty),
-      qtyReceived: Number(addQty),
+      qty: Number(calculatedQty),
+      qtyReceived: Number(calculatedQty),
       unit: addUnit || 'Nos',
       unitCost: Number(addUnitCost || 0),
       condition: addCondition || 'Good',
-      isCutPiece: isDirectCutPiece && cutLen > 0,
-      cutLength: cutLen,
-      pieces: Number(addQty),
+      isCutPiece: isDirectCutPiece && cutsArray.length > 0,
+      cuts: cutsArray,
+      cutLength: cutsArray[0]?.length || 0,
+      cutWidth: cutsArray[0]?.width || 0,
+      thickness: directCutThickness || 0,
+      pieces: Number(calculatedQty),
       standardLength: Number(directStdLength) || 6000,
       cutUnit: 'mm',
-      logToRemnants: isDirectCutPiece && cutLen > 0
+      logToRemnants: isDirectCutPiece && cutsArray.length > 0
     };
 
     setItems(prev => [...prev, newItem]);
@@ -486,6 +573,12 @@ export const GRNBuilder: React.FC = () => {
       status: 'received',
       billAttachment: billAttachment || null,
       billAttachmentName: billAttachmentName || null,
+      taxProfileId: taxEnabled ? taxProfileId : null,
+      taxBreakdown: taxEnabled && taxBreakdown ? JSON.stringify(taxBreakdown) : null,
+      isTaxInclusive: isTaxInclusive ? 1 : 0,
+      subtotal: netSubtotal,
+      taxAmount: totalTax,
+      totalAmount: grandTotalGRNValue,
       notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
     };
 
@@ -562,6 +655,94 @@ export const GRNBuilder: React.FC = () => {
   const totalGRNValue = items.reduce((sum, item) => sum + (Number(item.qtyReceived || 0) * Number(item.unitCost || 0)), 0);
   const totalPOExpectedValue = items.reduce((sum, item) => sum + (Number(item.qtyReceived || 0) * Number(item.poUnitPrice !== undefined ? item.poUnitPrice : (item.unitCost || 0))), 0);
   const netPriceVariance = totalGRNValue - totalPOExpectedValue;
+
+  // Tax calculations
+  const selectedTaxProfile = taxProfiles.find((t: any) => t.id === taxProfileId);
+  let totalTax = 0;
+  let taxBreakdown: any = null;
+  let netSubtotal = totalGRNValue;
+
+  if (taxEnabled && selectedTaxProfile) {
+    const t1Rate = Number(selectedTaxProfile.tax1_rate) || 0;
+    const t2Rate = Number(selectedTaxProfile.tax2_rate) || 0;
+    const t1 = t1Rate / 100;
+    const t2 = t2Rate / 100;
+
+    const isSsclHidden = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 0);
+    const isVatSeparate = Boolean(t2Rate > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true);
+    const isSsclSeparate = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 1);
+
+    if (isTaxInclusive) {
+      let baseSub = totalGRNValue;
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        baseSub = totalGRNValue / (1 + t2);
+        t2Amount = totalGRNValue - baseSub;
+        t1Amount = 0;
+      } else if (isSsclSeparate && isVatSeparate) {
+        const divisor = selectedTaxProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+        baseSub = totalGRNValue / divisor;
+        t1Amount = baseSub * t1;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSub + t1Amount) : baseSub;
+        t2Amount = baseForT2 * t2;
+      } else {
+        baseSub = totalGRNValue;
+        t1Amount = 0;
+        t2Amount = 0;
+      }
+
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round((totalGRNValue - (Math.round(baseSub * 100) / 100) - t1Amount) * 100) / 100;
+      totalTax = t1Amount + t2Amount;
+      netSubtotal = Math.round(baseSub * 100) / 100;
+      taxBreakdown = {
+        profileName: selectedTaxProfile.name,
+        tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+        tax1Rate: t1Rate,
+        tax1Amount: t1Amount,
+        tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+        tax2Rate: t2Rate,
+        tax2Amount: t2Amount,
+        isCompound: Boolean(selectedTaxProfile.tax2_compound),
+        isTaxInclusive: true
+      };
+    } else {
+      let t1Amount = 0;
+      let t2Amount = 0;
+
+      if (isSsclHidden && isVatSeparate) {
+        t1Amount = 0;
+        t2Amount = totalGRNValue * t2;
+      } else if (selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0) {
+        t1Amount = 0;
+        t2Amount = 0;
+      } else {
+        t1Amount = isSsclSeparate ? (totalGRNValue * t1) : 0;
+        const baseForT2 = selectedTaxProfile.tax2_compound ? (totalGRNValue + t1Amount) : totalGRNValue;
+        t2Amount = isVatSeparate ? (baseForT2 * t2) : 0;
+      }
+
+      t1Amount = Math.round(t1Amount * 100) / 100;
+      t2Amount = Math.round(t2Amount * 100) / 100;
+      totalTax = t1Amount + t2Amount;
+      netSubtotal = totalGRNValue;
+      taxBreakdown = {
+        profileName: selectedTaxProfile.name,
+        tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+        tax1Rate: t1Rate,
+        tax1Amount: t1Amount,
+        tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+        tax2Rate: t2Rate,
+        tax2Amount: t2Amount,
+        isCompound: Boolean(selectedTaxProfile.tax2_compound),
+        isTaxInclusive: false
+      };
+    }
+  }
+
+  const grandTotalGRNValue = isTaxInclusive ? totalGRNValue : (totalGRNValue + totalTax);
 
   // Available POs for selection (optionally filtered by supplier)
   const availablePOs = useMemo(() => {
@@ -1053,33 +1234,104 @@ export const GRNBuilder: React.FC = () => {
                </p>
             </GlassCard>
 
-            {/* GRN Valuation & Price Variance Summary */}
+            {/* GRN Valuation & Tax Calculation Summary */}
             <GlassCard className="p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-theme-subtle pb-2">
                 <h3 className="font-bold text-[11px] uppercase tracking-wider text-muted flex items-center gap-1.5">
-                  <FileText size={13} className="text-primary" /> Receipt Valuation
+                  <FileText size={13} className="text-primary" /> Receipt Valuation & Taxes
                 </h3>
                 <span className="text-[10px] font-mono font-bold text-muted">LKR</span>
               </div>
 
+              {/* Tax Profile Toggle & Select */}
+              <div className="space-y-2 pt-1 border-b border-theme-subtle pb-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-secondary flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={taxEnabled}
+                      disabled={isViewMode}
+                      onChange={e => setTaxEnabled(e.target.checked)}
+                      className="rounded text-primary h-3.5 w-3.5"
+                    />
+                    <span>Apply Taxes (VAT / SSCL)</span>
+                  </label>
+                  {taxEnabled && (
+                    <label className="text-[11px] font-medium text-muted flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isTaxInclusive}
+                        disabled={isViewMode}
+                        onChange={e => setIsTaxInclusive(e.target.checked)}
+                        className="rounded text-primary h-3 w-3"
+                      />
+                      <span>Tax Inclusive</span>
+                    </label>
+                  )}
+                </div>
+
+                {taxEnabled && (
+                  <select
+                    value={taxProfileId}
+                    disabled={isViewMode}
+                    onChange={e => setTaxProfileId(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-medium focus:border-primary"
+                  >
+                    {taxProfiles.map((tp: any) => (
+                      <option key={tp.id} value={tp.id}>
+                        {tp.name} ({tp.tax2_rate || 18}% VAT{tp.tax1_rate ? ` + ${tp.tax1_rate}% SSCL` : ''})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted">Total Received Value:</span>
+                  <span className="text-muted">Subtotal (Materials):</span>
                   <span className="font-mono font-bold text-sm text-primary">
-                    {formatCurrency(totalGRNValue, true)}
+                    {formatCurrency(netSubtotal, true)}
+                  </span>
+                </div>
+
+                {taxEnabled && taxBreakdown && (
+                  <div className="space-y-1.5 py-1.5 px-2 bg-surface2/50 rounded border border-theme-subtle text-[11px]">
+                    {taxBreakdown.tax1Rate > 0 && (
+                      <div className="flex justify-between items-center text-secondary">
+                        <span>{taxBreakdown.tax1Name} ({taxBreakdown.tax1Rate}%):</span>
+                        <span className="font-mono font-bold text-primary">{formatCurrency(taxBreakdown.tax1Amount, true)}</span>
+                      </div>
+                    )}
+                    {taxBreakdown.tax2Rate > 0 && (
+                      <div className="flex justify-between items-center text-secondary">
+                        <span>{taxBreakdown.tax2Name} ({taxBreakdown.tax2Rate}%):</span>
+                        <span className="font-mono font-bold text-primary">{formatCurrency(taxBreakdown.tax2Amount, true)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 border-t border-theme-subtle text-[11px] font-bold">
+                      <span className="text-muted">Total Tax:</span>
+                      <span className="font-mono text-amber-500">+{formatCurrency(totalTax, true)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center pt-1.5 border-t-2 border-theme-subtle font-black text-sm">
+                  <span className="text-primary">Total GRN Value:</span>
+                  <span className="font-mono text-base text-emerald-600 dark:text-emerald-400">
+                    {formatCurrency(grandTotalGRNValue, true)}
                   </span>
                 </div>
 
                 {receiptMode === 'po' && (
                   <>
-                    <div className="flex justify-between items-center text-[11px]">
+                    <div className="flex justify-between items-center text-[11px] pt-1">
                       <span className="text-muted">PO Expected Value:</span>
                       <span className="font-mono text-secondary">
                         {formatCurrency(totalPOExpectedValue, true)}
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle text-[11px]">
+                    <div className="flex justify-between items-center pt-1 border-t border-theme-subtle text-[11px]">
                       <span className="font-medium text-muted">Price Variance:</span>
                       <span className={`font-mono font-bold ${
                         netPriceVariance === 0 
@@ -1818,40 +2070,168 @@ export const GRNBuilder: React.FC = () => {
                 className="rounded text-primary h-3.5 w-3.5"
               />
               <span className="flex items-center gap-1 text-primary">
-                <Scissors size={12} className="text-amber-500" /> Cut Piece / Dimension (mm)
+                <Scissors size={12} className="text-amber-500" /> Cut Piece / Dimension Breakdown (Sheets / Rods)
               </span>
             </label>
 
             {isDirectCutPiece && (
-              <div className="mt-2.5 bg-surface/50 border border-theme-subtle p-3 rounded-lg space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Cut Length (mm) *</label>
+              <div className="mt-2.5 bg-surface/50 border border-theme-subtle p-3 rounded-lg space-y-3">
+                {/* Profile selection: Sheet vs Rod */}
+                <div className="flex items-center gap-4 text-xs font-semibold">
+                  <span className="text-[10px] uppercase tracking-wider text-muted font-bold">Profile:</span>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
                     <input
-                      type="number"
-                      min="1"
-                      value={directCutLength}
-                      onChange={e => setDirectCutLength(Math.max(1, Number(e.target.value)))}
-                      placeholder="e.g. 200"
-                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono font-bold focus:border-primary"
+                      type="radio"
+                      name="directProfile"
+                      value="sheet"
+                      checked={directCutProfile === 'sheet'}
+                      onChange={() => setDirectCutProfile('sheet')}
+                      className="text-primary"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted uppercase mb-1">Standard Bar (mm)</label>
+                    <span>Sheet / Plate (Thickness × Length × Width)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
                     <input
-                      type="number"
-                      min="1"
-                      value={directStdLength}
-                      onChange={e => setDirectStdLength(Math.max(1, Number(e.target.value)))}
-                      placeholder="Default: 6000"
-                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono focus:border-primary"
+                      type="radio"
+                      name="directProfile"
+                      value="rod"
+                      checked={directCutProfile === 'rod'}
+                      onChange={() => setDirectCutProfile('rod')}
+                      className="text-primary"
                     />
+                    <span>Bar / Rod / Shaft</span>
+                  </label>
+                </div>
+
+                {directCutProfile === 'sheet' ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-36">
+                        <label className="block text-[10px] font-bold text-muted uppercase mb-1">Thickness (mm)</label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          value={directCutThickness}
+                          onChange={e => setDirectCutThickness(Number(e.target.value))}
+                          placeholder="e.g. 20"
+                          className="w-full bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-mono font-bold focus:border-primary"
+                        />
+                      </div>
+                      <div className="flex-1 text-[11px] text-muted pt-4">
+                        e.g. 20mm Sheet cuts (50x50 mm x 4 pcs; 20x40 mm x 5 pcs)
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Cut Dimensions:</span>
+                        <button
+                          type="button"
+                          onClick={() => setMultiCutRows(prev => [...prev, { id: 'cut-' + Date.now(), length: 50, width: 50, pieces: 1 }])}
+                          className="text-[10px] text-primary hover:underline font-bold flex items-center gap-0.5"
+                        >
+                          <Plus size={10} /> Add Cut Row
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                        {multiCutRows.map((r, rIdx) => (
+                          <div key={r.id} className="flex items-center gap-2 bg-surface2/60 p-1.5 rounded border border-theme-subtle text-xs">
+                            <span className="text-[10px] font-mono text-muted w-4">{rIdx + 1}.</span>
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Length"
+                                value={r.length}
+                                onChange={e => {
+                                  const n = [...multiCutRows];
+                                  n[rIdx].length = Number(e.target.value);
+                                  setMultiCutRows(n);
+                                }}
+                                className="w-16 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-xs font-mono text-center font-bold"
+                              />
+                              <span className="text-muted text-[11px]">×</span>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Width"
+                                value={r.width}
+                                onChange={e => {
+                                  const n = [...multiCutRows];
+                                  n[rIdx].width = Number(e.target.value);
+                                  setMultiCutRows(n);
+                                }}
+                                className="w-16 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-xs font-mono text-center font-bold"
+                              />
+                              <span className="text-muted text-[10px]">mm</span>
+                              <span className="text-muted text-[11px] ml-1">×</span>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Pcs"
+                                value={r.pieces}
+                                onChange={e => {
+                                  const n = [...multiCutRows];
+                                  n[rIdx].pieces = Number(e.target.value);
+                                  setMultiCutRows(n);
+                                }}
+                                className="w-14 bg-surface border-2 border-primary/50 px-1.5 py-1 rounded text-xs font-mono text-center font-bold text-primary"
+                              />
+                              <span className="text-[10px] text-muted">pcs</span>
+                            </div>
+                            {multiCutRows.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setMultiCutRows(prev => prev.filter((_, idx) => idx !== rIdx))}
+                                className="p-1 hover:bg-rose-500/10 text-muted hover:text-rose-500 rounded"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold pt-1 flex justify-between">
+                        <span>Total Pieces: {multiCutRows.reduce((s, r) => s + (Number(r.pieces) || 0), 0)} pcs</span>
+                        <span className="text-[10px] text-muted font-normal">Will be logged directly to Offcut Rack</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center justify-between pt-1">
-                  <span>Total cut: {directCutLength * addQty} mm ({(directCutLength * addQty / 1000).toFixed(3)} M)</span>
-                  <span>Fraction: {((directCutLength * addQty) / directStdLength).toFixed(4)} of Bar</span>
-                </div>
+                ) : (
+                  <div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-muted uppercase mb-1">Cut Length (mm) *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={directCutLength}
+                          onChange={e => setDirectCutLength(Math.max(1, Number(e.target.value)))}
+                          placeholder="e.g. 200"
+                          className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono font-bold focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-muted uppercase mb-1">Standard Bar (mm)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={directStdLength}
+                          onChange={e => setDirectStdLength(Math.max(1, Number(e.target.value)))}
+                          placeholder="Default: 6000"
+                          className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-mono focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center justify-between pt-1">
+                      <span>Total cut: {directCutLength * addQty} mm ({(directCutLength * addQty / 1000).toFixed(3)} M)</span>
+                      <span>Fraction: {((directCutLength * addQty) / directStdLength).toFixed(4)} of Bar</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

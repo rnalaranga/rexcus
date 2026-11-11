@@ -4,7 +4,7 @@ import {
   Wallet, ArrowDownLeft, ArrowUpRight, Plus, Printer, Calendar,
   ChevronLeft, ChevronRight, Search, Trash2, ArrowRightLeft,
   DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle, Coins,
-  Check, X, Camera, ShieldCheck, Smartphone
+  Check, X, Camera, ShieldCheck, Smartphone, Upload, Paperclip, Eye
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -15,7 +15,7 @@ import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
 import { 
   createCashbookEntry, deleteCashbookEntry, approveCashbookEntry, 
-  rejectCashbookEntry, setCashbookFloat, CashbookEntry 
+  rejectCashbookEntry, setCashbookFloat, CashbookEntry, uploadFileToStorage 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -71,7 +71,32 @@ export const DailyCashbook: React.FC = () => {
   const [chequeDate, setChequeDate] = useState<string>(todayStr);
   const [bankName, setBankName] = useState<string>('');
   const [transactionRef, setTransactionRef] = useState<string>('');
+  const [depositSlip, setDepositSlip] = useState<string>('');
+  const [isUploadingSlip, setIsUploadingSlip] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>('');
+
+  const handleCashbookSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSlip(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setDepositSlip(rawDataUri);
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'slips');
+        if (uploaded && uploaded.url) {
+          setDepositSlip(uploaded.url);
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingSlip(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Supplier Settlement state
   const [payeeCategory, setPayeeCategory] = useState<'expense' | 'supplier'>('expense');
@@ -257,6 +282,7 @@ export const DailyCashbook: React.FC = () => {
         bankName: paymentMethod === 'Cheque' ? (bankName.trim() || undefined) : undefined,
         chequeStatus: paymentMethod === 'Cheque' ? 'Pending' : undefined,
         transactionRef: paymentMethod === 'Bank Transfer' ? (transactionRef.trim() || referenceNo.trim() || undefined) : undefined,
+        depositSlip: depositSlip || undefined,
         supplierId: payeeCategory === 'supplier' ? (selectedSupplierId || undefined) : undefined,
         relatedBillId: relatedBillId || undefined,
         createdBy: user?.name || user?.username || 'Cashier',
@@ -1366,15 +1392,74 @@ export const DailyCashbook: React.FC = () => {
             )}
 
             {paymentMethod === 'Bank Transfer' && (
-              <div className="pt-1.5 border-t border-theme-subtle">
-                <label className="block text-[11px] font-medium text-secondary mb-1">Transfer / SLIPS Ref #</label>
-                <input
-                  type="text"
-                  placeholder="e.g. CEFT-883921 / TRF-091"
-                  value={transactionRef}
-                  onChange={e => setTransactionRef(e.target.value)}
-                  className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary font-mono outline-none focus:ring-1 focus:ring-rex-500"
-                />
+              <div className="pt-1.5 border-t border-theme-subtle space-y-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-secondary mb-1">Transfer / SLIPS Ref #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. CEFT-883921 / TRF-091"
+                    value={transactionRef}
+                    onChange={e => setTransactionRef(e.target.value)}
+                    className="w-full bg-surface border border-theme rounded-md px-2.5 py-1.5 text-xs text-primary font-mono outline-none focus:ring-1 focus:ring-rex-500"
+                  />
+                </div>
+                {/* Deposit Slip Upload */}
+                <div className="space-y-1.5 p-2 rounded bg-surface border border-purple-500/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
+                      <Paperclip size={12} className="text-purple-500" /> Bank Deposit Slip / Transfer Receipt
+                    </label>
+                    {depositSlip && (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                        ✓ Attached
+                      </span>
+                    )}
+                  </div>
+                  {!depositSlip ? (
+                    <label className="flex items-center justify-center gap-2 p-2 border border-dashed border-theme-subtle hover:border-purple-500/50 rounded bg-background/50 hover:bg-purple-500/5 transition-all cursor-pointer">
+                      <Upload size={14} className="text-secondary" />
+                      <span className="text-[11px] font-medium text-secondary">
+                        {isUploadingSlip ? 'Uploading slip...' : 'Attach Deposit Slip (Image / PDF)'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        disabled={isUploadingSlip}
+                        onChange={handleCashbookSlipUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  ) : (
+                    <div className="flex items-center justify-between p-1.5 bg-background border border-emerald-500/30 rounded">
+                      <div className="flex items-center gap-2 truncate">
+                        {depositSlip.startsWith('data:image') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(depositSlip) ? (
+                          <img src={depositSlip} alt="Slip" className="w-7 h-7 object-cover rounded border" />
+                        ) : (
+                          <FileText size={15} className="text-purple-500" />
+                        )}
+                        <span className="text-[11px] font-medium truncate">Slip Attached</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setViewReceiptModal(depositSlip)}
+                          className="p-1 text-secondary hover:text-primary"
+                          title="Preview"
+                        >
+                          <Eye size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDepositSlip('')}
+                          className="p-1 text-rose-500 hover:text-rose-600"
+                          title="Remove"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
