@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck, Tags, FileSpreadsheet, RefreshCw } from 'lucide-react'
+import { Plus, Search, Activity, Filter, Package, Wrench, Edit, Trash2, ArrowLeft, Info, DollarSign, Truck, Save, X, Download, Upload, Box, Briefcase, Building2, User, Phone, FileText, Printer, Send, CheckCircle, Calendar, ExternalLink, Layers, ShoppingCart, Image as ImageIcon, LayoutGrid, List, Eye, Scissors, PackageCheck, Tags, FileSpreadsheet, RefreshCw, RotateCcw } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
@@ -8,7 +8,7 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useInventory, useSuppliers, useStockLedger, useLeads, useFinishedGoodsOrders, useStockRemnants } from '@/hooks/useData'
-import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN, fetchGatePasses, createGatePass, deleteGatePass, fetchQuotations, createCustomerGRN } from '@/lib/api'
+import { createInventoryItem, updateInventoryItem, deleteInventoryItem, addStockLedgerEntry, fetchAllCustomerGRNs, updateCustomerGRN, fetchGatePasses, createGatePass, deleteGatePass, fetchQuotations, createCustomerGRN, resetAllInventoryStock, resetAllInventoryPricing } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -143,6 +143,43 @@ export const Inventory: React.FC = () => {
   const [fgViewMode, setFgViewMode] = useState<'grid' | 'table'>('grid')
   const [finishedProductModalOpen, setFinishedProductModalOpen] = useState(false)
   const [selectedFinishedProduct, setSelectedFinishedProduct] = useState<any | null>(null)
+
+  const [resettingStock, setResettingStock] = useState(false)
+  const [resettingPricing, setResettingPricing] = useState(false)
+
+  const handleResetAllStock = async () => {
+    const ok = window.confirm(
+      '⚠️ ARE YOU ABSOLUTELY SURE?\n\nThis will reset ALL inventory stock quantities to 0 across the entire system.\n\nClick OK to confirm.'
+    )
+    if (!ok) return
+    try {
+      setResettingStock(true)
+      await resetAllInventoryStock()
+      await refetch()
+      alert('✅ All inventory stock quantities have been reset to 0.')
+    } catch (err: any) {
+      alert(err.message || 'Failed to reset inventory stock')
+    } finally {
+      setResettingStock(false)
+    }
+  }
+
+  const handleResetAllPricing = async () => {
+    const ok = window.confirm(
+      '⚠️ ARE YOU ABSOLUTELY SURE?\n\nThis will reset ALL inventory pricing (Unit Prices and Unit Costs) to 0.00 across the entire system.\n\nClick OK to confirm.'
+    )
+    if (!ok) return
+    try {
+      setResettingPricing(true)
+      await resetAllInventoryPricing()
+      await refetch()
+      alert('✅ All inventory pricing (Unit Prices and Unit Costs) has been reset to 0.00.')
+    } catch (err: any) {
+      alert(err.message || 'Failed to reset inventory pricing')
+    } finally {
+      setResettingPricing(false)
+    }
+  }
   const { data: fgOrders = [], refetch: refetchFgOrders } = useFinishedGoodsOrders()
   const { data: stockRemnants = [], refetch: refetchStockRemnants } = useStockRemnants()
   const [selectedLinearItem, setSelectedLinearItem] = useState<any | null>(null)
@@ -1424,6 +1461,28 @@ export const Inventory: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PageHelpButton moduleId="inventory-stock" />
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleResetAllStock}
+            disabled={resettingStock}
+            className="text-xs text-rose-600 dark:text-rose-400 border border-rose-500/40 hover:bg-rose-500/10 font-bold"
+            title="Reset all stock quantities in inventory to 0"
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1" />
+            {resettingStock ? 'Resetting...' : 'Reset Stock to 0'}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleResetAllPricing}
+            disabled={resettingPricing}
+            className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 font-bold"
+            title="Reset all unit prices and unit costs in inventory to 0.00"
+          >
+            <DollarSign className="w-3.5 h-3.5 mr-1" />
+            {resettingPricing ? 'Resetting...' : 'Reset Pricing to 0'}
+          </Button>
           {activeTab === 'customer_sample' ? (
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setReceiveSampleOpen(true)}>
               Receive Customer Sample

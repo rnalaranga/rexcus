@@ -6357,6 +6357,40 @@ app.delete('/api/inventory/:id', async (req, res) => {
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
 });
+
+app.post('/api/inventory/reset-stock', async (req, res) => {
+  try {
+    const { type } = req.body || {};
+    let sql = 'UPDATE inventory SET quantity = 0, updatedAt = NOW()';
+    const params: any[] = [];
+    if (type && type !== 'all') {
+      sql += ' WHERE type = ?';
+      params.push(type);
+    }
+    const [result]: any = await db.query(sql, params);
+    res.json({ success: true, message: 'All stock quantities reset to 0', affectedRows: result?.affectedRows || 0 });
+  } catch (error: any) {
+    console.error('Error resetting inventory stock:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset inventory stock' });
+  }
+});
+
+app.post('/api/inventory/reset-pricing', async (req, res) => {
+  try {
+    const { type } = req.body || {};
+    let sql = 'UPDATE inventory SET unitPrice = 0.00, unitCost = 0.00, updatedAt = NOW()';
+    const params: any[] = [];
+    if (type && type !== 'all') {
+      sql += ' WHERE type = ?';
+      params.push(type);
+    }
+    const [result]: any = await db.query(sql, params);
+    res.json({ success: true, message: 'All inventory pricing reset to 0.00', affectedRows: result?.affectedRows || 0 });
+  } catch (error: any) {
+    console.error('Error resetting inventory pricing:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset inventory pricing' });
+  }
+});
 // -- STOCK LEDGER & MOVEMENTS --
 app.get('/api/inventory/ledger/all', async (req, res) => {
   try {

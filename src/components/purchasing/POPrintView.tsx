@@ -119,13 +119,14 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
       `}</style>
 
       {/* ── 1. HEADER (Signature Rex Industries standard format) ── */}
-      <div className="flex py-1.5 px-3 border-b border-black items-center">
+      <div className="flex py-2 px-3 border-b border-black items-center">
         {/* Logo (Left 32%) */}
-        <div className="w-[32%] flex justify-center items-center">
+        <div className="w-[32%] flex justify-center items-center py-1">
           <img 
             src={logoUrl} 
             alt="Logo" 
-            className="max-h-16 w-auto max-w-full object-contain" 
+            className="max-h-24 w-auto max-w-full object-contain" 
+            style={{ maxHeight: '92px' }}
             crossOrigin="anonymous" 
           />
         </div>

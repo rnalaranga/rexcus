@@ -340,6 +340,32 @@ export const deleteInventoryItem = async (id: string) => {
   return res.json();
 };
 
+export const resetAllInventoryStock = async (type?: string) => {
+  const res = await fetch(`${API_URL}/inventory/reset-stock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to reset inventory stock');
+  }
+  return res.json();
+};
+
+export const resetAllInventoryPricing = async (type?: string) => {
+  const res = await fetch(`${API_URL}/inventory/reset-pricing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to reset inventory pricing');
+  }
+  return res.json();
+};
+
 export const fetchStockLedger = async (inventoryId: string) => {
   const res = await fetch(`${API_URL}/inventory/${inventoryId}/ledger`);
   return res.json();
