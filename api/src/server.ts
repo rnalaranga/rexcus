@@ -13887,21 +13887,45 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         }
 
         const storedTax = Number(inv.taxAmount || 0);
-        if (storedTax > 0 && sscl === 0 && vat === 0) {
-          if (inv.taxType === 'vat_sscl' || inv.taxType === 'both' || inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt2')) {
-            sscl = Math.round(sub * 0.0256 * 100) / 100;
-            vat = Math.round((storedTax - sscl) * 100) / 100;
-            if (vat < 0) {
+
+        // If SSCL is 0 but VAT exists (or total tax exists), decompose or extract SSCL
+        if (storedTax > 0 || vat > 0) {
+          const totalKnownTax = (vat > 0 && sscl === 0) ? (storedTax > vat ? storedTax : vat) : storedTax;
+          
+          if (sscl === 0) {
+            // Check if profile or standard Sri Lanka rate implies SSCL (Option 2/3/4 standard)
+            const isSsclProfile = inv.taxType === 'vat_sscl' || inv.taxType === 'both' ||
+                                  inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt') ||
+                                  inv.taxProfileId === 'tp_vat_sscl' || !inv.taxProfileId || inv.taxProfileId === 'profile';
+
+            if (isSsclProfile && sub > 0) {
+              // Sri Lanka statutory SSCL is 2.5% on liable turnover (or 2.56% on net)
+              sscl = Math.round(sub * 0.025 * 100) / 100;
+              // If VAT was stored as full tax amount:
+              if (vat === 0) {
+                vat = Math.round((totalKnownTax - sscl) * 100) / 100;
+                if (vat <= 0) {
+                  vat = totalKnownTax;
+                  sscl = 0;
+                }
+              }
+            } else if (vat === 0) {
               vat = storedTax;
-              sscl = 0;
             }
-          } else {
-            vat = storedTax;
           }
-        } else if (storedTax === 0 && sub > 0 && (inv.taxType === 'vat_sscl' || inv.taxType === 'vat' || inv.taxProfileId?.includes('opt2') || inv.taxProfileId?.includes('opt1'))) {
-          // If stored taxAmount was 0 or included price, calculate tax from profile/rate
+        } else if (storedTax === 0 && sub > 0 && gross > sub) {
+          // Difference between gross and subtotal represents tax
+          const diffTax = gross - sub;
+          sscl = Math.round(sub * 0.025 * 100) / 100;
+          vat = Math.round((diffTax - sscl) * 100) / 100;
+          if (vat <= 0) {
+            vat = diffTax;
+            sscl = 0;
+          }
+        } else if (storedTax === 0 && sub > 0 && (inv.taxType === 'vat_sscl' || inv.taxType === 'vat' || inv.taxProfileId?.includes('opt2') || inv.taxProfileId?.includes('opt1') || inv.isTaxInclusive)) {
+          // Inclusive pricing tax extraction
           if (inv.taxType === 'vat_sscl' || inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt2')) {
-            sscl = Math.round(sub * 0.0256 * 100) / 100;
+            sscl = Math.round(sub * 0.025 * 100) / 100;
             vat = Math.round((sub + sscl) * 0.18 * 100) / 100;
           } else {
             vat = Math.round(sub * 0.18 * 100) / 100;
