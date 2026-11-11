@@ -1028,58 +1028,79 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       </table>
 
       {/* ── 3. SIGNATURE SECTION ── */}
-      <div 
-        className="print-no-break"
-        style={{ 
-          marginTop: '28px', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'flex-end',
-          fontSize: '10px',
-          pageBreakInside: 'avoid',
-          width: '100%',
-          boxSizing: 'border-box'
-        }}
-      >
-        {/* Prepared By */}
-        <div style={{ textAlign: 'center', width: '31%' }}>
-          <div style={{ height: '42px' }}></div>
-          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
-            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
-              Prepared By
-            </div>
-            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
-              Accounts / Finance Dept.
+      {isProforma ? (
+        <div 
+          className="print-no-break"
+          style={{ 
+            marginTop: '28px', 
+            textAlign: 'center',
+            fontSize: '10px',
+            fontStyle: 'italic',
+            fontWeight: 600,
+            color: '#555555',
+            letterSpacing: '0.4px',
+            pageBreakInside: 'avoid',
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '10px 0'
+          }}
+        >
+          This is a computer generated document, no signature required.
+        </div>
+      ) : (
+        <div 
+          className="print-no-break"
+          style={{ 
+            marginTop: '28px', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'flex-end',
+            fontSize: '10px',
+            pageBreakInside: 'avoid',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* Prepared By */}
+          <div style={{ textAlign: 'center', width: '31%' }}>
+            <div style={{ height: '42px' }}></div>
+            <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+              <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+                Prepared By
+              </div>
+              <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+                Accounts / Finance Dept.
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Authorized Signature */}
-        <div style={{ textAlign: 'center', width: '31%' }}>
-          <div style={{ height: '42px' }}></div>
-          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
-            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
-              Authorized Signature
-            </div>
-            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
-              Official Signature &amp; Stamp
+          {/* Authorized Signature */}
+          <div style={{ textAlign: 'center', width: '31%' }}>
+            <div style={{ height: '42px' }}></div>
+            <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+              <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+                Authorized Signature
+              </div>
+              <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+                Official Signature &amp; Stamp
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Customer Signature */}
-        <div style={{ textAlign: 'center', width: '31%' }}>
-          <div style={{ height: '42px' }}></div>
-          <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
-            <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
-              Customer Signature
-            </div>
-            <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
-              Received in Good Condition / Stamp &amp; Date
+          {/* Customer Signature */}
+          <div style={{ textAlign: 'center', width: '31%' }}>
+            <div style={{ height: '42px' }}></div>
+            <div style={{ borderTop: '1px dotted #000000', margin: '0 4px', paddingTop: '4px' }}>
+              <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#000000' }}>
+                Customer Signature
+              </div>
+              <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+                Received in Good Condition / Stamp &amp; Date
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
     </>
   );
