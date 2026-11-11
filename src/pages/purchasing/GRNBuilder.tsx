@@ -123,6 +123,7 @@ export const GRNBuilder: React.FC = () => {
   const [taxEnabled, setTaxEnabled] = useState<boolean>(false);
   const [taxProfileId, setTaxProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep');
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
+  const [hideVatSeparately, setHideVatSeparately] = useState<boolean>(false);
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
@@ -576,6 +577,7 @@ export const GRNBuilder: React.FC = () => {
       taxProfileId: taxEnabled ? taxProfileId : null,
       taxBreakdown: taxEnabled && taxBreakdown ? JSON.stringify(taxBreakdown) : null,
       isTaxInclusive: isTaxInclusive ? 1 : 0,
+      hideVatSeparately: hideVatSeparately ? 1 : 0,
       subtotal: netSubtotal,
       taxAmount: totalTax,
       totalAmount: grandTotalGRNValue,
@@ -668,16 +670,25 @@ export const GRNBuilder: React.FC = () => {
     const t1 = t1Rate / 100;
     const t2 = t2Rate / 100;
 
-    const isSsclHidden = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 0);
-    const isVatSeparate = Boolean(t2Rate > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true);
-    const isSsclSeparate = Boolean(t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 1);
+    const isOpt4Included = selectedTaxProfile.id === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile.name?.toLowerCase().includes('sscl included');
+
+    const isSsclHidden = Boolean(t1Rate > 0 && (selectedTaxProfile.tax1_show_separately === 0 || hideVatSeparately));
+    const isVatSeparate = Boolean(!hideVatSeparately && (t2Rate > 0 ? selectedTaxProfile.tax2_show_separately === 1 : true));
+    const isSsclSeparate = Boolean(!hideVatSeparately && t1Rate > 0 && selectedTaxProfile.tax1_show_separately === 1);
+    const isVatHidden = Boolean(selectedTaxProfile.tax2_show_separately === 0 || hideVatSeparately);
 
     if (isTaxInclusive) {
       let baseSub = totalGRNValue;
       let t1Amount = 0;
       let t2Amount = 0;
 
-      if (isSsclHidden && isVatSeparate) {
+      if (isOpt4Included && t1 > 0) {
+        // Option 4: SSCL included in entered price, VAT separate
+        baseSub = totalGRNValue / (1 + t2);
+        t2Amount = totalGRNValue - baseSub;
+        const netBeforeSscl = baseSub / (1 + t1);
+        t1Amount = baseSub - netBeforeSscl;
+      } else if (isSsclHidden && isVatSeparate) {
         baseSub = totalGRNValue / (1 + t2);
         t2Amount = totalGRNValue - baseSub;
         t1Amount = 0;
@@ -688,9 +699,17 @@ export const GRNBuilder: React.FC = () => {
         const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSub + t1Amount) : baseSub;
         t2Amount = baseForT2 * t2;
       } else {
-        baseSub = totalGRNValue;
-        t1Amount = 0;
-        t2Amount = 0;
+        const divisor = selectedTaxProfile.tax2_compound ? ((1 + t1) * (1 + t2)) : (1 + t1 + t2);
+        if (divisor > 1) {
+          baseSub = totalGRNValue / divisor;
+          t1Amount = baseSub * t1;
+          const baseForT2 = selectedTaxProfile.tax2_compound ? (baseSub + t1Amount) : baseSub;
+          t2Amount = baseForT2 * t2;
+        } else {
+          baseSub = totalGRNValue;
+          t1Amount = 0;
+          t2Amount = 0;
+        }
       }
 
       t1Amount = Math.round(t1Amount * 100) / 100;
@@ -712,33 +731,52 @@ export const GRNBuilder: React.FC = () => {
       let t1Amount = 0;
       let t2Amount = 0;
 
-      if (isSsclHidden && isVatSeparate) {
-        t1Amount = 0;
+      if (isOpt4Included && t1 > 0) {
+        const netBeforeSscl = totalGRNValue / (1 + t1);
+        t1Amount = totalGRNValue - netBeforeSscl;
         t2Amount = totalGRNValue * t2;
-      } else if (selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0) {
-        t1Amount = 0;
-        t2Amount = 0;
+        taxBreakdown = {
+          profileName: selectedTaxProfile.name,
+          tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+          tax1Rate: t1Rate,
+          tax1Amount: Math.round(t1Amount * 100) / 100,
+          tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+          tax2Rate: t2Rate,
+          tax2Amount: Math.round(t2Amount * 100) / 100,
+          isCompound: Boolean(selectedTaxProfile.tax2_compound),
+          isTaxInclusive: false
+        };
+        totalTax = Math.round(t2Amount * 100) / 100;
+        netSubtotal = totalGRNValue;
       } else {
-        t1Amount = isSsclSeparate ? (totalGRNValue * t1) : 0;
-        const baseForT2 = selectedTaxProfile.tax2_compound ? (totalGRNValue + t1Amount) : totalGRNValue;
-        t2Amount = isVatSeparate ? (baseForT2 * t2) : 0;
-      }
+        if (isSsclHidden && isVatSeparate) {
+          t1Amount = 0;
+          t2Amount = totalGRNValue * t2;
+        } else if (selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0) {
+          t1Amount = 0;
+          t2Amount = 0;
+        } else {
+          t1Amount = isSsclSeparate ? (totalGRNValue * t1) : 0;
+          const baseForT2 = selectedTaxProfile.tax2_compound ? (totalGRNValue + t1Amount) : totalGRNValue;
+          t2Amount = isVatSeparate ? (baseForT2 * t2) : 0;
+        }
 
-      t1Amount = Math.round(t1Amount * 100) / 100;
-      t2Amount = Math.round(t2Amount * 100) / 100;
-      totalTax = t1Amount + t2Amount;
-      netSubtotal = totalGRNValue;
-      taxBreakdown = {
-        profileName: selectedTaxProfile.name,
-        tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
-        tax1Rate: t1Rate,
-        tax1Amount: t1Amount,
-        tax2Name: selectedTaxProfile.tax2_name || 'VAT',
-        tax2Rate: t2Rate,
-        tax2Amount: t2Amount,
-        isCompound: Boolean(selectedTaxProfile.tax2_compound),
-        isTaxInclusive: false
-      };
+        t1Amount = Math.round(t1Amount * 100) / 100;
+        t2Amount = Math.round(t2Amount * 100) / 100;
+        totalTax = t1Amount + t2Amount;
+        netSubtotal = totalGRNValue;
+        taxBreakdown = {
+          profileName: selectedTaxProfile.name,
+          tax1Name: selectedTaxProfile.tax1_name || 'SSCL',
+          tax1Rate: t1Rate,
+          tax1Amount: t1Amount,
+          tax2Name: selectedTaxProfile.tax2_name || 'VAT',
+          tax2Rate: t2Rate,
+          tax2Amount: t2Amount,
+          isCompound: Boolean(selectedTaxProfile.tax2_compound),
+          isTaxInclusive: false
+        };
+      }
     }
   }
 
@@ -1246,6 +1284,7 @@ export const GRNBuilder: React.FC = () => {
               {/* Tax Profile Toggle & Select */}
               <div className="space-y-2 pt-1 border-b border-theme-subtle pb-3">
                 <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Applicable Taxes</span>
                   <label className="text-xs font-semibold text-secondary flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1254,35 +1293,132 @@ export const GRNBuilder: React.FC = () => {
                       onChange={e => setTaxEnabled(e.target.checked)}
                       className="rounded text-primary h-3.5 w-3.5"
                     />
-                    <span>Apply Taxes (VAT / SSCL)</span>
+                    <span>{taxEnabled ? 'Tax Enabled' : 'Tax Disabled'}</span>
                   </label>
-                  {taxEnabled && (
-                    <label className="text-[11px] font-medium text-muted flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isTaxInclusive}
-                        disabled={isViewMode}
-                        onChange={e => setIsTaxInclusive(e.target.checked)}
-                        className="rounded text-primary h-3 w-3"
-                      />
-                      <span>Tax Inclusive</span>
-                    </label>
-                  )}
                 </div>
 
                 {taxEnabled && (
-                  <select
-                    value={taxProfileId}
-                    disabled={isViewMode}
-                    onChange={e => setTaxProfileId(e.target.value)}
-                    className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-medium focus:border-primary"
-                  >
-                    {taxProfiles.map((tp: any) => (
-                      <option key={tp.id} value={tp.id}>
-                        {tp.name} ({tp.tax2_rate || 18}% VAT{tp.tax1_rate ? ` + ${tp.tax1_rate}% SSCL` : ''})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2 pt-1">
+                    {/* 6 IRD Quick Tax Preset Buttons */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_vat18'); setHideVatSeparately(false); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          taxProfileId === 'tp_vat18' && !hideVatSeparately
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        VAT Only (18%)<br/><span className="text-[9px] font-normal opacity-80">Separate Line</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_vat18_absorbed'); setHideVatSeparately(true); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          taxProfileId === 'tp_vat18_absorbed' || (taxProfileId === 'tp_vat18' && hideVatSeparately)
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        VAT Absorbed (18%)<br/><span className="text-[9px] font-normal opacity-80">Added / Not Separate</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep'); setHideVatSeparately(false); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          (taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl') && !hideVatSeparately
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Option 2<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_opt1_absorbed'); setHideVatSeparately(true); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          taxProfileId === 'tp_opt1_absorbed'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Option 1<br/><span className="text-[9px] font-normal opacity-80">Both Absorbed</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_opt3_both_separate'); setHideVatSeparately(false); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          taxProfileId === 'tp_opt3_both_separate'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isViewMode}
+                        onClick={() => { setTaxProfileId('tp_opt4_sscl_included_vat_sep'); setHideVatSeparately(false); }}
+                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
+                          taxProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile?.name?.toLowerCase().includes('sscl included')
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                        }`}
+                      >
+                        Option 4<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
+                      </button>
+                    </div>
+
+                    <select
+                      value={taxProfileId}
+                      disabled={isViewMode}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setTaxProfileId(val);
+                        if (val === 'tp_vat18_absorbed' || val === 'tp_opt1_absorbed') {
+                          setHideVatSeparately(true);
+                        }
+                      }}
+                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-medium focus:border-primary"
+                    >
+                      <option value="">No Tax Applied</option>
+                      {taxProfiles.map((tp: any) => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name} ({tp.tax2_rate || 18}% VAT{tp.tax1_rate ? ` + ${tp.tax1_rate}% SSCL` : ''})
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Tax Inclusive & Absorb Toggles */}
+                    <div className="pt-2 border-t border-theme-subtle space-y-1.5 text-[11px]">
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-secondary font-medium">Tax Inclusive Pricing:</span>
+                        <input
+                          type="checkbox"
+                          checked={isTaxInclusive}
+                          disabled={isViewMode}
+                          onChange={e => setIsTaxInclusive(e.target.checked)}
+                          className="rounded text-primary h-3.5 w-3.5"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-secondary font-medium">Don't Show VAT Separately:</span>
+                        <input
+                          type="checkbox"
+                          checked={hideVatSeparately}
+                          disabled={isViewMode}
+                          onChange={e => setHideVatSeparately(e.target.checked)}
+                          className="rounded text-primary h-3.5 w-3.5"
+                        />
+                      </label>
+                    </div>
+                  </div>
                 )}
               </div>
 

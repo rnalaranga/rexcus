@@ -8924,9 +8924,21 @@ app.get('/api/purchasing/pos/:id/bills', async (req, res) => {
 
 app.post('/api/purchasing/bills', async (req, res) => {
   try {
-    const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    const rawData = { ...req.body };
+    if (rawData.contacts && typeof rawData.contacts === 'object') rawData.contacts = JSON.stringify(rawData.contacts);
+    if (rawData.items && typeof rawData.items === 'object') rawData.items = JSON.stringify(rawData.items);
+    if (rawData.taxBreakdown && typeof rawData.taxBreakdown === 'object') rawData.taxBreakdown = JSON.stringify(rawData.taxBreakdown);
+
+    // Filter incoming payload against existing columns in supplier_bills
+    const [cols]: any = await db.query('SHOW COLUMNS FROM supplier_bills');
+    const validCols = new Set(cols.map((c: any) => c.Field));
+    const data: any = {};
+    for (const k of Object.keys(rawData)) {
+      if (validCols.has(k)) {
+        data[k] = rawData[k];
+      }
+    }
+
     await db.query('INSERT INTO supplier_bills SET ?', data);
 
     // Also automatically create corresponding ledger entry in supplier_ledger
@@ -9009,12 +9021,22 @@ app.post('/api/purchasing/bills', async (req, res) => {
 
 app.put('/api/purchasing/bills/:id', async (req, res) => {
   try {
-    const data = { ...req.body };
-    if (data.items && typeof data.items === 'object') data.items = JSON.stringify(data.items);
+    const rawData = { ...req.body };
+    if (rawData.items && typeof rawData.items === 'object') rawData.items = JSON.stringify(rawData.items);
+    if (rawData.taxBreakdown && typeof rawData.taxBreakdown === 'object') rawData.taxBreakdown = JSON.stringify(rawData.taxBreakdown);
     
     // Find previous poId
     const [prevRows]: any = await db.query('SELECT poId FROM supplier_bills WHERE id = ?', [req.params.id]);
     const oldPoId = prevRows[0]?.poId;
+
+    const [cols]: any = await db.query('SHOW COLUMNS FROM supplier_bills');
+    const validCols = new Set(cols.map((c: any) => c.Field));
+    const data: any = {};
+    for (const k of Object.keys(rawData)) {
+      if (validCols.has(k) && k !== 'id') {
+        data[k] = rawData[k];
+      }
+    }
 
     await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [data, req.params.id]);
 
