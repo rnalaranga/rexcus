@@ -2,6 +2,17 @@ import { getApiBaseUrl } from '@/lib/utils';
 
 const API_URL = getApiBaseUrl();
 
+export const safeJson = async (res: Response, fallback: any = null) => {
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return fallback;
+    return JSON.parse(text);
+  } catch (e) {
+    console.warn('safeJson parse warning:', e);
+    return fallback;
+  }
+};
+
 export const uploadFileToStorage = async (
   dataUri: string, 
   filename: string, 
@@ -15,7 +26,7 @@ export const uploadFileToStorage = async (
       body: JSON.stringify({ dataUri, filename, folder })
     });
     if (res.ok) {
-      const data = await res.json();
+      const data = await safeJson(res, null);
       if (data && data.url) {
         return { url: data.url, key: data.key };
       }
@@ -143,7 +154,8 @@ export const deleteDeal = async (id: string) => {
 export const fetchQuotations = async (leadId?: string) => {
   const url = leadId ? `${API_URL}/quotations/${leadId}` : `${API_URL}/quotations`;
   const res = await fetch(url);
-  return res.json();
+  const data = await safeJson(res, []);
+  return Array.isArray(data) ? data : [];
 };
 
 export const createQuotation = async (data: any) => {
@@ -152,7 +164,7 @@ export const createQuotation = async (data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  return safeJson(res, { success: res.ok });
 };
 
 export const updateQuotation = async (id: string, data: any) => {
@@ -161,7 +173,7 @@ export const updateQuotation = async (id: string, data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return res.json();
+  return safeJson(res, { success: res.ok });
 };
 
 
@@ -243,8 +255,9 @@ export const rejectQuotationEdit = async (id: string | number, rejectedBy?: stri
   return data;
 };
 
-export const deleteQuotation = async (id: string) => {
-  const res = await fetch(`${API_URL}/quotations/${id}`, { 
+export const deleteQuotation = async (id: string, force: boolean = false) => {
+  const query = force ? '?force=true' : '';
+  const res = await fetch(`${API_URL}/quotations/${id}${query}`, { 
     method: 'DELETE',
     headers: getAuthHeaders()
   });

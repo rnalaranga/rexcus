@@ -10,7 +10,7 @@ import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
-import { useLeads, useInventory, useMachiningOperations, useCustomers, useQuotations } from '@/hooks/useData'
+import { useLeads, useInventory, useMachiningOperations, useCustomers, useQuotations, invalidateDataCache } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
@@ -1653,6 +1653,7 @@ export const QuotationBuilder: React.FC = () => {
             setDraftId(null);
             draftIdRef.current = null;
           }
+          invalidateDataCache('quotations');
           showToast('success', 'Quotation updated successfully!');
           await loadVersions();
         } else {
@@ -1678,6 +1679,7 @@ export const QuotationBuilder: React.FC = () => {
             setDraftId(null);
             draftIdRef.current = null;
           }
+          invalidateDataCache('quotations');
           if (newId && leadId) {
             navigate(`/crm/quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
           }

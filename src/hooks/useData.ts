@@ -3,6 +3,7 @@ import * as api from '@/lib/api';
 
 // Global in-memory cache store for high-performance SWR (Stale-While-Revalidate)
 const dataCache: Record<string, { data: any[]; timestamp: number }> = {};
+const listeners: Record<string, Set<() => void>> = {};
 
 export function invalidateDataCache(key?: string) {
   if (key) {
@@ -11,9 +12,30 @@ export function invalidateDataCache(key?: string) {
         delete dataCache[k];
       }
     });
+    // Trigger any active hooks listening for this key
+    Object.keys(listeners).forEach(k => {
+      if (k === key || k.startsWith(key)) {
+        listeners[k]?.forEach(fn => {
+          try { fn(); } catch (e) { console.warn(e); }
+        });
+      }
+    });
   } else {
     Object.keys(dataCache).forEach(k => delete dataCache[k]);
+    Object.keys(listeners).forEach(k => {
+      listeners[k]?.forEach(fn => {
+        try { fn(); } catch (e) { console.warn(e); }
+      });
+    });
   }
+}
+
+function registerListener(key: string, fn: () => void) {
+  if (!listeners[key]) listeners[key] = new Set();
+  listeners[key].add(fn);
+  return () => {
+    listeners[key]?.delete(fn);
+  };
 }
 
 export function useCustomers() {
@@ -241,7 +263,13 @@ export function useQuotations() {
     });
   }, []);
 
-  useEffect(() => { refetch(); }, [refetch]);
+  useEffect(() => { 
+    refetch();
+    const unregister = registerListener('quotations', () => {
+      refetch();
+    });
+    return unregister;
+  }, [refetch]);
 
   return { data, loading, refetch };
 }

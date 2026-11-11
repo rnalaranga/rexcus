@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/Badge'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
-import { useLeads, useInventory, useCustomers, useQuotations } from '@/hooks/useData'
+import { useLeads, useInventory, useCustomers, useQuotations, invalidateDataCache } from '@/hooks/useData'
 import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { 
   createQuotation, fetchQuotations, updateQuotation, deleteQuotation, 
@@ -1451,6 +1451,7 @@ export const ProductQuotationBuilder: React.FC = () => {
             setDraftId(null);
             draftIdRef.current = null;
           }
+          invalidateDataCache('quotations');
           showToast('success', 'Product Quotation updated successfully!');
           await loadVersions();
         } else {
@@ -1484,6 +1485,7 @@ export const ProductQuotationBuilder: React.FC = () => {
             setDraftId(null);
             draftIdRef.current = null;
           }
+          invalidateDataCache('quotations');
           if (newId && leadId) {
             navigate(`/crm/product-quotations/new/${leadId}?quoteId=${newId}`, { replace: true });
           }

@@ -5,7 +5,8 @@ import {
   UserCheck, Shield, Users, FileText, AlertCircle, Camera, Plus, Eye, Download, Send, CheckCircle2, XCircle, 
   Clock, Trash2, Search, Filter, ArrowRight, Building2, User, 
   PackageCheck, Boxes, Banknote, ShoppingBag, ExternalLink, Mail, Edit3, Receipt,
-  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info, ShieldCheck
+  ChevronDown, ChevronUp, History, TrendingUp, FileEdit, Package, LayoutGrid, List, FileCheck, Info, ShieldCheck,
+  RefreshCw
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
@@ -588,7 +589,30 @@ export const ProductQuotations: React.FC = () => {
       toast(`${isDraft ? 'Draft' : 'Quotation'} deleted successfully`, 'success');
       await refetch();
     } catch (e: any) {
-      toast(e?.message || 'Failed to delete quotation', 'error');
+      const errMsg = e?.message || '';
+      if (errMsg.includes('PO Received') || errMsg.includes('Approved')) {
+        const forceConfirm = await showConfirm(
+          `${errMsg}\n\nAs an Administrator, do you want to force delete this quotation and move it to trash?`,
+          'Force Delete Quotation',
+          { confirmLabel: 'Force Delete' }
+        );
+        if (forceConfirm) {
+          try {
+            const idsToDelete = (group?.versions && group.versions.length > 0)
+              ? group.versions.map((v: any) => v.id).filter(Boolean)
+              : [latest?.id].filter(Boolean);
+            for (const id of idsToDelete) {
+              await deleteQuotation(id, true);
+            }
+            toast(`Quotation force deleted successfully`, 'success');
+            await refetch();
+          } catch (forceErr: any) {
+            toast(forceErr?.message || 'Failed to force delete quotation', 'error');
+          }
+        }
+      } else {
+        toast(errMsg || 'Failed to delete quotation', 'error');
+      }
     }
   };
 
@@ -1358,6 +1382,17 @@ export const ProductQuotations: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <PageHelpButton moduleId="crm-product-quotations" />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={RefreshCw}
+            onClick={() => refetch()}
+            loading={loading}
+            className="border border-theme-subtle rounded-none hover:bg-surface2 text-xs h-8"
+            title="Refresh Quotations list"
+          >
+            Refresh
+          </Button>
           <Button
             variant="ghost"
             size="sm"

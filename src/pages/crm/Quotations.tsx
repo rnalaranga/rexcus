@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3 } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3, RefreshCw } from 'lucide-react'
 import { X } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -1169,7 +1169,27 @@ export const Quotations: React.FC = () => {
     return sortedQuotations.slice(startIndex, endIndex);
   }, [sortedQuotations, startIndex, endIndex]);
 
-  if (loading && (!quotations || quotations.length === 0)) return <div className="p-8 text-center text-muted animate-pulse">Loading quotations...</div>
+  if (loading && (!quotations || quotations.length === 0)) {
+    return (
+      <div className="p-12 text-center space-y-3">
+        <div className="inline-block p-3 rounded-full bg-blue-500/10 text-blue-600 animate-spin">
+          <RefreshCw size={24} />
+        </div>
+        <p className="text-sm font-semibold text-primary">Loading quotations...</p>
+        <p className="text-xs text-muted">Retrieving your latest quotations and pricing snapshots.</p>
+        <div className="pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            className="text-xs"
+          >
+            Retry Loading
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
 
   const renderActionsDropdown = (
@@ -1933,11 +1953,35 @@ export const Quotations: React.FC = () => {
                     const label = isDraftGroup ? `draft "${group.quoNo}"` : `quotation group "${group.quoNo}"`;
                     if (await showConfirm(`Are you sure you want to delete ${label}?`, 'Delete Quotation', { confirmLabel: 'Delete' })) {
                       const allIds = Array.from(new Set([...group.main, ...group.job, ...group.customer].map((q: any) => q.id).filter(Boolean)));
-                      for (const id of allIds) {
-                        await deleteQuotation(id);
+                      try {
+                        for (const id of allIds) {
+                          await deleteQuotation(id);
+                        }
+                        toast(`Deleted ${label} successfully`, 'success');
+                        refetch();
+                      } catch (err: any) {
+                        const errMsg = err?.message || '';
+                        if (errMsg.includes('PO Received') || errMsg.includes('Approved')) {
+                          const forceConfirm = await showConfirm(
+                            `${errMsg}\n\nAs an Administrator, do you want to force delete this quotation and move it to trash?`,
+                            'Force Delete Quotation',
+                            { confirmLabel: 'Force Delete' }
+                          );
+                          if (forceConfirm) {
+                            try {
+                              for (const id of allIds) {
+                                await deleteQuotation(id, true);
+                              }
+                              toast(`Quotation ${group.quoNo} force deleted successfully`, 'success');
+                              refetch();
+                            } catch (forceErr: any) {
+                              toast(forceErr?.message || 'Failed to force delete quotation', 'error');
+                            }
+                          }
+                        } else {
+                          toast(errMsg || 'Failed to delete quotation', 'error');
+                        }
                       }
-                      toast(`Deleted ${label} successfully`, 'success');
-                      refetch();
                     }
                   }}
                   className="w-full px-3.5 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
@@ -2043,6 +2087,17 @@ export const Quotations: React.FC = () => {
               Make Final Quote ({selectedQuotes.length})
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={RefreshCw}
+            onClick={() => refetch()}
+            loading={loading}
+            className="border border-theme-subtle rounded-none hover:bg-surface2 text-xs h-8"
+            title="Refresh Quotations list"
+          >
+            Refresh
+          </Button>
           <Button
             variant="ghost"
             size="sm"

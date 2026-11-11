@@ -5647,13 +5647,17 @@ app.delete('/api/quotations/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Only administrators are authorized to delete quotations.' });
     }
     const { id } = req.params;
-    const { user } = req.query as any;
-    // Safety check: Prevent deleting Approved or PO Received quotations directly
+    const { user, force } = req.query as any;
+    const isForce = force === 'true' || force === '1' || force === true;
+
+    // Safety check: Prevent deleting Approved or PO Received quotations directly without explicit confirmation/force
     const [rows]: any = await db.query('SELECT id, status, quotationNo, type FROM quotations WHERE id = ?', [id]);
     if (rows && rows.length > 0) {
       const q = rows[0];
-      if (q.status === 'Approved' || q.status === 'PO Received') {
-        return res.status(400).json({ error: `Cannot delete quotation ${q.quotationNo || id} because it is already '${q.status}'. Please reject or cancel it first.` });
+      if ((q.status === 'Approved' || q.status === 'PO Received') && !isForce) {
+        return res.status(400).json({ 
+          error: `Cannot delete quotation ${q.quotationNo || id} because it is already '${q.status}'. Please reject or cancel it first, or confirm force delete.` 
+        });
       }
       // Drafts should be hard deleted permanently so they never linger or resurrect
       if (q.type === 'draft' || q.type === 'product_draft' || q.status === 'Draft') {
