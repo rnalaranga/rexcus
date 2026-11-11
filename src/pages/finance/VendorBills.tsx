@@ -26,13 +26,21 @@ type SourceFilter = 'all' | 'grn' | 'manual';
 export const VendorBills: React.FC = () => {
   const navigate = useNavigate();
   const { showConfirm, toast } = useDialog();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
     user?.roleName?.toLowerCase().includes('administrator') ||
     user?.permissions?.includes('*') ||
     user?.permissions?.includes('admin')
+  );
+
+  const canManageBills = Boolean(
+    isAdmin ||
+    can('purchasing.bills.manage') ||
+    can('approvals.bills_payments') ||
+    user?.role === 'finance_manager' ||
+    user?.role === 'accountant'
   );
 
   const { data: bills = [], loading, refetch } = useBills();
@@ -348,27 +356,31 @@ export const VendorBills: React.FC = () => {
           >
             Payables Hub
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={CreditCard}
-            onClick={() => {
-              setMultiSettlementSupplier(null);
-              setShowMultiSettlement(true);
-            }}
-            className="text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20"
-          >
-            Pay Multiple Bills
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Plus}
-            onClick={() => navigate('/purchasing/bill-builder')}
-            className="bg-rex-600 hover:bg-rex-700 text-xs font-bold"
-          >
-            + Create Vendor Bill
-          </Button>
+          {canManageBills && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={CreditCard}
+              onClick={() => {
+                setMultiSettlementSupplier(null);
+                setShowMultiSettlement(true);
+              }}
+              className="text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20"
+            >
+              Pay Multiple Bills
+            </Button>
+          )}
+          {canManageBills && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={() => navigate('/purchasing/bill-builder')}
+              className="bg-rex-600 hover:bg-rex-700 text-xs font-bold"
+            >
+              + Create Vendor Bill
+            </Button>
+          )}
         </div>
       </div>
 

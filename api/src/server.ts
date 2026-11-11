@@ -13888,11 +13888,23 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
 
         const storedTax = Number(inv.taxAmount || 0);
         if (storedTax > 0 && sscl === 0 && vat === 0) {
-          if (inv.taxType === 'vat_sscl' || inv.taxType === 'both') {
+          if (inv.taxType === 'vat_sscl' || inv.taxType === 'both' || inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt2')) {
             sscl = Math.round(sub * 0.0256 * 100) / 100;
             vat = Math.round((storedTax - sscl) * 100) / 100;
+            if (vat < 0) {
+              vat = storedTax;
+              sscl = 0;
+            }
           } else {
             vat = storedTax;
+          }
+        } else if (storedTax === 0 && sub > 0 && (inv.taxType === 'vat_sscl' || inv.taxType === 'vat' || inv.taxProfileId?.includes('opt2') || inv.taxProfileId?.includes('opt1'))) {
+          // If stored taxAmount was 0 or included price, calculate tax from profile/rate
+          if (inv.taxType === 'vat_sscl' || inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt2')) {
+            sscl = Math.round(sub * 0.0256 * 100) / 100;
+            vat = Math.round((sub + sscl) * 0.18 * 100) / 100;
+          } else {
+            vat = Math.round(sub * 0.18 * 100) / 100;
           }
         }
 
@@ -14161,6 +14173,10 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
       const [rawRows]: any = await db.query(query, params);
 
       let totalGross = 0;
+      let totalSubtotal = 0;
+      let totalTax = 0;
+      let totalVat = 0;
+      let totalSscl = 0;
       let totalPaid = 0;
       let totalDue = 0;
       let totalOverdue = 0;
@@ -14179,6 +14195,36 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         const due = Math.max(0, gross - paid);
         const overdueDays = Number(r.overdueDays || 0);
         const isOverdue = due > 0 && overdueDays > 0;
+
+        // Deconstruct bill tax breakdown
+        let sscl = 0;
+        let vat = 0;
+        let sub = Number(r.subtotal || 0);
+        let storedTax = Number(r.taxAmount || 0);
+
+        if (r.taxBreakdown) {
+          try {
+            const tb = typeof r.taxBreakdown === 'string' ? JSON.parse(r.taxBreakdown) : r.taxBreakdown;
+            sscl = Number(tb.tax1Amount || tb.sscl || 0);
+            vat = Number(tb.tax2Amount || tb.vat || 0);
+          } catch (e) {}
+        }
+
+        if (storedTax > 0 && sscl === 0 && vat === 0) {
+          if (r.taxProfileId?.includes('sscl') || r.taxProfileId?.includes('opt2')) {
+            sscl = Math.round(sub * 0.0256 * 100) / 100;
+            vat = Math.round((storedTax - sscl) * 100) / 100;
+            if (vat < 0) { vat = storedTax; sscl = 0; }
+          } else {
+            vat = storedTax;
+          }
+        }
+
+        if (sub === 0) {
+          sub = gross - (storedTax || (sscl + vat));
+        }
+
+        const billTax = (sscl + vat) > 0 ? (sscl + vat) : storedTax;
 
         let bucket = 'Current';
         if (due > 0) {
@@ -14201,12 +14247,20 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         }
 
         totalGross += gross;
+        totalSubtotal += sub;
+        totalTax += billTax;
+        totalVat += vat;
+        totalSscl += sscl;
         totalPaid += paid;
         totalDue += due;
         if (isOverdue) totalOverdue += due;
 
         return {
           ...r,
+          subtotal: sub,
+          taxAmount: billTax,
+          vatAmount: vat,
+          ssclAmount: sscl,
           totalAmount: gross,
           paidAmount: paid,
           balanceDue: due,
@@ -14235,6 +14289,10 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         summary: {
           totalBills: enrichedRows.length,
           totalGross,
+          totalSubtotal,
+          totalTax,
+          totalVat,
+          totalSscl,
           totalPaid,
           totalDue,
           totalOverdue,

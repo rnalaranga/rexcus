@@ -392,7 +392,7 @@ export const DailyCashFlowHub: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 p-4 sm:p-6 w-full">
+    <div className="space-y-5 animate-fade-in pb-16 w-full">
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-white/[0.08]">
         <div>

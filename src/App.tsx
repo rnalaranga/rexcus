@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
+import { NavLoadingProvider } from '@/contexts/NavLoadingContext'
 import { RexAIAssistant } from '@/components/ai/RexAIAssistant'
 import { MobileLayout } from '@/components/mobile/MobileLayout'
 
@@ -267,8 +268,10 @@ function App() {
     <AuthProvider>
       <SettingsProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AppRoutes />
-          <RexAIAssistant />
+          <NavLoadingProvider>
+            <AppRoutes />
+            <RexAIAssistant />
+          </NavLoadingProvider>
         </BrowserRouter>
       </SettingsProvider>
     </AuthProvider>

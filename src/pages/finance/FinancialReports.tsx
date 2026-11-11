@@ -273,6 +273,9 @@ export const FinancialReports: React.FC = () => {
           'Vendor Invoice Ref': r.invoiceNo || '',
           'Category': r.billCategory || 'General',
           'Source': r.billSource || 'Direct',
+          'Net Subtotal (LKR)': r.subtotal || 0,
+          'SSCL (LKR)': r.ssclAmount || 0,
+          'VAT 18% (LKR)': r.vatAmount || 0,
           'Gross Amount (LKR)': r.totalAmount,
           'Paid Amount (LKR)': r.paidAmount,
           'Balance Due (LKR)': r.balanceDue,
@@ -290,6 +293,9 @@ export const FinancialReports: React.FC = () => {
           'Vendor Invoice Ref': '',
           'Category': '',
           'Source': `${reportData?.summary?.totalBills || 0} Bills`,
+          'Net Subtotal (LKR)': reportData?.summary?.totalSubtotal || 0,
+          'SSCL (LKR)': reportData?.summary?.totalSscl || 0,
+          'VAT 18% (LKR)': reportData?.summary?.totalVat || 0,
           'Gross Amount (LKR)': reportData?.summary?.totalGross || 0,
           'Paid Amount (LKR)': reportData?.summary?.totalPaid || 0,
           'Balance Due (LKR)': reportData?.summary?.totalDue || 0,
@@ -876,7 +882,7 @@ export const FinancialReports: React.FC = () => {
 
       {/* Vendor Bills AP KPI Cards */}
       {activeTab === 'vendor_bills' && reportData?.summary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <GlassCard className="p-3 border-l-4 border-l-amber-500">
             <span className="text-[10px] uppercase font-bold text-muted block">Vendor Bills</span>
             <div className="text-lg font-black text-primary mt-1">{reportData.summary.totalBills}</div>
@@ -884,15 +890,21 @@ export const FinancialReports: React.FC = () => {
           </GlassCard>
 
           <GlassCard className="p-3 border-l-4 border-l-slate-500">
-            <span className="text-[10px] uppercase font-bold text-muted block">Gross Invoiced Value</span>
-            <div className="text-lg font-black text-primary mt-1">{formatCurrency(reportData.summary.totalGross)}</div>
-            <span className="text-[10px] text-muted block mt-0.5">Purchases & Expenses</span>
+            <span className="text-[10px] uppercase font-bold text-muted block">Net Taxable Subtotal</span>
+            <div className="text-lg font-black text-primary mt-1">{formatCurrency(reportData.summary.totalSubtotal || (reportData.summary.totalGross - (reportData.summary.totalTax || 0)))}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Before Tax</span>
           </GlassCard>
 
           <GlassCard className="p-3 border-l-4 border-l-emerald-500">
-            <span className="text-[10px] uppercase font-bold text-emerald-600 block">Total Settled / Paid</span>
-            <div className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(reportData.summary.totalPaid)}</div>
-            <span className="text-[10px] text-muted block mt-0.5">Cleared via Cash / Bank</span>
+            <span className="text-[10px] uppercase font-bold text-emerald-600 block">Input VAT (18%)</span>
+            <div className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(reportData.summary.totalVat || 0)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Claimable Tax</span>
+          </GlassCard>
+
+          <GlassCard className="p-3 border-l-4 border-l-blue-500">
+            <span className="text-[10px] uppercase font-bold text-blue-600 block">Gross Invoiced Value</span>
+            <div className="text-lg font-black text-blue-600 mt-1">{formatCurrency(reportData.summary.totalGross)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Purchases & Expenses</span>
           </GlassCard>
 
           <GlassCard className="p-3 border-l-4 border-l-amber-600 bg-amber-500/5">
@@ -1189,7 +1201,10 @@ export const FinancialReports: React.FC = () => {
                         <th className="py-2.5 px-3">Vendor / Supplier</th>
                         <th className="py-2.5 px-2">Category</th>
                         <th className="py-2.5 px-2">Source</th>
-                        <th className="py-2.5 px-2 text-right">Gross Total</th>
+                        <th className="py-2.5 px-2 text-right">Net Subtotal</th>
+                        <th className="py-2.5 px-2 text-right text-amber-700">SSCL</th>
+                        <th className="py-2.5 px-2 text-right text-emerald-700">VAT (18%)</th>
+                        <th className="py-2.5 px-2 text-right font-bold">Gross Total</th>
                         <th className="py-2.5 px-2 text-right text-emerald-700">Paid</th>
                         <th className="py-2.5 px-3 text-right text-amber-700">Balance Due</th>
                         <th className="py-2.5 px-2 text-center">Aging</th>
@@ -1199,7 +1214,7 @@ export const FinancialReports: React.FC = () => {
                     <tbody className="divide-y divide-slate-200">
                       {filteredRows.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="py-12 text-center text-slate-400 font-medium">
+                          <td colSpan={14} className="py-12 text-center text-slate-400 font-medium">
                             No vendor bills found matching the selected filters.
                           </td>
                         </tr>
@@ -1223,6 +1238,9 @@ export const FinancialReports: React.FC = () => {
                                 {r.billSource}
                               </span>
                             </td>
+                            <td className="py-2 px-2 text-right font-mono text-slate-700">{formatCurrency(r.subtotal || 0)}</td>
+                            <td className="py-2 px-2 text-right font-mono text-amber-700">{r.ssclAmount > 0 ? formatCurrency(r.ssclAmount) : '—'}</td>
+                            <td className="py-2 px-2 text-right font-mono text-emerald-700 font-semibold">{r.vatAmount > 0 ? formatCurrency(r.vatAmount) : '—'}</td>
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">{formatCurrency(r.totalAmount)}</td>
                             <td className="py-2 px-2 text-right font-mono text-emerald-700">{formatCurrency(r.paidAmount)}</td>
                             <td className="py-2 px-3 text-right font-mono font-black text-amber-700">{formatCurrency(r.balanceDue)}</td>
@@ -1253,6 +1271,9 @@ export const FinancialReports: React.FC = () => {
                           <td className="py-2.5 px-2" colSpan={6}>
                             TOTAL SUMMARY ({reportData.summary.totalBills} Vendor Bills)
                           </td>
+                          <td className="py-2.5 px-2 text-right font-mono text-slate-700">{formatCurrency(reportData.summary.totalSubtotal || 0)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono text-amber-700">{formatCurrency(reportData.summary.totalSscl || 0)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono text-emerald-700">{formatCurrency(reportData.summary.totalVat || 0)}</td>
                           <td className="py-2.5 px-2 text-right font-mono font-black">{formatCurrency(reportData.summary.totalGross)}</td>
                           <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(reportData.summary.totalPaid)}</td>
                           <td className="py-2.5 px-3 text-right font-mono font-black text-amber-700 text-sm">{formatCurrency(reportData.summary.totalDue)}</td>

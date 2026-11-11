@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useNavLoading } from '@/contexts/NavLoadingContext'
 import { prefetchRoute } from '@/lib/prefetchRoute'
 
 interface NavItem {
@@ -105,6 +106,7 @@ export const Sidebar: React.FC = () => {
   const navigate = useNavigate()
   const { user, logout, can } = useAuth()
   const { settings } = useSettings()
+  const { startNavigating } = useNavLoading()
 
   const [collapsed, setCollapsed] = useState(false)
   // Track which groups are open; default all active groups open
@@ -234,6 +236,7 @@ export const Sidebar: React.FC = () => {
                         key={item.label}
                         to={item.path}
                         end={item.path === '/crm' || item.path === '/finance'}
+                        onClick={() => startNavigating(item.path)}
                         onMouseEnter={() => prefetchRoute(item.path)}
                         onTouchStart={() => prefetchRoute(item.path)}
                         className={({ isActive: navActive }) => cn(

@@ -332,17 +332,33 @@ export const PayablesHub: React.FC = () => {
     {
       key: 'actions', header: '', align: 'right',
       render: (_, row) => (
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="text-amber-600 border border-amber-500/30 hover:bg-amber-500/10 text-xs font-semibold rounded-none" 
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/inventory/suppliers/${row.partyId}`);
-          }}
-        >
-          Pay / Ledger
-        </Button>
+        <div className="flex items-center justify-end gap-1.5">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-amber-600 border border-amber-500/30 hover:bg-amber-500/10 text-xs font-semibold rounded-none" 
+            onClick={(e) => {
+              e.stopPropagation();
+              const supp = suppliers.find((s: any) => s.id === row.partyId || s.name === row.partyName || s.company === row.partyName) || { id: row.partyId, company: row.partyName, name: row.partyName };
+              setMultiSettlementSupplier(supp);
+              setShowMultiSettlement(true);
+            }}
+          >
+            Pay / Settle
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-slate-500 border border-slate-300 dark:border-slate-700 hover:bg-slate-500/10 text-xs font-medium rounded-none px-2" 
+            title="View Supplier Profile / Ledger"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/inventory/suppliers/${row.partyId}`);
+            }}
+          >
+            Ledger
+          </Button>
+        </div>
       )
     }
   ];

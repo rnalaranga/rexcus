@@ -9,6 +9,11 @@ import {
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { POPrintView } from '@/components/purchasing/POPrintView';
+import { useSettings } from '@/contexts/SettingsContext';
+import { printElement } from '@/lib/printElement';
+import { exportToPdf } from '@/lib/exportToPdf';
 import { useGRNs, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
 import { useTaxProfiles } from '@/hooks/useFinance';
@@ -29,6 +34,9 @@ export const BillBuilder: React.FC = () => {
   const { data: bills, refetch: refetchBills } = useBills();
   const { data: suppliers } = useSuppliers();
   const { data: taxProfiles = [] } = useTaxProfiles();
+  const { settings } = useSettings();
+
+  const [previewPo, setPreviewPo] = useState<any | null>(null);
 
   const [docNo, setDocNo] = useState(idParam || ('BILL-' + Date.now().toString().slice(-4)));
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -523,7 +531,7 @@ export const BillBuilder: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
-        <div className="max-w-4xl mx-auto space-y-5">
+        <div className="max-w-7xl mx-auto space-y-5">
 
           {/* Quick Expense Category Quick-Pills */}
           <GlassCard className="p-3 bg-surface/40">
@@ -573,6 +581,18 @@ export const BillBuilder: React.FC = () => {
                       value={combinedBilledSoFar >= combinedPoTotal - 0.01 && combinedPoTotal > 0 ? 'Fully Billed' : combinedBilledSoFar > 0 ? 'Partially Billed' : 'Unbilled'} 
                       size="sm" 
                     />
+                    {activeLinkedPOs.map((p: any) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPreviewPo(p)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface border border-amber-500/30 hover:border-amber-500 text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-all"
+                        title={`View read-only PO document #${p.id}`}
+                      >
+                        <Eye size={11} />
+                        <span>View {p.id}</span>
+                      </button>
+                    ))}
                   </div>
                   <p className="text-xs text-muted mt-1">
                     Vendor: <strong className="text-primary">{getSupplierName(supplierId || activeLinkedPOs[0]?.supplierId)}</strong> • {activeLinkedPOs.length} PO(s) linked
@@ -667,35 +687,51 @@ export const BillBuilder: React.FC = () => {
                     {unbilledPOsForVendor.map((po: any) => {
                       const isLinked = activeLinkedPoIds.includes(po.id);
                       return (
-                        <button
-                          key={po.id}
-                          type="button"
-                          onClick={() => {
-                            if (isMultiPoMode) {
-                              if (isLinked) {
-                                setSelectedPoIds(prev => prev.filter(x => x !== po.id));
+                        <div key={po.id} className="inline-flex items-center rounded border border-theme-subtle overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isMultiPoMode) {
+                                if (isLinked) {
+                                  setSelectedPoIds(prev => prev.filter(x => x !== po.id));
+                                } else {
+                                  setSelectedPoIds(prev => [...prev, po.id]);
+                                }
                               } else {
-                                setSelectedPoIds(prev => [...prev, po.id]);
+                                if (isLinked) {
+                                  setPoId('');
+                                } else {
+                                  setPoId(po.id);
+                                }
                               }
-                            } else {
-                              if (isLinked) {
-                                setPoId('');
-                              } else {
-                                setPoId(po.id);
-                              }
-                            }
-                          }}
-                          className={`px-2 py-1 rounded text-[11px] font-mono flex items-center gap-1 border transition-all ${
-                            isLinked 
-                              ? 'bg-amber-500 text-white border-amber-500 font-bold' 
-                              : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle hover:border-amber-500/50'
-                          }`}
-                        >
-                          <span>{po.id}</span>
-                          <span className={isLinked ? 'text-amber-100' : 'text-emerald-500'}>
-                            ({formatCurrency(Number(po.totalAmount || 0), true)})
-                          </span>
-                        </button>
+                            }}
+                            className={`px-2 py-1 text-[11px] font-mono flex items-center gap-1 transition-all ${
+                              isLinked 
+                                ? 'bg-amber-500 text-white font-bold' 
+                                : 'bg-surface hover:bg-surface2 text-primary hover:border-amber-500/50'
+                            }`}
+                          >
+                            <span>{po.id}</span>
+                            <span className={isLinked ? 'text-amber-100' : 'text-emerald-500'}>
+                              ({formatCurrency(Number(po.totalAmount || 0), true)})
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewPo(po);
+                            }}
+                            className={`px-1.5 py-1 text-[10px] transition-colors border-l ${
+                              isLinked
+                                ? 'bg-amber-600 text-white border-amber-400 hover:bg-amber-700'
+                                : 'bg-surface hover:bg-surface2 text-muted hover:text-primary border-theme-subtle'
+                            }`}
+                            title={`Preview PO #${po.id}`}
+                          >
+                            <Eye size={11} />
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -1122,6 +1158,47 @@ export const BillBuilder: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Read-Only PO Preview Modal */}
+      {previewPo && (
+        <Modal 
+          isOpen={!!previewPo} 
+          onClose={() => setPreviewPo(null)} 
+          title={`Purchase Order Preview - #${previewPo.id}`} 
+          size="xl"
+        >
+          <div className="bg-neutral-100 dark:bg-neutral-900 p-4 max-h-[82vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 px-2">
+              <span className="text-xs text-muted">A4 Vector Document Preview (Read-Only)</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportToPdf('po-print-section', `PO_${previewPo.id}.pdf`)}
+                  className="bg-surface border border-theme-subtle hover:bg-surface2 text-xs"
+                >
+                  Export PDF
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => printElement('po-print-section', `PO_${previewPo.id}`)}
+                  className="text-xs"
+                >
+                  Print PO
+                </Button>
+              </div>
+            </div>
+            <div className="bg-white shadow-xl rounded-none overflow-hidden mx-auto">
+              <POPrintView 
+                po={previewPo} 
+                supplier={suppliers.find((s: any) => s.id === previewPo.supplierId) || { company: previewPo.supplierName, name: previewPo.supplierName }} 
+                settings={settings} 
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

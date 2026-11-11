@@ -118,7 +118,8 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'purchasing.mr.manage', label: 'Material Requisitions (MR)', description: 'Create and submit internal material purchase requisitions' },
       { id: 'purchasing.po.manage', label: 'Purchase Orders (PO)', description: 'Draft, approve, and send purchase orders to suppliers' },
       { id: 'purchasing.grn.manage', label: 'Supplier GRN Inspection', description: 'Record incoming supplier goods receipt and verify deliveries' },
-      { id: 'purchasing.bills.manage', label: 'Supplier Bills & Payables', description: 'Log vendor invoices and prepare accounts payable disbursements' }
+      { id: 'purchasing.bills.view', label: 'View Vendor Bills', description: 'Browse supplier bills, utility bills, and payment statuses' },
+      { id: 'purchasing.bills.manage', label: 'Create & Manage Vendor Bills', description: 'Log vendor invoices and prepare accounts payable disbursements' }
     ]
   },
   {
@@ -182,6 +183,8 @@ const PERMISSION_ALIASES: Record<string, string[]> = {
   'approvals.purchase_orders': ['approvals.purchase_orders', 'purchasing.po.manage'],
   'purchasing.mr.approve': ['approvals.material_requests', 'purchasing.mr.manage'],
   'approvals.material_requests': ['approvals.material_requests', 'purchasing.mr.manage'],
+  'purchasing.bills.view': ['purchasing.bills.view', 'purchasing.bills.manage', 'finance.invoices.view', 'finance.payables.view'],
+  'purchasing.bills.manage': ['purchasing.bills.manage', 'finance.bills.approve', 'approvals.bills_payments'],
   'finance.bills.approve': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
   'approvals.bills_payments': ['approvals.bills_payments', 'finance.invoices.edit', 'purchasing.bills.manage'],
   'production.work_orders.approve': ['approvals.work_orders', 'production.work_orders.create', 'production.work_orders.edit'],
