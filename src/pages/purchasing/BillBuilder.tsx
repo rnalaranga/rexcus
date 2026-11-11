@@ -34,6 +34,7 @@ export const BillBuilder: React.FC = () => {
   const [dueDate, setDueDate] = useState('');
   
   const [supplierId, setSupplierId] = useState('');
+  const [billCategory, setBillCategory] = useState<string>('Raw Material / Inventory');
   const [poId, setPoId] = useState(poIdParam || '');
   const [grnId, setGrnId] = useState(grnIdParam || '');
   const [amount, setAmount] = useState<number>(0);
@@ -57,6 +58,7 @@ export const BillBuilder: React.FC = () => {
         setDocNo(existing.id);
         setInvoiceNo(existing.invoiceNo || '');
         setSupplierId(existing.supplierId || '');
+        setBillCategory(existing.billCategory || 'Raw Material / Inventory');
         setPoId(existing.poId || '');
         setGrnId(existing.grnId || '');
         setAmount(Number(existing.amount || 0));
@@ -363,7 +365,10 @@ export const BillBuilder: React.FC = () => {
     try {
       const payload: any = { 
         id: docNo, 
+        billNo: docNo,
         supplierId, 
+        billCategory,
+        billType: (poId || grnId) ? 'grn' : 'manual',
         poId: poId || null, 
         grnId: grnId || null, 
         invoiceNo: invoiceNo.trim(), 
@@ -388,7 +393,7 @@ export const BillBuilder: React.FC = () => {
         await createBill(payload);
       }
       await refetchBills();
-      navigate('/purchasing?tab=bill');
+      navigate('/finance/vendor-bills');
     } catch (e: any) {
       alert('Failed to save supplier bill: ' + (e.message || 'Unknown error'));
       setSaving(false);
@@ -498,6 +503,29 @@ export const BillBuilder: React.FC = () => {
               <h2 className="text-[12px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-2">
                 <Building2 size={16} /> Vendor & References
               </h2>
+
+              <div>
+                <label className="block text-[11px] font-bold text-muted uppercase mb-1">
+                  Bill Category / Expense Type *
+                </label>
+                <select
+                  value={billCategory}
+                  onChange={e => setBillCategory(e.target.value)}
+                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-semibold focus:border-amber-500"
+                >
+                  <option value="Raw Material / Inventory">Raw Material / Stock Purchase</option>
+                  <option value="Electricity / CEB">Electricity / Power (CEB / LECO)</option>
+                  <option value="Water Utility">Water Supply (NWSDB)</option>
+                  <option value="Telephone & Internet">Telephone & Internet (SLT / Dialog)</option>
+                  <option value="Rent & Lease">Factory / Office Rent & Lease</option>
+                  <option value="Machining & Subcontract">Subcontract / Outwork Machining</option>
+                  <option value="Machine Maintenance">Machinery Repair & Spare Parts</option>
+                  <option value="Fuel & Transport">Fuel, Transport & Delivery</option>
+                  <option value="Consumables & Tools">Workshop Consumables & Tooling</option>
+                  <option value="Professional & Audit Fees">Professional, Legal & Audit Fees</option>
+                  <option value="General Operating Expense">General Operating Expense</option>
+                </select>
+              </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1">

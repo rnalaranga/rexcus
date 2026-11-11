@@ -13717,6 +13717,164 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
       });
     }
 
+    // 3. VENDOR BILLS & ACCOUNTS PAYABLE (AP) REPORT
+    if (reportType === 'vendor_bills' || reportType === 'unpaid_bills' || reportType === 'ap_aging') {
+      const supplierId = (req.query.supplierId as string) || '';
+      const billCategory = (req.query.billCategory as string) || 'all';
+      const billSource = (req.query.billSource as string) || 'all'; // 'all' | 'grn' | 'manual'
+      const agingBucket = (req.query.agingBucket as string) || 'all'; // 'current' | '1-30' | '31-60' | '61-90' | '90plus'
+
+      let query = `
+        SELECT 
+          b.*,
+          COALESCE(b.billNo, b.invoiceNo, b.id) as displayNo,
+          COALESCE(b.amount, 0) as totalAmount,
+          COALESCE(b.paidAmount, 0) as paidAmount,
+          (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) as balanceDue,
+          s.id as resolvedSupplierId,
+          COALESCE(s.name, s.company, 'Unknown Vendor') as resolvedSupplierName,
+          s.company as resolvedSupplierCompany,
+          s.phone as resolvedSupplierPhone,
+          s.email as resolvedSupplierEmail,
+          s.vat as resolvedSupplierVat,
+          DATEDIFF(NOW(), COALESCE(b.dueDate, b.date)) as overdueDays,
+          DATEDIFF(NOW(), b.date) as ageDays
+        FROM supplier_bills b
+        LEFT JOIN suppliers s ON b.supplierId = s.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (supplierId && supplierId !== 'all') {
+        query += ' AND (b.supplierId = ? OR s.id = ?)';
+        params.push(supplierId, supplierId);
+      }
+
+      if (billCategory && billCategory !== 'all') {
+        query += ' AND b.billCategory = ?';
+        params.push(billCategory);
+      }
+
+      if (billSource === 'grn') {
+        query += ' AND (b.grnId IS NOT NULL AND b.grnId != "" OR b.poId IS NOT NULL AND b.poId != "")';
+      } else if (billSource === 'manual') {
+        query += ' AND (b.grnId IS NULL OR b.grnId = "") AND (b.poId IS NULL OR b.poId = "")';
+      }
+
+      if (startDate) {
+        query += ' AND DATE(b.date) >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ' AND DATE(b.date) <= ?';
+        params.push(endDate);
+      }
+
+      if (status && status !== 'all') {
+        if (status === 'unpaid') {
+          query += ' AND (b.status = "unpaid" OR b.status = "partial" OR b.status IS NULL) AND (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0';
+        } else if (status === 'paid') {
+          query += ' AND (b.status = "paid" OR (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) <= 0)';
+        } else if (status === 'overdue') {
+          query += ' AND (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0 AND DATEDIFF(NOW(), COALESCE(b.dueDate, b.date)) > 0';
+        } else {
+          query += ' AND b.status = ?';
+          params.push(status);
+        }
+      }
+
+      if (reportType === 'unpaid_bills') {
+        query += ' AND (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0';
+      }
+
+      query += ' ORDER BY b.date DESC, b.createdAt DESC';
+
+      const [rawRows]: any = await db.query(query, params);
+
+      let totalGross = 0;
+      let totalPaid = 0;
+      let totalDue = 0;
+      let totalOverdue = 0;
+
+      const agingBuckets = {
+        current: 0,
+        days1_30: 0,
+        days31_60: 0,
+        days61_90: 0,
+        days90plus: 0
+      };
+
+      const enrichedRows = rawRows.map((r: any) => {
+        const gross = Number(r.totalAmount || 0);
+        const paid = Number(r.paidAmount || 0);
+        const due = Math.max(0, gross - paid);
+        const overdueDays = Number(r.overdueDays || 0);
+        const isOverdue = due > 0 && overdueDays > 0;
+
+        let bucket = 'Current';
+        if (due > 0) {
+          if (overdueDays <= 0) {
+            bucket = 'Current';
+            agingBuckets.current += due;
+          } else if (overdueDays <= 30) {
+            bucket = '1-30 Days';
+            agingBuckets.days1_30 += due;
+          } else if (overdueDays <= 60) {
+            bucket = '31-60 Days';
+            agingBuckets.days31_60 += due;
+          } else if (overdueDays <= 90) {
+            bucket = '61-90 Days';
+            agingBuckets.days61_90 += due;
+          } else {
+            bucket = '90+ Days';
+            agingBuckets.days90plus += due;
+          }
+        }
+
+        totalGross += gross;
+        totalPaid += paid;
+        totalDue += due;
+        if (isOverdue) totalOverdue += due;
+
+        return {
+          ...r,
+          totalAmount: gross,
+          paidAmount: paid,
+          balanceDue: due,
+          overdueDays: Math.max(0, overdueDays),
+          isOverdue,
+          agingBucket: bucket,
+          billSource: (r.grnId || r.poId) ? 'GRN / PO' : 'Direct Expense'
+        };
+      });
+
+      // Filter by agingBucket if specified
+      const filteredEnriched = (agingBucket && agingBucket !== 'all')
+        ? enrichedRows.filter((r: any) => {
+            if (agingBucket === 'current') return r.agingBucket === 'Current';
+            if (agingBucket === '1-30') return r.agingBucket === '1-30 Days';
+            if (agingBucket === '31-60') return r.agingBucket === '31-60 Days';
+            if (agingBucket === '61-90') return r.agingBucket === '61-90 Days';
+            if (agingBucket === '90plus') return r.agingBucket === '90+ Days';
+            return true;
+          })
+        : enrichedRows;
+
+      return res.json({
+        reportType: 'vendor_bills',
+        filters: { startDate, endDate, supplierId, billCategory, billSource, status, agingBucket },
+        summary: {
+          totalBills: enrichedRows.length,
+          totalGross,
+          totalPaid,
+          totalDue,
+          totalOverdue,
+          agingBuckets
+        },
+        rows: filteredEnriched
+      });
+    }
+
     res.status(400).json({ error: 'Invalid reportType specified' });
   } catch (error: any) {
     console.error('Advanced report error:', error);

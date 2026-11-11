@@ -1025,10 +1025,14 @@ export const setCashbookFloat = async (data: {
 };
 
 export const fetchAdvancedReport = async (params: {
-  reportType: 'invoices' | 'unpaid_invoices' | 'cashbook' | 'tax_register';
+  reportType: 'invoices' | 'unpaid_invoices' | 'cashbook' | 'tax_register' | 'vendor_bills' | 'unpaid_bills' | 'ap_aging';
   startDate?: string;
   endDate?: string;
   customerId?: string;
+  supplierId?: string;
+  billCategory?: string;
+  billSource?: string;
+  agingBucket?: string;
   status?: string;
   cashAccountId?: string;
 }) => {

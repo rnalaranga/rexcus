@@ -4,20 +4,20 @@ import {
   Calendar, Search, Filter, ArrowDownLeft, ArrowUpRight, Clock,
   Printer, FileSpreadsheet, CheckCircle, AlertTriangle, ChevronRight,
   TrendingUp, TrendingDown, Building2, User, Hash, Layers, BookOpen,
-  ArrowRight
+  ArrowRight, Receipt
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
-import { fetchAdvancedReport, fetchCustomers, fetchAccountLedgerReport } from '@/lib/api';
+import { fetchAdvancedReport, fetchCustomers, fetchAccountLedgerReport, fetchSuppliers } from '@/lib/api';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import * as XLSX from 'xlsx';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
-type MainTab = 'invoices' | 'unpaid' | 'cashbook' | 'tax' | 'account_ledger' | 'pnl' | 'bs' | 'tb' | 'exp';
+type MainTab = 'invoices' | 'unpaid' | 'vendor_bills' | 'cashbook' | 'tax' | 'account_ledger' | 'pnl' | 'bs' | 'tb' | 'exp';
 
 export const FinancialReports: React.FC = () => {
   const { settings } = useSettings();
@@ -30,6 +30,10 @@ export const FinancialReports: React.FC = () => {
 
   // Other filters
   const [customerId, setCustomerId] = useState<string>('all');
+  const [supplierId, setSupplierId] = useState<string>('all');
+  const [billCategory, setBillCategory] = useState<string>('all');
+  const [billSource, setBillSource] = useState<string>('all');
+  const [agingBucket, setAgingBucket] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cashbookView, setCashbookView] = useState<'by_account' | 'detailed'>('by_account');
   const [search, setSearch] = useState<string>('');
@@ -42,12 +46,16 @@ export const FinancialReports: React.FC = () => {
   const [reportData, setReportData] = useState<any>(null);
   const [financialStatementData, setFinancialStatementData] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Load customer list for dropdown
+  // Load customer and supplier lists for dropdowns
   useEffect(() => {
     fetchCustomers().then(res => {
       setCustomers(Array.isArray(res) ? res : []);
+    }).catch(console.error);
+    fetchSuppliers().then(res => {
+      setSuppliers(Array.isArray(res) ? res : []);
     }).catch(console.error);
   }, []);
 
@@ -85,13 +93,17 @@ export const FinancialReports: React.FC = () => {
   useEffect(() => {
     setLoading(true);
 
-    if (['invoices', 'unpaid', 'cashbook', 'tax'].includes(activeTab)) {
+    if (['invoices', 'unpaid', 'vendor_bills', 'cashbook', 'tax'].includes(activeTab)) {
       const backendReportType = activeTab === 'unpaid' ? 'unpaid_invoices' : (activeTab === 'tax' ? 'invoices' : activeTab);
       fetchAdvancedReport({
         reportType: backendReportType as any,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         customerId: customerId !== 'all' ? customerId : undefined,
+        supplierId: supplierId !== 'all' ? supplierId : undefined,
+        billCategory: billCategory !== 'all' ? billCategory : undefined,
+        billSource: billSource !== 'all' ? billSource : undefined,
+        agingBucket: agingBucket !== 'all' ? agingBucket : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined
       })
         .then(res => {
@@ -130,7 +142,7 @@ export const FinancialReports: React.FC = () => {
           setLoading(false);
         });
     }
-  }, [activeTab, startDate, endDate, customerId, statusFilter, selectedAccountId]);
+  }, [activeTab, startDate, endDate, customerId, supplierId, billCategory, billSource, agingBucket, statusFilter, selectedAccountId]);
 
   // Filtered rows by search term
   const filteredRows = useMemo(() => {
@@ -251,6 +263,44 @@ export const FinancialReports: React.FC = () => {
         const ws = XLSX.utils.json_to_sheet(excelRows);
         XLSX.utils.book_append_sheet(wb, ws, activeTab === 'unpaid' ? 'Unpaid_Invoices' : 'Invoices_Report');
         XLSX.writeFile(wb, `Rex_Invoices_Report_${dateRangeLabel}.xlsx`);
+      } else if (activeTab === 'vendor_bills') {
+        const billRows = (filteredRows || []).map((r: any, idx: number) => ({
+          '#': idx + 1,
+          'Bill No': r.displayNo,
+          'Bill Date': r.date ? r.date.slice(0, 10) : '',
+          'Due Date': r.dueDate ? r.dueDate.slice(0, 10) : '',
+          'Vendor Name': r.resolvedSupplierName,
+          'Vendor Invoice Ref': r.invoiceNo || '',
+          'Category': r.billCategory || 'General',
+          'Source': r.billSource || 'Direct',
+          'Gross Amount (LKR)': r.totalAmount,
+          'Paid Amount (LKR)': r.paidAmount,
+          'Balance Due (LKR)': r.balanceDue,
+          'Overdue Days': r.overdueDays || 0,
+          'Aging Bucket': r.agingBucket || 'Current',
+          'Status': r.balanceDue <= 0 ? 'PAID' : r.paidAmount > 0 ? 'PARTIAL' : 'UNPAID'
+        }));
+
+        billRows.push({
+          '#': '',
+          'Bill No': 'TOTALS',
+          'Bill Date': '',
+          'Due Date': '',
+          'Vendor Name': '',
+          'Vendor Invoice Ref': '',
+          'Category': '',
+          'Source': `${reportData?.summary?.totalBills || 0} Bills`,
+          'Gross Amount (LKR)': reportData?.summary?.totalGross || 0,
+          'Paid Amount (LKR)': reportData?.summary?.totalPaid || 0,
+          'Balance Due (LKR)': reportData?.summary?.totalDue || 0,
+          'Overdue Days': '',
+          'Aging Bucket': '',
+          'Status': ''
+        } as any);
+
+        const ws = XLSX.utils.json_to_sheet(billRows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Vendor_Bills_AP');
+        XLSX.writeFile(wb, `Rex_Vendor_Bills_AP_${dateRangeLabel}.xlsx`);
       } else if (activeTab === 'cashbook') {
         if (cashbookView === 'by_account') {
           const accRows = (filteredAccountSummaries || []).map((a: any, idx: number) => ({
@@ -446,6 +496,17 @@ export const FinancialReports: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('vendor_bills')}
+          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
+            activeTab === 'vendor_bills'
+              ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-amber-600/30'
+          }`}
+        >
+          <Receipt size={14} /> Vendor Bills & AP Aging
+        </button>
+
+        <button
           onClick={() => setActiveTab('cashbook')}
           className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
             activeTab === 'cashbook'
@@ -509,7 +570,7 @@ export const FinancialReports: React.FC = () => {
       </div>
 
       {/* QuickBooks-Style Dynamic Filter Bar */}
-      {['invoices', 'unpaid', 'cashbook', 'tax', 'account_ledger'].includes(activeTab) && (
+      {['invoices', 'unpaid', 'vendor_bills', 'cashbook', 'tax', 'account_ledger'].includes(activeTab) && (
         <GlassCard className="p-4 space-y-3">
           {/* Top Row: Quick Preset Buttons */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -672,6 +733,91 @@ export const FinancialReports: React.FC = () => {
               </div>
             )}
 
+            {/* Vendor Bills Filters */}
+            {activeTab === 'vendor_bills' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-medium">Vendor:</span>
+                  <select
+                    value={supplierId}
+                    onChange={e => setSupplierId(e.target.value)}
+                    className="text-xs bg-surface border border-theme rounded-lg px-3 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500 max-w-[180px]"
+                  >
+                    <option value="all">All Vendors</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.company || s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-medium">Category:</span>
+                  <select
+                    value={billCategory}
+                    onChange={e => setBillCategory(e.target.value)}
+                    className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500 max-w-[150px]"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="Raw Material / Inventory">Raw Material</option>
+                    <option value="Electricity / CEB">Electricity (CEB)</option>
+                    <option value="Water Utility">Water (NWSDB)</option>
+                    <option value="Telephone & Internet">Telecom & Internet</option>
+                    <option value="Rent & Lease">Rent & Lease</option>
+                    <option value="Machining & Subcontract">Subcontract</option>
+                    <option value="Machine Maintenance">Maintenance</option>
+                    <option value="Fuel & Transport">Fuel & Transport</option>
+                    <option value="General Operating Expense">General Expense</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-medium">Source:</span>
+                  <select
+                    value={billSource}
+                    onChange={e => setBillSource(e.target.value)}
+                    className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
+                  >
+                    <option value="all">All Sources</option>
+                    <option value="grn">GRN / PO Linked</option>
+                    <option value="manual">Direct Operating Bills</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-medium">Status:</span>
+                  <select
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                    className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="unpaid">Unpaid Only</option>
+                    <option value="partial">Partially Paid</option>
+                    <option value="paid">Fully Settled</option>
+                    <option value="overdue">Overdue Only</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted font-medium">Aging:</span>
+                  <select
+                    value={agingBucket}
+                    onChange={e => setAgingBucket(e.target.value)}
+                    className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
+                  >
+                    <option value="all">All Aging</option>
+                    <option value="current">Current (Not Due)</option>
+                    <option value="1-30">1-30 Days</option>
+                    <option value="31-60">31-60 Days</option>
+                    <option value="61-90">61-90 Days</option>
+                    <option value="90plus">90+ Days (Critical)</option>
+                  </select>
+                </div>
+              </>
+            )}
+
             {/* Search Input */}
             <div className="relative ml-auto">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
@@ -724,6 +870,41 @@ export const FinancialReports: React.FC = () => {
             <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 block">Outstanding Balance Due</span>
             <div className="text-lg font-black text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(reportData.summary.totalBalanceDue)}</div>
             <span className="text-[10px] text-muted block mt-0.5">Pending Collection</span>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Vendor Bills AP KPI Cards */}
+      {activeTab === 'vendor_bills' && reportData?.summary && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <GlassCard className="p-3 border-l-4 border-l-amber-500">
+            <span className="text-[10px] uppercase font-bold text-muted block">Vendor Bills</span>
+            <div className="text-lg font-black text-primary mt-1">{reportData.summary.totalBills}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Total Invoices</span>
+          </GlassCard>
+
+          <GlassCard className="p-3 border-l-4 border-l-slate-500">
+            <span className="text-[10px] uppercase font-bold text-muted block">Gross Invoiced Value</span>
+            <div className="text-lg font-black text-primary mt-1">{formatCurrency(reportData.summary.totalGross)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Purchases & Expenses</span>
+          </GlassCard>
+
+          <GlassCard className="p-3 border-l-4 border-l-emerald-500">
+            <span className="text-[10px] uppercase font-bold text-emerald-600 block">Total Settled / Paid</span>
+            <div className="text-lg font-black text-emerald-600 mt-1">{formatCurrency(reportData.summary.totalPaid)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Cleared via Cash / Bank</span>
+          </GlassCard>
+
+          <GlassCard className="p-3 border-l-4 border-l-amber-600 bg-amber-500/5">
+            <span className="text-[10px] uppercase font-bold text-amber-600 block">Total Accounts Payable</span>
+            <div className="text-lg font-black text-amber-600 mt-1">{formatCurrency(reportData.summary.totalDue)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Balance Due to Vendors</span>
+          </GlassCard>
+
+          <GlassCard className="p-3 border-l-4 border-l-rose-500 bg-rose-500/5">
+            <span className="text-[10px] uppercase font-bold text-rose-600 block">Total Overdue (AP)</span>
+            <div className="text-lg font-black text-rose-600 mt-1">{formatCurrency(reportData.summary.totalOverdue)}</div>
+            <span className="text-[10px] text-muted block mt-0.5">Past Due Date</span>
           </GlassCard>
         </div>
       )}
@@ -853,6 +1034,7 @@ export const FinancialReports: React.FC = () => {
                   <p className="text-[11px] text-slate-500 uppercase tracking-widest font-semibold">
                     {activeTab === 'invoices' && 'INVOICE SALES & TAX BREAKDOWN REGISTER'}
                     {activeTab === 'unpaid' && 'ACCOUNTS RECEIVABLE & UNPAID INVOICES AGING REPORT'}
+                    {activeTab === 'vendor_bills' && 'ACCOUNTS PAYABLE & VENDOR BILLS AGING REGISTER'}
                     {activeTab === 'cashbook' && 'DAILY CASHBOOK INFLOW & OUTFLOW ANALYSIS'}
                     {activeTab === 'tax' && 'INLAND REVENUE DEPARTMENT (RAMIS) OUTPUT TAX REPORT'}
                     {activeTab === 'account_ledger' && (accountLedgerData?.mode === 'single' ? `GENERAL LEDGER — ${accountLedgerData?.account?.code} ${accountLedgerData?.account?.name?.toUpperCase()}` : 'CHART OF ACCOUNTS — GENERAL LEDGER SUMMARY')}
@@ -972,6 +1154,109 @@ export const FinancialReports: React.FC = () => {
                           <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(reportData.summary.totalPaid)}</td>
                           <td className="py-2.5 px-3 text-right font-mono font-black text-rose-700 text-sm">{formatCurrency(reportData.summary.totalBalanceDue)}</td>
                           <td className="py-2.5 px-2 text-center">—</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 1.5 VENDOR BILLS REGISTER / AP AGING REPORT TABLE */}
+              {activeTab === 'vendor_bills' && (
+                <div className="overflow-x-auto">
+                  {/* Aging Schedule Summary Bar */}
+                  {reportData?.summary?.agingBuckets && (
+                    <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded text-xs flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                        AP Aging Schedule:
+                      </span>
+                      <div className="flex items-center gap-4 text-xs font-mono">
+                        <div>Current: <strong className="text-slate-800">{formatCurrency(reportData.summary.agingBuckets.current || 0)}</strong></div>
+                        <div>1-30d: <strong className="text-amber-600">{formatCurrency(reportData.summary.agingBuckets.days1_30 || 0)}</strong></div>
+                        <div>31-60d: <strong className="text-amber-700">{formatCurrency(reportData.summary.agingBuckets.days31_60 || 0)}</strong></div>
+                        <div>61-90d: <strong className="text-rose-600">{formatCurrency(reportData.summary.agingBuckets.days61_90 || 0)}</strong></div>
+                        <div>90d+: <strong className="text-rose-700 font-black">{formatCurrency(reportData.summary.agingBuckets.days90plus || 0)}</strong></div>
+                      </div>
+                    </div>
+                  )}
+
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-y border-slate-300 text-slate-700 uppercase text-[10px] tracking-wider">
+                        <th className="py-2.5 px-2">Bill #</th>
+                        <th className="py-2.5 px-2">Bill Date</th>
+                        <th className="py-2.5 px-2">Due Date</th>
+                        <th className="py-2.5 px-3">Vendor / Supplier</th>
+                        <th className="py-2.5 px-2">Category</th>
+                        <th className="py-2.5 px-2">Source</th>
+                        <th className="py-2.5 px-2 text-right">Gross Total</th>
+                        <th className="py-2.5 px-2 text-right text-emerald-700">Paid</th>
+                        <th className="py-2.5 px-3 text-right text-amber-700">Balance Due</th>
+                        <th className="py-2.5 px-2 text-center">Aging</th>
+                        <th className="py-2.5 px-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {filteredRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="py-12 text-center text-slate-400 font-medium">
+                            No vendor bills found matching the selected filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRows.map((r: any) => (
+                          <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2 px-2 font-mono font-bold text-slate-900">{r.displayNo}</td>
+                            <td className="py-2 px-2 text-slate-600 whitespace-nowrap">{r.date ? r.date.slice(0, 10) : '-'}</td>
+                            <td className="py-2 px-2 text-slate-600 whitespace-nowrap">
+                              <span className={r.isOverdue ? 'text-rose-600 font-bold' : ''}>
+                                {r.dueDate ? r.dueDate.slice(0, 10) : '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="font-bold text-slate-900">{r.resolvedSupplierName}</div>
+                              {r.invoiceNo && <div className="text-[10px] text-slate-500 font-mono">Inv: {r.invoiceNo}</div>}
+                            </td>
+                            <td className="py-2 px-2 text-slate-600 text-[11px]">{r.billCategory || 'General'}</td>
+                            <td className="py-2 px-2 text-slate-600 text-[10.5px]">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${r.grnId || r.poId ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {r.billSource}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">{formatCurrency(r.totalAmount)}</td>
+                            <td className="py-2 px-2 text-right font-mono text-emerald-700">{formatCurrency(r.paidAmount)}</td>
+                            <td className="py-2 px-3 text-right font-mono font-black text-amber-700">{formatCurrency(r.balanceDue)}</td>
+                            <td className="py-2 px-2 text-center text-[10.5px] font-semibold">
+                              <span className={`px-1.5 py-0.5 rounded ${
+                                r.agingBucket === 'Current' ? 'bg-emerald-100 text-emerald-800' :
+                                r.agingBucket === '1-30 Days' ? 'bg-amber-100 text-amber-800' :
+                                'bg-rose-100 text-rose-800 font-bold'
+                              }`}>
+                                {r.agingBucket}
+                              </span>
+                            </td>
+                            <td className="py-2 px-2 text-center uppercase text-[10px] font-bold">
+                              <span className={`px-1.5 py-0.5 rounded ${
+                                r.balanceDue <= 0 ? 'bg-emerald-100 text-emerald-800' :
+                                r.paidAmount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {r.balanceDue <= 0 ? 'Paid' : r.paidAmount > 0 ? 'Partial' : 'Unpaid'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+
+                      {/* Summary Totals Row */}
+                      {filteredRows.length > 0 && reportData?.summary && (
+                        <tr className="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-900">
+                          <td className="py-2.5 px-2" colSpan={6}>
+                            TOTAL SUMMARY ({reportData.summary.totalBills} Vendor Bills)
+                          </td>
+                          <td className="py-2.5 px-2 text-right font-mono font-black">{formatCurrency(reportData.summary.totalGross)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(reportData.summary.totalPaid)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-black text-amber-700 text-sm">{formatCurrency(reportData.summary.totalDue)}</td>
+                          <td className="py-2.5 px-2 text-center" colSpan={2}>—</td>
                         </tr>
                       )}
                     </tbody>

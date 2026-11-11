@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, TrendingUp, FileText, Briefcase, Contact2, Bell,
   Package, Building2, ShoppingCart, Factory, Settings, DollarSign, BarChart3,
   ArrowUpRight, ArrowDownRight, Users2, Zap, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck, Wallet, ArrowRightLeft, Wrench
+  ChevronDown, ChevronUp, LogOut, UserCircle2, Landmark, CheckSquare, Shield, SlidersHorizontal, PackageCheck, ShoppingBag, Hash, Calendar, Truck, Wallet, ArrowRightLeft, Wrench, Receipt
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -72,7 +72,8 @@ const navGroups: NavGroup[] = [
       { label: 'Invoices',     path: '/finance/invoices',      icon: FileText,         permission: 'finance.invoices.view' },
       { label: 'Accounting',   path: '/finance',               icon: DollarSign,       permission: 'finance.accounting.view' },
       { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight,     permission: 'finance.receivables.view' },
-      { label: 'Payables',     path: '/finance/payables',      icon: ArrowDownRight,   permission: 'finance.payables.view' },
+      { label: 'Vendor Bills', path: '/finance/vendor-bills',  icon: Receipt,          permission: 'purchasing.bills.view' },
+      { label: 'Payables (AP)', path: '/finance/payables',     icon: ArrowDownRight,   permission: 'finance.payables.view' },
       { label: 'Reports',      path: '/finance/reports',       icon: BarChart3,        permission: 'finance.reports.view' },
       { label: 'Tax Report',   path: '/finance/tax-report',    icon: BarChart3,        permission: 'finance.tax.manage' },
     ],

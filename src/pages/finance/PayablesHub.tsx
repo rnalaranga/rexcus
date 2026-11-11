@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Download, Plus, Filter, ArrowDownRight, FileText, ShoppingCart, 
   Truck, CheckCircle2, Clock, AlertCircle, RefreshCw, ExternalLink,
-  Building2, Search, DollarSign, CreditCard
+  Building2, Search, DollarSign, CreditCard, BarChart3
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -374,6 +374,15 @@ export const PayablesHub: React.FC = () => {
             className="text-xs border border-theme-subtle hover:bg-surface2"
           >
             Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={BarChart3}
+            onClick={() => navigate('/finance/reports?tab=vendor_bills')}
+            className="text-xs border-theme-subtle text-amber-600 font-bold"
+          >
+            AP Aging Reports
           </Button>
           <Button
             variant="primary"

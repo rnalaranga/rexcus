@@ -38,6 +38,7 @@ import { BankReconciliation } from '@/pages/finance/BankReconciliation'
 import { AgedReports } from '@/pages/finance/AgedReports'
 import { ReceivablesHub } from '@/pages/finance/ReceivablesHub'
 import { PayablesHub } from '@/pages/finance/PayablesHub'
+import { VendorBills } from '@/pages/finance/VendorBills'
 import { DailyCashbook } from '@/pages/finance/DailyCashbook'
 import { DailyCashFlowHub } from '@/pages/finance/DailyCashFlowHub'
 import { Machinery } from '@/pages/production/Machinery'
@@ -208,6 +209,7 @@ function AppRoutes() {
             <Route path="/finance/bank-rec" element={<BankReconciliation />} />
             <Route path="/finance/aged-reports" element={<AgedReports />} />
             <Route path="/finance/receivables" element={<ReceivablesHub />} />
+            <Route path="/finance/vendor-bills" element={<VendorBills />} />
             <Route path="/finance/payables" element={<PayablesHub />} />
             <Route path="/finance/cost-centers" element={<CostCenters />} />
             <Route path="/finance/tax-report" element={<TaxReport />} />
