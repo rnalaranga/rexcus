@@ -2069,6 +2069,7 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())",
     "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1110', '1110', 'Petty Cash', 'Asset', 'Cash', 0, NOW())",
+    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, isTaxAccount, balance, createdAt) VALUES ('acc_5010', '5010', 'SSCL Expense (Non-claimable Purchase Tax)', 'Expense', 'Taxes & Levies', 1, 0, NOW())",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Custom / Engineering)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('product_quotation', 'Product Quotations', 'PQ', 2206, 4, 0, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
@@ -9196,10 +9197,10 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
     }
     if (!expAccId) expAccId = 'acc_4000';
 
-    const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
-    const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1310" OR (name LIKE "%Input SSCL%" AND type = "Asset") LIMIT 1');
-    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1300';
-    const inputSsclAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_1310';
+    const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1690" OR code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
+    const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE (code = "5010" OR name LIKE "%SSCL Expense%" OR name LIKE "%SSCL%") AND type = "Expense" LIMIT 1');
+    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1690';
+    const ssclExpenseAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_5010';
 
     const [apAcc]: any = await db.query(
       'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
@@ -9258,8 +9259,8 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
       }
 
       if (ssclAmount > 0) {
-        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, inputSsclAccId, ssclAmount, 0, billData.supplierId, 'Supplier']);
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, inputSsclAccId]);
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, ssclExpenseAccId, ssclAmount, 0, billData.supplierId, 'Supplier']);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, ssclExpenseAccId]);
       }
 
       lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, apAccId, 0, billAmount, billData.supplierId, 'Supplier']);

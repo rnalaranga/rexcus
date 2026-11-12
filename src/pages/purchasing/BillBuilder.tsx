@@ -549,6 +549,10 @@ export const BillBuilder: React.FC = () => {
       alert('Please enter a valid bill amount greater than 0.');
       return;
     }
+    if (lineItems.length === 0 && !expenseAccountId) {
+      alert('Please select a Charge Account (Chart of Accounts) to charge/debit for this bill.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -985,21 +989,72 @@ export const BillBuilder: React.FC = () => {
               <div>
                 <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <FileText size={12}/> Charge Account (Chart of Accounts) {lineItems.length > 0 ? <span className="text-[10px] text-muted font-normal lowercase">(optional / fallback)</span> : <span className="text-amber-500">*</span>}
+                    <FileText size={12}/> Charge Account (Chart of Accounts) {lineItems.length > 0 ? <span className="text-[10px] text-muted font-normal lowercase">(applies to all items)</span> : <span className="text-amber-500">*</span>}
                   </span>
                   <span className="text-[10px] text-amber-500 font-mono font-bold">Debited in General Ledger</span>
                 </label>
                 <AccountAutocomplete
                   value={expenseAccountId}
-                  onChange={(accId) => setExpenseAccountId(accId)}
+                  onChange={(accId) => {
+                    setExpenseAccountId(accId);
+                    if (accId && lineItems.length > 0) {
+                      setLineItems(prev => prev.map(it => ({ ...it, accountId: accId })));
+                    }
+                  }}
                   accounts={accounts}
                   placeholder="Type code or name to search account (e.g. 4000 Raw Materials, 5001 Electricity)..."
                   className="text-xs"
                 />
+                <div className="flex items-center justify-between mt-1 text-[10px] text-muted">
+                  <span>
+                    {lineItems.length > 0 
+                      ? "Selecting an account above auto-applies it to all items below (or edit per line)." 
+                      : "The selected account will be charged (Debited). Accounts Payable (2000) will be credited."}
+                  </span>
+                  {lineItems.length > 0 && expenseAccountId && (
+                    <button
+                      type="button"
+                      onClick={() => setLineItems(prev => prev.map(it => ({ ...it, accountId: expenseAccountId })))}
+                      className="text-amber-500 hover:text-amber-400 font-bold underline shrink-0 ml-2"
+                      title="Sync this account to all line items"
+                    >
+                      Sync to all {lineItems.length} items
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bill Description / Narration (Especially for utility / service bills with no items) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-muted uppercase flex items-center gap-1.5">
+                    <FileText size={12}/> Bill Description / Service Narration {lineItems.length === 0 ? <span className="text-amber-500">*</span> : <span className="text-muted font-normal lowercase">(bill header note)</span>}
+                  </label>
+                  {lineItems.length === 0 && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      ⚡ Direct Service / Utility Mode (No items)
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  rows={lineItems.length === 0 ? 3 : 2}
+                  placeholder={
+                    billCategory.toLowerCase().includes('electricity') || billCategory.toLowerCase().includes('ceb')
+                      ? "e.g. CEB Electricity Bill - November 2026, Factory Meter #49201, KWh 4,200, Billing period 01/11 to 30/11..."
+                      : billCategory.toLowerCase().includes('water')
+                      ? "e.g. NWSDB Water Bill - November 2026, Meter #192004, Main Factory facility..."
+                      : billCategory.toLowerCase().includes('fuel') || billCategory.toLowerCase().includes('diesel')
+                      ? "e.g. 500L Diesel for Factory Main Generator / Transport vehicle delivery..."
+                      : "e.g. Electricity bill / Factory maintenance service / Subcontract machining charges..."
+                  }
+                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs text-primary font-medium focus:border-amber-500 outline-none leading-relaxed"
+                />
                 <span className="text-[10px] text-muted block mt-0.5">
-                  {lineItems.length > 0 
-                    ? "Items are entered individually below. Each item line debits its own selected account (this field serves as a fallback)." 
-                    : "The selected account will be charged (Debited). Accounts Payable (2000) will be credited automatically."}
+                  {lineItems.length === 0 
+                    ? "Since no item breakdown is added, this description will be recorded in General Ledger & Supplier Statements (e.g. for Electricity, Water, Rent)." 
+                    : "Overall summary note for this supplier bill."}
                 </span>
               </div>
 
@@ -1231,17 +1286,52 @@ export const BillBuilder: React.FC = () => {
                   ) : (
                     lineItems.map((item, idx) => (
                       <tr key={item.id} className="border-b border-theme-subtle/50 hover:bg-surface2/30 transition-colors">
-                        <td className="py-2.5 px-3 text-center text-muted font-mono">{idx + 1}</td>
-                        <td className="py-2.5 px-3">
-                          <input
-                            type="text"
-                            value={item.description}
-                            onChange={e => updateLineItem(item.id, 'description', e.target.value)}
-                            placeholder="e.g. Steel Plate 2mm, Cutting Service, Transport..."
-                            className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs text-primary font-medium focus:border-rex-500 outline-none"
-                          />
+                        <td className="py-2.5 px-3 text-center text-muted font-mono align-top pt-3.5">{idx + 1}</td>
+                        <td className="py-2.5 px-3 align-top min-w-[280px]">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-muted">
+                              <span className="font-semibold text-secondary">Description / Details:</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = item.description || '';
+                                  const prefix = cur ? (cur.endsWith('\n') ? '• ' : '\n• ') : '• ';
+                                  updateLineItem(item.id, 'description', cur + prefix);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-surface2 hover:bg-amber-500/10 hover:text-amber-500 font-medium text-[9px] border border-theme-subtle flex items-center gap-1 transition-colors"
+                                title="Insert bullet point"
+                              >
+                                <span>•</span> Add Bullet
+                              </button>
+                            </div>
+                            <textarea
+                              rows={3}
+                              value={item.description}
+                              onChange={e => updateLineItem(item.id, 'description', e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  const textarea = e.currentTarget;
+                                  const cursorPos = textarea.selectionStart;
+                                  const textBefore = textarea.value.substring(0, cursorPos);
+                                  const currentLine = textBefore.split('\n').pop() || '';
+                                  if (currentLine.trim().startsWith('•') || currentLine.trim().startsWith('-')) {
+                                    e.preventDefault();
+                                    const textAfter = textarea.value.substring(cursorPos);
+                                    const bulletPrefix = currentLine.trim().startsWith('•') ? '\n• ' : '\n- ';
+                                    const newValue = textBefore + bulletPrefix + textAfter;
+                                    updateLineItem(item.id, 'description', newValue);
+                                    setTimeout(() => {
+                                      textarea.selectionStart = textarea.selectionEnd = cursorPos + bulletPrefix.length;
+                                    }, 0);
+                                  }
+                                }
+                              }}
+                              placeholder="e.g. Mild Steel Sheet 4mm (4x8)&#10;• High tensile grade&#10;• Prime quality certified"
+                              className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs text-primary font-medium focus:border-amber-500 outline-none leading-relaxed resize-y min-h-[64px]"
+                            />
+                          </div>
                         </td>
-                        <td className="py-2.5 px-3 text-right">
+                        <td className="py-2.5 px-3 text-right align-top pt-3.5">
                           <input
                             type="number"
                             min="0"
@@ -1251,7 +1341,7 @@ export const BillBuilder: React.FC = () => {
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
                           />
                         </td>
-                        <td className="py-2.5 px-3 text-right">
+                        <td className="py-2.5 px-3 text-right align-top pt-3.5">
                           <input
                             type="number"
                             min="0"
@@ -1261,10 +1351,10 @@ export const BillBuilder: React.FC = () => {
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
                           />
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-primary align-top pt-4">
                           {formatCurrency(item.total)}
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 align-top pt-3.5">
                           <AccountAutocomplete
                             value={item.accountId}
                             onChange={accId => updateLineItem(item.id, 'accountId', accId)}
@@ -1272,7 +1362,7 @@ export const BillBuilder: React.FC = () => {
                             className="text-xs"
                           />
                         </td>
-                        <td className="py-2.5 px-2 text-center">
+                        <td className="py-2.5 px-2 text-center align-top pt-4">
                           <button
                             type="button"
                             onClick={() => removeLineItem(item.id)}
@@ -1420,17 +1510,19 @@ export const BillBuilder: React.FC = () => {
             </GlassCard>
           )}
 
-          {/* Remarks & Notes */}
-          <GlassCard className="p-5">
-            <label className="block text-[11px] font-bold text-muted uppercase mb-2">Remarks / Accounting Notes</label>
-            <textarea 
-              value={notes} 
-              onChange={e => setNotes(e.target.value)} 
-              rows={3} 
-              className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
-              placeholder="e.g. Electricity bill for factory unit 2 / Advance 30% on PO-0012 / Final settlement..." 
-            />
-          </GlassCard>
+          {/* Remarks & Notes (When line items present) */}
+          {lineItems.length > 0 && (
+            <GlassCard className="p-5">
+              <label className="block text-[11px] font-bold text-muted uppercase mb-2">Additional Accounting Notes / Remarks</label>
+              <textarea 
+                value={notes} 
+                onChange={e => setNotes(e.target.value)} 
+                rows={2} 
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
+                placeholder="e.g. Advance 30% on PO / Final settlement note..." 
+              />
+            </GlassCard>
+          )}
 
         </div>
       </div>
