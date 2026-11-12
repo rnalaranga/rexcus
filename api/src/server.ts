@@ -9737,16 +9737,32 @@ app.post('/api/invoices', async (req, res) => {
           }
         }
 
-        // 3. Fallback: If only generic taxAmount was sent
+        // 3. Fallback: If only generic taxAmount was sent or subtotal equals total with tax profile
         totalCalculatedTax = Math.round((tax1Amt + tax2Amt) * 100) / 100;
         if (totalCalculatedTax === 0 && Number(data.taxAmount) > 0) {
           totalCalculatedTax = Number(data.taxAmount);
-          tax2Amt = totalCalculatedTax; // Default to VAT
+          // Auto split between SSCL (2.5%) and Output VAT (18%)
+          if (invSub > 0 && (data.taxType === 'vat_sscl' || data.taxType === 'both' || data.taxProfileId?.includes('sscl') || data.taxProfileId?.includes('opt') || !data.taxProfileId || data.taxProfileId === 'profile')) {
+            tax1Amt = Math.round(invSub * 0.025 * 100) / 100;
+            tax2Amt = Math.round((totalCalculatedTax - tax1Amt) * 100) / 100;
+            if (tax2Amt <= 0) {
+              tax2Amt = totalCalculatedTax;
+              tax1Amt = 0;
+            }
+          } else {
+            tax2Amt = totalCalculatedTax; // Default to VAT
+          }
         }
 
-        // If subtotal is still 0 or equals total while taxes exist, deduct taxes from revenue
-        if (invSub <= 0 || (invSub === invTotal && totalCalculatedTax > 0)) {
-          invSub = Math.max(0, invTotal - totalCalculatedTax);
+        // Ensure Sales Revenue (invSub) is strictly the Net Value excluding Taxes:
+        // Sales Revenue = Gross Invoice Amount (invTotal) - Output VAT (tax2Amt) - SSCL (tax1Amt)
+        if (totalCalculatedTax > 0) {
+          if (invSub <= 0 || invSub >= invTotal) {
+            invSub = Math.max(0, Math.round((invTotal - totalCalculatedTax) * 100) / 100);
+          } else if (Math.round((invSub + totalCalculatedTax) * 100) / 100 > Math.round(invTotal * 100) / 100) {
+            // If entered price was inclusive and invSub was initially set to full price
+            invSub = Math.max(0, Math.round((invTotal - totalCalculatedTax) * 100) / 100);
+          }
         }
 
         await db.query('INSERT INTO journal_entries SET ?', {

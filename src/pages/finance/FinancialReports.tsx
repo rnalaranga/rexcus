@@ -144,12 +144,52 @@ export const FinancialReports: React.FC = () => {
     }
   }, [activeTab, startDate, endDate, customerId, supplierId, billCategory, billSource, agingBucket, statusFilter, selectedAccountId]);
 
-  // Filtered rows by search term
+  // Filtered rows by search term with client-side fallback breakdown assurance
   const filteredRows = useMemo(() => {
     if (!reportData?.rows) return [];
-    if (!search.trim()) return reportData.rows;
+    
+    // Normalize rows: ensure each taxable invoice has SSCL and VAT computed
+    const normalized = reportData.rows.map((r: any) => {
+      const sub = Number(r.subtotal || 0);
+      const gross = Number(r.total || r.totalAmount || 0);
+      let sscl = Number(r.ssclAmount || 0);
+      let vat = Number(r.vatAmount || 0);
+      const storedTax = Number(r.taxAmount || 0);
+
+      // If invoice has tax (or gross > subtotal) but SSCL is 0
+      if ((storedTax > 0 || gross > sub) && sub > 0) {
+        if (sscl === 0 && vat > 0) {
+          // Total tax is stored as VAT, extract 2.5% SSCL on liable turnover
+          sscl = Math.round(sub * 0.025 * 100) / 100;
+          vat = Math.max(0, Math.round((storedTax - sscl) * 100) / 100);
+          if (vat <= 0) {
+            vat = storedTax;
+            sscl = 0;
+          }
+        } else if (sscl === 0 && vat === 0) {
+          const totalTax = storedTax > 0 ? storedTax : Math.max(0, gross - sub);
+          sscl = Math.round(sub * 0.025 * 100) / 100;
+          vat = Math.max(0, Math.round((totalTax - sscl) * 100) / 100);
+          if (vat <= 0) {
+            vat = totalTax;
+            sscl = 0;
+          }
+        }
+      }
+
+      const totalTax = (sscl + vat) > 0 ? (sscl + vat) : storedTax;
+
+      return {
+        ...r,
+        ssclAmount: sscl,
+        vatAmount: vat,
+        taxAmount: totalTax
+      };
+    });
+
+    if (!search.trim()) return normalized;
     const q = search.toLowerCase();
-    return reportData.rows.filter((r: any) => {
+    return normalized.filter((r: any) => {
       return (
         (r.invoiceNo && r.invoiceNo.toLowerCase().includes(q)) ||
         (r.customerName && r.customerName.toLowerCase().includes(q)) ||
