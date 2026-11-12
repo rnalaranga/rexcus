@@ -95,7 +95,10 @@ export const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setOpen(false)
-        if (selected) {
+        if (!query.trim()) {
+          onChange('', null)
+          setQuery('')
+        } else if (selected) {
           setQuery(`${selected.code} - ${selected.name}`)
         } else if (!value) {
           setQuery('')
@@ -104,7 +107,7 @@ export const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [selected, value])
+  }, [selected, value, query, onChange])
 
   // Filter accounts based on query (code, name, type, subtype)
   const filtered = useMemo(() => {
@@ -205,12 +208,19 @@ export const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
             setOpen(true)
             updateCoords()
           }}
+          onBlur={() => {
+            if (!query.trim()) {
+              onChange('', null)
+              setQuery('')
+            }
+          }}
           onChange={e => {
-            setQuery(e.target.value)
+            const val = e.target.value
+            setQuery(val)
             setOpen(true)
             setHighlightIdx(0)
             updateCoords()
-            if (!e.target.value) {
+            if (!val.trim()) {
               onChange('', null)
             }
           }}
