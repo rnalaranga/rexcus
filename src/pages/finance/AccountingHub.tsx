@@ -15,8 +15,9 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { CreditDebitNotesTab } from './CreditDebitNotesTab';
+import { InventoryValuationTab } from './InventoryValuationTab';
 
-type Tab = 'coa' | 'journals' | 'notes' | 'taxes';
+type Tab = 'coa' | 'journals' | 'notes' | 'taxes' | 'inventory';
 
 const TYPE_COLORS: Record<string, string> = {
   Asset: 'bg-blue-500',
@@ -193,7 +194,7 @@ export const AccountingHub: React.FC = () => {
 
 
 
-  const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : activeTab === 'notes' ? 'Credit & Debit Notes' : `${taxProfiles.length} tax profiles`;
+  const countLabel = activeTab === 'coa' ? `${accounts.length} accounts` : activeTab === 'journals' ? `${journals.length} journal entries` : activeTab === 'notes' ? 'Credit & Debit Notes' : activeTab === 'taxes' ? `${taxProfiles.length} tax profiles` : 'Inventory Valuation & Reconciliation';
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -228,9 +229,9 @@ export const AccountingHub: React.FC = () => {
         <SearchBar placeholder="Search accounts, journals..." value={search} onChange={setSearch} className="w-64" />
         <div className="w-px h-6 bg-theme-subtle mx-2" />
         <span className="text-xs text-muted flex items-center gap-1.5"><Filter size={12} /> View:</span>
-        {(['coa', 'journals', 'notes', 'taxes'] as Tab[]).map(t => (
+        {(['coa', 'journals', 'notes', 'taxes', 'inventory'] as Tab[]).map(t => (
           <button key={t} onClick={() => setActiveTab(t)} className={`px-3 py-1.5 text-xs border transition-colors ${activeTab === t ? 'bg-rex-500/10 border-rex-500/35 text-rex-700 dark:text-rex-300 font-bold' : 'bg-surface border-theme text-secondary hover:border-rex-500/30'}`}>
-            {t === 'coa' ? 'Chart of Accounts' : t === 'journals' ? 'Journals' : t === 'notes' ? 'Credit / Debit Notes' : 'Tax Profiles'}
+            {t === 'coa' ? 'Chart of Accounts' : t === 'journals' ? 'Journals' : t === 'notes' ? 'Credit / Debit Notes' : t === 'taxes' ? 'Tax Profiles' : 'Inventory Valuation'}
           </button>
         ))}
         {activeTab === 'coa' && (
@@ -467,6 +468,11 @@ export const AccountingHub: React.FC = () => {
       {/* Credit & Debit Notes */}
       {activeTab === 'notes' && (
         <CreditDebitNotesTab />
+      )}
+
+      {/* Inventory Valuation & Reconciliation Tab */}
+      {activeTab === 'inventory' && (
+        <InventoryValuationTab onSyncComplete={() => { refetchCOA(); refetchJournals(); }} />
       )}
 
       {/* Add/Edit Account Modal */}

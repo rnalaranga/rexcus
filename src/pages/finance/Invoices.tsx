@@ -18,6 +18,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner'
 import { printElement } from '@/lib/printElement'
@@ -1632,32 +1633,13 @@ export const Invoices: React.FC = () => {
                 <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
                   Deposit To ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash Account'})
                 </label>
-                <select 
+                <AccountAutocomplete
                   value={paymentData.accountId}
-                  onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
-                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
-                >
-                  <option value="">{isUSD ? 'Master USD Account (acc_1010)' : `Default Account (Auto match ${paymentData.method})`}</option>
-                  {accounts
-                    .filter(a => a.type === 'Asset' && (a.subtype === 'Bank' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('bank') || a.name?.toLowerCase().includes('cash')))
-                    .sort((a, b) => {
-                      if (isUSD) {
-                        const aIsUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
-                        const bIsUsd = b.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(b.name);
-                        if (aIsUsd && !bIsUsd) return -1;
-                        if (!aIsUsd && bIsUsd) return 1;
-                      }
-                      return (a.code || '').localeCompare(b.code || '');
-                    })
-                    .map(a => {
-                      const isAccUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
-                      return (
-                        <option key={a.id} value={a.id}>
-                          {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} — {isAccUsd ? `$ ${Number(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : `Rs. ${Number(a.balance || 0).toLocaleString()}`})
-                        </option>
-                      );
-                    })}
-                </select>
+                  onChange={(accId) => setPaymentData({ ...paymentData, accountId: accId })}
+                  placeholder={isUSD ? 'Search USD Bank Account (acc_1010)...' : 'Search Deposit Account (Bank / Cash)...'}
+                  typeFilter="Asset"
+                  className="text-xs"
+                />
               </div>
 
               <div>

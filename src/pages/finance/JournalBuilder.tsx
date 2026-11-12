@@ -11,6 +11,9 @@ import { useCustomers, useSuppliers } from '@/hooks/useData';
 import { createJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -217,49 +220,55 @@ export const JournalBuilder: React.FC = () => {
                     <td className="px-4 py-2 text-[10px] text-muted font-mono">{idx + 1}</td>
 
                     {/* Account */}
-                    <td className="px-2 py-2">
-                      <select
+                    <td className="px-2 py-2 min-w-[240px]">
+                      <AccountAutocomplete
                         value={line.accountId}
-                        onChange={e => updateLine(line.id, 'accountId', e.target.value)}
-                        className={`w-full bg-surface border px-2 py-1.5 rounded text-xs font-medium focus:outline-none transition-colors ${
-                          !line.accountId ? 'border-theme-subtle text-muted' : 'border-rex-500/40 text-primary'
-                        }`}
-                      >
-                        <option value="">-- Select Account --</option>
-                        {(['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'] as string[]).map(type => (
-                          <optgroup key={type} label={type}>
-                            {accounts.filter((a: any) => a.type === type).map((a: any) => (
-                              <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                        onChange={(accId) => updateLine(line.id, 'accountId', accId)}
+                        placeholder="Search Account..."
+                        className="text-xs"
+                      />
                     </td>
 
                     {/* Party */}
-                    <td className="px-2 py-2">
-                      <div className="flex gap-1">
+                    <td className="px-2 py-2 min-w-[220px]">
+                      <div className="flex gap-1.5 items-center">
                         <select
                           value={line.partyType}
-                          onChange={e => updateLine(line.id, 'partyType', e.target.value)}
-                          className="w-[70px] bg-surface border border-theme-subtle px-1 py-1.5 rounded text-[10px] focus:outline-none"
+                          onChange={e => {
+                            updateLine(line.id, 'partyType', e.target.value);
+                            updateLine(line.id, 'partyId', '');
+                          }}
+                          className="w-[70px] bg-surface border border-theme-subtle px-1 py-1.5 rounded text-[10px] focus:outline-none shrink-0"
                         >
                           <option value="">None</option>
                           <option value="Customer">Cust</option>
                           <option value="Supplier">Supp</option>
                         </select>
-                        <select
-                          value={line.partyId}
-                          onChange={e => updateLine(line.id, 'partyId', e.target.value)}
-                          disabled={!line.partyType}
-                          className="flex-1 bg-surface border border-theme-subtle px-1 py-1.5 rounded text-[10px] focus:outline-none disabled:opacity-40"
-                        >
-                          <option value="">-- Select --</option>
-                          {line.partyType === 'Customer'
-                            ? customers.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)
-                            : suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)
-                          }
-                        </select>
+                        {line.partyType === 'Customer' ? (
+                          <div className="flex-1 min-w-[140px]">
+                            <CustomerAutocomplete
+                              value={line.partyId}
+                              onChange={(cId) => updateLine(line.id, 'partyId', cId)}
+                              customers={customers}
+                              placeholder="Search customer..."
+                              className="text-[10px] py-1"
+                            />
+                          </div>
+                        ) : line.partyType === 'Supplier' ? (
+                          <div className="flex-1 min-w-[140px]">
+                            <SupplierAutocomplete
+                              value={line.partyId}
+                              onChange={(sId) => updateLine(line.id, 'partyId', sId)}
+                              suppliers={suppliers}
+                              placeholder="Search vendor..."
+                              className="text-[10px] py-1"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex-1 px-2 py-1 text-[10px] text-muted italic bg-surface/30 rounded border border-theme-subtle/50">
+                            N/A
+                          </div>
+                        )}
                       </div>
                     </td>
 

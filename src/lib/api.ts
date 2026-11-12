@@ -887,6 +887,20 @@ export const createJournal = async (data: any) => {
   return json;
 };
 
+export const fetchInventoryValuationSummary = async () => {
+  const res = await fetch(`${API_URL}/finance/inventory/valuation-summary`);
+  return res.json();
+};
+
+export const syncInventoryValuation = async (data?: { syncDate?: string; notes?: string; user?: string }) => {
+  const res = await fetch(`${API_URL}/finance/inventory/sync-valuation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {})
+  });
+  return res.json();
+};
+
 export interface CashbookEntry {
   id: string;
   date: string;

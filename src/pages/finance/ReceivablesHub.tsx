@@ -27,6 +27,7 @@ import { ProformaInvoicePrintModal } from '@/components/crm/ProformaInvoicePrint
 import { CreateOpeningOutstandingModal } from '@/components/finance/CreateOpeningOutstandingModal';
 import { MultiInvoiceSettlementModal } from '@/components/finance/MultiInvoiceSettlementModal';
 import { WorkflowPipelineBanner } from '@/components/common/WorkflowPipelineBanner';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
@@ -1903,21 +1904,14 @@ export const ReceivablesHub: React.FC = () => {
                   <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
                     Deposit Account ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash'})
                   </label>
-                  <select
+                  <AccountAutocomplete
                     value={paymentForm.accountId}
-                    onChange={e => setPaymentForm({ ...paymentForm, accountId: e.target.value })}
-                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
-                  >
-                    {!paymentForm.accountId && <option value="">Auto-resolve Deposit Account</option>}
-                    {eligibleAccounts.map((a: any) => {
-                      const isAccUsd = a.id === (settings?.usd_master_account_id || 'acc_1010') || /usd|foreign/i.test(a.name);
-                      return (
-                        <option key={a.id} value={a.id}>
-                          {a.code ? `[${a.code}] ` : ''}{a.name} ({a.subtype || 'Asset'} — {isAccUsd ? `$ ${Number(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : `Rs. ${Number(a.balance || 0).toLocaleString()}`})
-                        </option>
-                      );
-                    })}
-                  </select>
+                    onChange={(accId) => setPaymentForm({ ...paymentForm, accountId: accId })}
+                    accounts={eligibleAccounts}
+                    placeholder="Search deposit account (Bank / Cash)..."
+                    typeFilter="Asset"
+                    className="text-xs"
+                  />
                 </div>
               </div>
 

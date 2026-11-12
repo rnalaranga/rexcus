@@ -19,6 +19,7 @@ import { deleteBill } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 
 type StatusFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'overdue';
 type SourceFilter = 'all' | 'grn' | 'manual';
@@ -464,17 +465,17 @@ export const VendorBills: React.FC = () => {
               </select>
             )}
 
-            {/* Supplier Filter */}
-            <select
-              value={supplierFilter}
-              onChange={e => setSupplierFilter(e.target.value)}
-              className="bg-surface border border-theme-subtle rounded-lg px-2.5 py-1.5 text-xs font-semibold text-secondary max-w-[160px]"
-            >
-              <option value="all">All Vendors</option>
-              {suppliers.map((s: any) => (
-                <option key={s.id} value={s.id}>{s.company || s.name}</option>
-              ))}
-            </select>
+            {/* Supplier Autocomplete Filter */}
+            <div className="w-52">
+              <SupplierAutocomplete
+                value={supplierFilter === 'all' ? '' : supplierFilter}
+                onChange={(sId) => setSupplierFilter(sId || 'all')}
+                suppliers={suppliers}
+                placeholder="Filter: All Vendors..."
+                showClear={true}
+                className="text-xs"
+              />
+            </div>
           </div>
         </div>
 

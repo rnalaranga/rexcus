@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, CreditCard, Building2, Calendar, 
   FileText, CheckCircle2, AlertTriangle, Layers, DollarSign, 
   History, ExternalLink, Hash, Receipt, Paperclip, UploadCloud, Eye, Trash2,
-  Zap, Droplets, PhoneCall, Home, Wrench, Fuel, ShieldCheck, Plus, CheckSquare, Square
+  Zap, Droplets, PhoneCall, Home, Wrench, Fuel, ShieldCheck, Plus, CheckSquare, Square, RefreshCw
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -56,6 +56,7 @@ export const BillBuilder: React.FC = () => {
   
   const [grnId, setGrnId] = useState(grnIdParam || '');
   const [amount, setAmount] = useState<number>(0);
+  const [lineItems, setLineItems] = useState<any[]>([]);
   const [notes, setNotes] = useState('');
   const [billAttachment, setBillAttachment] = useState<string>('');
   const [billAttachmentName, setBillAttachmentName] = useState<string>('');
@@ -107,6 +108,23 @@ export const BillBuilder: React.FC = () => {
 
         setGrnId(existing.grnId || '');
         setAmount(Number(existing.amount || 0));
+
+        if (existing.items) {
+          try {
+            const parsed = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setLineItems(parsed.map((it: any, idx: number) => ({
+                id: it.id || `line-${Date.now()}-${idx}`,
+                description: it.description || it.desc || it.name || '',
+                qty: Number(it.qty !== undefined ? it.qty : (it.qtyReceived || 1)),
+                unitCost: Number(it.unitCost || it.unitPrice || 0),
+                total: Number(it.total || (Number(it.qty || 1) * Number(it.unitCost || 0))),
+                accountId: it.accountId || existing.expenseAccountId || '',
+                inventoryId: it.inventoryId || ''
+              })));
+            }
+          } catch (e) {}
+        }
         if (existing.date) setDate(existing.date.split('T')[0]);
         if (existing.dueDate) setDueDate(existing.dueDate.split('T')[0]);
         setNotes(existing.notes || '');
@@ -265,8 +283,92 @@ export const BillBuilder: React.FC = () => {
     }
   }, [billCategory, accounts, expenseAccountId, idParam]);
 
+  // Function to load / import items from GRN
+  const loadItemsFromGRN = (targetGrnId: string) => {
+    if (!targetGrnId) return;
+    const grn = grns.find((g: any) => g.id === targetGrnId);
+    if (!grn) return;
+    const grnItems = typeof grn.items === 'string' ? JSON.parse(grn.items) : (grn.items || []);
+    const poItems = selectedPO ? (typeof selectedPO.items === 'string' ? JSON.parse(selectedPO.items) : (selectedPO.items || [])) : [];
+    
+    if (Array.isArray(grnItems) && grnItems.length > 0) {
+      const defaultAcc = expenseAccountId || 'acc_4000';
+      const newLines = grnItems.map((gi: any, idx: number) => {
+        const qty = Number(gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty || 0));
+        const matchingPoItem = poItems.find((pi: any) => 
+          (pi.inventoryId && pi.inventoryId === gi.inventoryId) || 
+          (pi.id && pi.id === gi.id) || 
+          (pi.desc && gi.desc && pi.desc === gi.desc)
+        );
+        const unitCost = Number(gi.unitCost || gi.unitPrice || matchingPoItem?.unitPrice || matchingPoItem?.unitCost || 0);
+        const desc = gi.desc || gi.name || gi.inventoryName || (gi.inventoryId ? `Material [${gi.inventoryId}]` : `Item #${idx + 1}`);
+        return {
+          id: `grn-item-${Date.now()}-${idx}`,
+          description: desc,
+          qty: qty || 1,
+          unitCost: unitCost,
+          total: Math.round(qty * unitCost * 100) / 100,
+          accountId: defaultAcc,
+          inventoryId: gi.inventoryId || ''
+        };
+      });
+      setLineItems(newLines);
+      const sum = newLines.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+      setAmount(Math.round(sum * 100) / 100);
+    }
+  };
+
+  const addLineItem = () => {
+    const defaultAcc = expenseAccountId || 'acc_4000';
+    const newItem = {
+      id: `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      description: '',
+      qty: 1,
+      unitCost: 0,
+      total: 0,
+      accountId: defaultAcc
+    };
+    const updated = [...lineItems, newItem];
+    setLineItems(updated);
+  };
+
+  const updateLineItem = (id: string, field: string, value: any) => {
+    setLineItems(prev => {
+      const updated = prev.map(item => {
+        if (item.id !== id) return item;
+        const next = { ...item, [field]: value };
+        if (field === 'qty' || field === 'unitCost') {
+          const q = field === 'qty' ? Number(value) : Number(item.qty || 0);
+          const c = field === 'unitCost' ? Number(value) : Number(item.unitCost || 0);
+          next.total = Math.round(q * c * 100) / 100;
+        }
+        return next;
+      });
+      const sum = updated.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+      setAmount(Math.round(sum * 100) / 100);
+      return updated;
+    });
+  };
+
+  const removeLineItem = (id: string) => {
+    setLineItems(prev => {
+      const updated = prev.filter(item => item.id !== id);
+      const sum = updated.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+      setAmount(Math.round(sum * 100) / 100);
+      return updated;
+    });
+  };
+
+  // Auto-load items from GRN if empty and GRN is chosen
+  useEffect(() => {
+    if (grnId && grns.length > 0 && !idParam && lineItems.length === 0) {
+      loadItemsFromGRN(grnId);
+    }
+  }, [grnId, grns, idParam]);
+
   // Calculate default amount based on GRN or remaining balance
   useEffect(() => {
+    if (lineItems.length > 0) return;
     if (grnId && grns.length > 0) {
       const grn = grns.find((g: any) => g.id === grnId);
       if (grn) {
@@ -294,7 +396,7 @@ export const BillBuilder: React.FC = () => {
     if (remainingBalance > 0 && amount === 0) {
       setAmount(remainingBalance);
     }
-  }, [grnId, grns, selectedPO, remainingBalance]);
+  }, [grnId, grns, selectedPO, remainingBalance, lineItems.length]);
 
   // Find GRNs matching the active POs or Supplier
   const matchingGRNs = useMemo(() => {
@@ -496,6 +598,7 @@ export const BillBuilder: React.FC = () => {
         dueDate: dueDate || null, 
         amount: grandTotalBillValue, 
         subtotal: netSubtotal,
+        items: lineItems.length > 0 ? JSON.stringify(lineItems) : null,
         taxAmount: totalTax,
         taxProfileId: taxEnabled ? taxProfileId : null,
         taxBreakdown: taxEnabled && taxBreakdown ? JSON.stringify(taxBreakdown) : null,
@@ -1089,6 +1192,152 @@ export const BillBuilder: React.FC = () => {
               </div>
             </GlassCard>
           </div>
+
+          {/* Line Items & Item-by-Item Cost Distribution */}
+          <GlassCard className="p-5 border-t-2 border-t-rex-500 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[12px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                  <Layers size={16} className="text-rex-500" />
+                  Bill Line Items & Cost Allocation (Line-by-Line Accounts)
+                </h2>
+                <p className="text-xs text-muted mt-0.5">
+                  Allocate each item, raw material, or service to its specific expense / asset account in the General Ledger.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {grnId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    icon={RefreshCw}
+                    onClick={() => loadItemsFromGRN(grnId)}
+                    className="text-xs border border-theme-subtle text-amber-500 hover:text-amber-600"
+                    title="Reload item list and unit costs from the selected GRN"
+                  >
+                    Load from GRN ({grnId})
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={addLineItem}
+                  className="text-xs bg-rex-600 hover:bg-rex-700 text-white"
+                >
+                  + Add Item / Service
+                </Button>
+              </div>
+            </div>
+
+            {/* Line Items Table */}
+            <div className="border border-theme-subtle rounded-lg overflow-x-auto bg-surface/40">
+              <table className="w-full text-left text-xs min-w-[700px]">
+                <thead>
+                  <tr className="bg-surface2/70 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                    <th className="py-2.5 px-3 min-w-[200px]">Item / Service Description</th>
+                    <th className="py-2.5 px-3 w-24 text-right">Qty</th>
+                    <th className="py-2.5 px-3 w-32 text-right">Unit Cost (LKR)</th>
+                    <th className="py-2.5 px-3 w-32 text-right">Total (LKR)</th>
+                    <th className="py-2.5 px-3 min-w-[250px]">Charge Account (Chart of Accounts)</th>
+                    <th className="py-2.5 px-2 w-10 text-center"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-muted">
+                        <div className="max-w-md mx-auto space-y-2">
+                          <p className="text-xs font-medium">No individual line items added.</p>
+                          <p className="text-[11px] text-muted leading-relaxed">
+                            {grnId ? (
+                              <span>Click <strong>"Load from GRN ({grnId})"</strong> above to automatically pull received items, or click <strong>"+ Add Item / Service"</strong> to specify services line-by-line.</span>
+                            ) : (
+                              <span>Click <strong>"+ Add Item / Service"</strong> above to itemize this bill across multiple expense accounts, or leave empty to charge the entire bill to the Default Account.</span>
+                            )}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    lineItems.map((item, idx) => (
+                      <tr key={item.id} className="border-b border-theme-subtle/50 hover:bg-surface2/30 transition-colors">
+                        <td className="py-2.5 px-3 text-center text-muted font-mono">{idx + 1}</td>
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={e => updateLineItem(item.id, 'description', e.target.value)}
+                            placeholder="e.g. Steel Plate 2mm, Cutting Service, Transport..."
+                            className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs text-primary font-medium focus:border-rex-500 outline-none"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.qty}
+                            onChange={e => updateLineItem(item.id, 'qty', e.target.value)}
+                            className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitCost}
+                            onChange={e => updateLineItem(item.id, 'unitCost', e.target.value)}
+                            className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
+                          {formatCurrency(item.total)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <AccountAutocomplete
+                            value={item.accountId}
+                            onChange={accId => updateLineItem(item.id, 'accountId', accId)}
+                            placeholder="Search account (4000, 5002, 7000)..."
+                            className="text-xs"
+                          />
+                        </td>
+                        <td className="py-2.5 px-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeLineItem(item.id)}
+                            className="p-1 rounded text-rose-500 hover:bg-rose-500/10 transition-colors"
+                            title="Remove Line Item"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {lineItems.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-surface2/60 border-t border-theme-subtle font-bold text-xs">
+                      <td colSpan={4} className="py-2.5 px-3 text-right text-muted uppercase tracking-wider">
+                        Total Line Items:
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-primary text-sm font-black">
+                        {formatCurrency(lineItems.reduce((s: number, it: any) => s + Number(it.total || 0), 0))}
+                      </td>
+                      <td colSpan={2} className="py-2.5 px-3 text-[11px] text-muted italic">
+                        Allocated across {new Set(lineItems.map((it: any) => it.accountId).filter(Boolean)).size} account(s)
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </GlassCard>
 
           {/* Vendor Bill / Invoice Document Attachment */}
           <GlassCard className="p-5 border-t-2 border-t-emerald-500 space-y-3">

@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { settleCustomerOutstanding } from '@/lib/api';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 interface MultiInvoiceSettlementModalProps {
   isOpen: boolean;
@@ -300,23 +302,13 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             <label className="block text-[11px] font-bold uppercase tracking-wider text-muted mb-1">
               Select Customer / Debtor
             </label>
-            <select
+            <CustomerAutocomplete
               value={selectedCustomerId}
-              onChange={e => setSelectedCustomerId(e.target.value)}
-              className="w-full text-sm font-semibold bg-surface border border-theme rounded-lg px-3 py-1.5 text-primary outline-none focus:ring-1 focus:ring-rex-500"
-            >
-              <option value="">-- Select Customer --</option>
-              {allCustomers.map(c => {
-                const custOpen = openInvoices
-                  .filter((i: any) => i.customerId === c.id || i.leadId === c.id)
-                  .reduce((sum, i) => sum + Math.max(0, Number(i.total || i.amount || 0) - Number(i.paidAmount || 0)), 0);
-                return (
-                  <option key={c.id} value={c.id}>
-                    {c.company || c.name} {custOpen > 0 ? `(Due: ${formatCurrency(custOpen)})` : ''}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={(cId) => setSelectedCustomerId(cId)}
+              customers={allCustomers}
+              placeholder="Search customer by name, company..."
+              className="text-xs py-1.5"
+            />
           </div>
 
           <div className="text-right sm:border-l sm:border-theme sm:pl-4">
@@ -393,18 +385,14 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
               <label className="block text-xs font-medium text-secondary mb-1">
                 Deposit Into (Account) *
               </label>
-              <select
-                required
+              <AccountAutocomplete
                 value={depositAccountId}
-                onChange={e => setDepositAccountId(e.target.value)}
-                className="w-full bg-surface-secondary border border-theme rounded-lg px-3 py-2 text-xs font-medium text-primary outline-none focus:ring-1 focus:ring-rex-500"
-              >
-                {depositAccounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.code} - {acc.name} ({formatCurrency(acc.balance)})
-                  </option>
-                ))}
-              </select>
+                onChange={setDepositAccountId}
+                placeholder="Search deposit account (Bank / Cash)..."
+                typeFilter="Asset"
+                required
+                className="text-xs"
+              />
             </div>
           </div>
 

@@ -1492,6 +1492,7 @@ async function runDatabaseSync() {
         { id: 'acc_5000', code: '5000', name: 'Diesel for Generator', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_5001', code: '5001', name: 'Electricity', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_5002', code: '5002', name: 'Factory Maintenance', type: 'Expense', subtype: 'Production Overhead', balance: 0.00, isTaxAccount: 0 },
+        { id: 'acc_5080', code: '5080', name: 'Inventory Scrap & Shrinkage Loss', type: 'Expense', subtype: 'Cost of Sales', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_6000', code: '6000', name: 'Audit & Accounting Fees', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_6001', code: '6001', name: 'Bonus', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
         { id: 'acc_6002', code: '6002', name: 'Salaries & Wages', type: 'Expense', subtype: 'Administration', balance: 0.00, isTaxAccount: 0 },
@@ -6482,6 +6483,38 @@ app.post('/api/inventory/:id/ledger', async (req, res) => {
     
     await db.query('INSERT INTO stock_ledger SET ?', entry);
     await db.query('UPDATE inventory SET quantity = ?, location = COALESCE(?, location) WHERE id = ?', [newBalance, data.location || null, id]);
+
+    // Auto GL Integration: If Scrap / Waste write-off with positive cost, charge to Scrap Loss Expense
+    if (typeUpper === 'SCRAP' && totalCost > 0) {
+      try {
+        const [scrapAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5080" OR name LIKE "%Scrap%" LIMIT 1');
+        const [invAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = "acc_1600" OR code = "1600" OR (type = "Asset" AND name LIKE "%Inventory%") LIMIT 1');
+        const scrapAccId = scrapAcc.length ? scrapAcc[0].id : 'acc_5080';
+        const invAccId = invAcc.length ? invAcc[0].id : 'acc_1600';
+
+        if (scrapAccId && invAccId) {
+          const jeId = `JE-SCRAP-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
+          await db.query('INSERT INTO journal_entries SET ?', {
+            id: jeId,
+            date: entry.date,
+            reference: entry.id,
+            description: `Auto GL: Material Scrap / Waste Write-off - ${invRows[0].name || id} (${qtyVal} units @ LKR ${unitCost})`,
+            totalAmount: totalCost,
+            status: 'posted'
+          });
+
+          const lines = [
+            [`JL-${Date.now().toString().slice(-6)}1`, jeId, scrapAccId, totalCost, 0, null, null],
+            [`JL-${Date.now().toString().slice(-6)}2`, jeId, invAccId, 0, totalCost, null, null]
+          ];
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [totalCost, scrapAccId]);
+          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [totalCost, invAccId]);
+        }
+      } catch (eGl) {
+        console.error('Error posting GL for scrap loss:', eGl);
+      }
+    }
     
     res.json({ success: true, entry, newBalance });
   } catch (error: any) {
@@ -6521,9 +6554,170 @@ app.post('/api/inventory/reconcile', async (req, res) => {
     await db.query('INSERT INTO stock_ledger SET ?', entry);
     await db.query('UPDATE inventory SET quantity = ? WHERE id = ?', [targetCount, inventoryId]);
 
+    // Auto GL Integration: If Physical Count Variance has a monetary impact, post inventory shrinkage / gain
+    const varianceCost = Math.abs(diff) * unitCost;
+    if (diff !== 0 && varianceCost > 0) {
+      try {
+        const [scrapAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5080" OR name LIKE "%Scrap%" OR name LIKE "%Shrinkage%" LIMIT 1');
+        const [invAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = "acc_1600" OR code = "1600" OR (type = "Asset" AND name LIKE "%Inventory%") LIMIT 1');
+        const adjAccId = scrapAcc.length ? scrapAcc[0].id : 'acc_5080';
+        const invAccId = invAcc.length ? invAcc[0].id : 'acc_1600';
+
+        if (adjAccId && invAccId) {
+          const jeId = `JE-INV-ADJ-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
+          const isShortage = diff < 0;
+          await db.query('INSERT INTO journal_entries SET ?', {
+            id: jeId,
+            date: entry.date,
+            reference: entry.id,
+            description: `Auto GL: Inventory Count Audit Adjustment (${isShortage ? 'Shortage / Loss' : 'Surplus / Gain'}) - ${invRows[0].name || inventoryId} (${Math.abs(diff)} units @ LKR ${unitCost})`,
+            totalAmount: varianceCost,
+            status: 'posted'
+          });
+
+          // If Shortage (Stock down): Debit Expense 5080, Credit Inventory Asset 1600
+          // If Surplus (Stock up): Debit Inventory Asset 1600, Credit Expense 5080
+          const lines = isShortage ? [
+            [`JL-${Date.now().toString().slice(-6)}1`, jeId, adjAccId, varianceCost, 0, null, null],
+            [`JL-${Date.now().toString().slice(-6)}2`, jeId, invAccId, 0, varianceCost, null, null]
+          ] : [
+            [`JL-${Date.now().toString().slice(-6)}1`, jeId, invAccId, varianceCost, 0, null, null],
+            [`JL-${Date.now().toString().slice(-6)}2`, jeId, adjAccId, 0, varianceCost, null, null]
+          ];
+          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+          
+          if (isShortage) {
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [varianceCost, adjAccId]);
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [varianceCost, invAccId]);
+          } else {
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [varianceCost, invAccId]);
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [varianceCost, adjAccId]);
+          }
+        }
+      } catch (eGl) {
+        console.error('Error posting GL for inventory reconciliation:', eGl);
+      }
+    }
+
     res.json({ success: true, entry, targetCount, variance: diff });
   } catch (error: any) {
     console.error('Stock reconciliation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// MONTH-END INVENTORY VALUATION SYNCHRONIZATION ENGINE
+// Synchronizes Live Physical Warehouse Valuation with General Ledger (1600)
+// ============================================================================
+app.get('/api/finance/inventory/valuation-summary', async (req, res) => {
+  try {
+    const [invRows]: any = await db.query(
+      'SELECT SUM(quantity * unitCost) as warehouseValuation, COUNT(*) as activeItemCount, SUM(quantity) as totalUnits FROM inventory WHERE quantity > 0'
+    );
+    const warehouseValuation = Math.round(Number(invRows[0]?.warehouseValuation || 0) * 100) / 100;
+    const activeItemCount = Number(invRows[0]?.activeItemCount || 0);
+    const totalUnits = Number(invRows[0]?.totalUnits || 0);
+
+    const [accRows]: any = await db.query(
+      'SELECT id, code, name, balance FROM chart_of_accounts WHERE id = "acc_1600" OR code = "1600" LIMIT 1'
+    );
+    const glAssetBalance = accRows.length ? Math.round(Number(accRows[0].balance || 0) * 100) / 100 : 0;
+    const glAccountId = accRows.length ? accRows[0].id : 'acc_1600';
+    const variance = Math.round((warehouseValuation - glAssetBalance) * 100) / 100;
+
+    // Check last sync entry
+    const [lastSync]: any = await db.query(
+      'SELECT id, date, description, totalAmount FROM journal_entries WHERE id LIKE "JE-INV-VAL-%" ORDER BY date DESC, id DESC LIMIT 1'
+    );
+
+    res.json({
+      warehouseValuation,
+      activeItemCount,
+      totalUnits,
+      glAssetBalance,
+      glAccountId,
+      variance,
+      isBalanced: Math.abs(variance) < 0.01,
+      lastSync: lastSync[0] || null
+    });
+  } catch (error: any) {
+    console.error('Inventory valuation summary error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/finance/inventory/sync-valuation', async (req, res) => {
+  try {
+    const { syncDate, notes, user } = req.body;
+    const [invRows]: any = await db.query(
+      'SELECT SUM(quantity * unitCost) as warehouseValuation FROM inventory WHERE quantity > 0'
+    );
+    const warehouseValuation = Math.round(Number(invRows[0]?.warehouseValuation || 0) * 100) / 100;
+
+    const [accRows]: any = await db.query(
+      'SELECT id, code, name, balance FROM chart_of_accounts WHERE id = "acc_1600" OR code = "1600" LIMIT 1'
+    );
+    const glAssetBalance = accRows.length ? Math.round(Number(accRows[0].balance || 0) * 100) / 100 : 0;
+    const invAccId = accRows.length ? accRows[0].id : 'acc_1600';
+    const variance = Math.round((warehouseValuation - glAssetBalance) * 100) / 100;
+
+    if (Math.abs(variance) < 0.01) {
+      return res.json({ success: true, message: 'Inventory is already perfectly synchronized with the General Ledger.', variance: 0, newBalance: warehouseValuation });
+    }
+
+    // Offset account:
+    // If variance > 0 (Stock value increased): Credit Direct Material Cost (4000/5100)
+    // If variance < 0 (Stock value decreased): Debit Inventory Scrap & Loss (5080)
+    const [offsetRows]: any = await db.query(
+      'SELECT id FROM chart_of_accounts WHERE (code = "4000" OR code = "5100" OR (type = "Expense" AND subtype LIKE "%Cost of Sales%")) LIMIT 1'
+    );
+    const [lossRows]: any = await db.query(
+      'SELECT id FROM chart_of_accounts WHERE code = "5080" OR name LIKE "%Scrap%" LIMIT 1'
+    );
+    const cogsOffsetAccId = offsetRows.length ? offsetRows[0].id : 'acc_4000';
+    const lossAccId = lossRows.length ? lossRows[0].id : 'acc_5080';
+
+    const absVariance = Math.abs(variance);
+    const jeId = `JE-INV-VAL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
+    const effectiveDate = syncDate ? (syncDate.length === 10 ? syncDate + ' 00:00:00' : syncDate.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await db.query('INSERT INTO journal_entries SET ?', {
+      id: jeId,
+      date: effectiveDate,
+      reference: `INV-SYNC-${new Date().toISOString().slice(0, 7)}`,
+      description: `Month-End Inventory Valuation Sync (${variance > 0 ? '+' : ''}${variance.toLocaleString()} LKR) - ${notes || 'Physical Store Valuation vs GL'} [by ${user || 'Auditor'}]`,
+      totalAmount: absVariance,
+      status: 'posted'
+    });
+
+    const lines: any[] = [];
+    if (variance > 0) {
+      // Stock value up: Debit Inventory Asset (1600), Credit Direct Materials/Closing Stock (4000)
+      lines.push([`JL-${Date.now().toString().slice(-6)}1`, jeId, invAccId, absVariance, 0, null, null]);
+      lines.push([`JL-${Date.now().toString().slice(-6)}2`, jeId, cogsOffsetAccId, 0, absVariance, null, null]);
+      await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [absVariance, invAccId]);
+      await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [absVariance, cogsOffsetAccId]);
+    } else {
+      // Stock value down: Debit Inventory Scrap/Loss (5080), Credit Inventory Asset (1600)
+      lines.push([`JL-${Date.now().toString().slice(-6)}1`, jeId, lossAccId, absVariance, 0, null, null]);
+      lines.push([`JL-${Date.now().toString().slice(-6)}2`, jeId, invAccId, 0, absVariance, null, null]);
+      await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [absVariance, lossAccId]);
+      await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [absVariance, invAccId]);
+    }
+
+    await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+
+    res.json({
+      success: true,
+      journalEntryId: jeId,
+      variance,
+      previousBalance: glAssetBalance,
+      newBalance: warehouseValuation,
+      message: `Inventory Valuation synchronized successfully! Adjusted ${variance > 0 ? '+' : ''}${variance.toLocaleString()} LKR.`
+    });
+  } catch (error: any) {
+    console.error('Inventory valuation sync error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -8937,6 +9131,147 @@ export async function syncSupplierBalance(supplierId: string, customDb?: any) {
   }
 }
 
+async function syncBillGLEntry(billData: any, ledgerDate: string) {
+  try {
+    const references = [billData.id, billData.invoiceNo].filter(Boolean);
+    // 1. Revert previous GL journal entries if any for this bill
+    const [jes]: any = await db.query('SELECT id FROM journal_entries WHERE reference IN (?)', [references]);
+    if (jes.length > 0) {
+      const jeIds = jes.map((je: any) => je.id);
+      const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+      for (const line of lines) {
+        const [accounts]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+        if (!accounts.length) continue;
+        const accType = accounts[0].type;
+        const isDebitNormal = accType === 'Asset' || accType === 'Expense';
+        const balanceChange = Number(line.debit) - Number(line.credit);
+        if (isDebitNormal) {
+          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
+        } else {
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
+        }
+      }
+      await db.query('DELETE FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+      await db.query('DELETE FROM journal_entries WHERE id IN (?)', [jeIds]);
+    }
+
+    // 2. Post new GL journal entry
+    const billAmount = Number(billData.amount) || 0;
+    const taxAmount = Number(billData.taxAmount) || 0;
+    let subtotal = Number(billData.subtotal) || (billAmount - taxAmount);
+    if (subtotal <= 0) subtotal = billAmount;
+
+    let vatAmount = 0;
+    let ssclAmount = 0;
+    if (billData.taxBreakdown) {
+      try {
+        const tb = typeof billData.taxBreakdown === 'string' ? JSON.parse(billData.taxBreakdown) : billData.taxBreakdown;
+        if (tb.tax1Rate > 0) ssclAmount = Number(tb.tax1Amount) || 0;
+        if (tb.tax2Rate > 0) vatAmount = Number(tb.tax2Amount) || 0;
+      } catch (e) {}
+    }
+    if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
+      vatAmount = taxAmount;
+    }
+
+    let expAccId = billData.expenseAccountId || null;
+    if (!expAccId) {
+      const categoryLower = (billData.billCategory || '').toLowerCase();
+      if (categoryLower.includes('electricity') || categoryLower.includes('ceb')) {
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" LIMIT 1');
+        if (acc.length) expAccId = acc[0].id;
+      } else if (categoryLower.includes('diesel') || categoryLower.includes('fuel')) {
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" LIMIT 1');
+        if (acc.length) expAccId = acc[0].id;
+      } else if (categoryLower.includes('maintenance') || categoryLower.includes('repair')) {
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" LIMIT 1');
+        if (acc.length) expAccId = acc[0].id;
+      } else if (categoryLower.includes('subcontract') || categoryLower.includes('machin')) {
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" LIMIT 1');
+        if (acc.length) expAccId = acc[0].id;
+      } else {
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR (name LIKE "%Raw Material%" OR name LIKE "%Cost of Goods%" OR type = "Expense") LIMIT 1');
+        if (acc.length) expAccId = acc[0].id;
+      }
+    }
+    if (!expAccId) expAccId = 'acc_4000';
+
+    const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
+    const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1310" OR (name LIKE "%Input SSCL%" AND type = "Asset") LIMIT 1');
+    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1300';
+    const inputSsclAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_1310';
+
+    const [apAcc]: any = await db.query(
+      'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
+    );
+    const apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+
+    if (apAccId && billAmount > 0) {
+      const jeId = `JE-BILL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
+      await db.query('INSERT INTO journal_entries SET ?', {
+        id: jeId,
+        date: ledgerDate,
+        reference: billData.invoiceNo || billData.id,
+        description: `Auto GL: Supplier Bill (${billData.id}) [${billData.billCategory || 'Purchase'}] - ${billData.supplierId}`,
+        totalAmount: billAmount,
+        status: 'posted'
+      });
+
+      // Parse item-by-item allocations
+      let parsedItems: any[] = [];
+      if (billData.items) {
+        try {
+          parsedItems = typeof billData.items === 'string' ? JSON.parse(billData.items) : billData.items;
+        } catch (e) {}
+      }
+      const validItemLines = Array.isArray(parsedItems)
+        ? parsedItems.filter(it => (Number(it.total) > 0 || (Number(it.qty) > 0 && Number(it.unitCost) > 0)))
+        : [];
+
+      const lines: any[] = [];
+      let lineCounter = 1;
+
+      if (validItemLines.length > 0) {
+        let allocatedSubtotal = 0;
+        for (const it of validItemLines) {
+          const lineTotal = Math.round((Number(it.total) || (Number(it.qty || 1) * Number(it.unitCost || 0))) * 100) / 100;
+          if (lineTotal <= 0) continue;
+          allocatedSubtotal += lineTotal;
+          const itemAccId = it.accountId || expAccId;
+          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, itemAccId, lineTotal, 0, billData.supplierId, 'Supplier']);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [lineTotal, itemAccId]);
+        }
+
+        const unallocated = Math.round((subtotal - allocatedSubtotal) * 100) / 100;
+        if (unallocated > 0) {
+          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, unallocated, 0, billData.supplierId, 'Supplier']);
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [unallocated, expAccId]);
+        }
+      } else {
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, subtotal, 0, billData.supplierId, 'Supplier']);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, expAccId]);
+      }
+
+      if (vatAmount > 0) {
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, inputVatAccId, vatAmount, 0, billData.supplierId, 'Supplier']);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [vatAmount, inputVatAccId]);
+      }
+
+      if (ssclAmount > 0) {
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, inputSsclAccId, ssclAmount, 0, billData.supplierId, 'Supplier']);
+        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, inputSsclAccId]);
+      }
+
+      lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, apAccId, 0, billAmount, billData.supplierId, 'Supplier']);
+      await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, apAccId]);
+
+      await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+    }
+  } catch (err) {
+    console.error('Error in syncBillGLEntry:', err);
+  }
+}
+
 app.get('/api/purchasing/pos/:id/bills', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM supplier_bills WHERE poId = ? ORDER BY date DESC, createdAt DESC', [req.params.id]);
@@ -8983,99 +9318,8 @@ app.post('/api/purchasing/bills', async (req, res) => {
       // Sync supplier balance
       await syncSupplierBalance(data.supplierId);
 
-      // Auto GL: Record Expense / Inventory (Debit), Tax Receivables (Debit), and Accounts Payable (Credit)
-      try {
-        const billAmount = Number(data.amount) || 0;
-        const taxAmount = Number(data.taxAmount) || 0;
-        let subtotal = Number(data.subtotal) || (billAmount - taxAmount);
-        if (subtotal <= 0) subtotal = billAmount;
-
-        // Parse tax breakdown if available to split Input VAT & Input SSCL
-        let vatAmount = 0;
-        let ssclAmount = 0;
-        if (data.taxBreakdown) {
-          try {
-            const tb = typeof data.taxBreakdown === 'string' ? JSON.parse(data.taxBreakdown) : data.taxBreakdown;
-            if (tb.tax1Rate > 0) ssclAmount = Number(tb.tax1Amount) || 0;
-            if (tb.tax2Rate > 0) vatAmount = Number(tb.tax2Amount) || 0;
-          } catch (e) {}
-        }
-        if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
-          vatAmount = taxAmount; // fallback all to input VAT
-        }
-
-        // 1. Expense or Raw Material Asset Account
-        let expAccId = data.expenseAccountId || null;
-        if (!expAccId) {
-          const categoryLower = (data.billCategory || '').toLowerCase();
-          if (categoryLower.includes('electricity') || categoryLower.includes('ceb')) {
-            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" LIMIT 1');
-            if (acc.length) expAccId = acc[0].id;
-          } else if (categoryLower.includes('diesel') || categoryLower.includes('fuel')) {
-            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" LIMIT 1');
-            if (acc.length) expAccId = acc[0].id;
-          } else if (categoryLower.includes('maintenance') || categoryLower.includes('repair')) {
-            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" LIMIT 1');
-            if (acc.length) expAccId = acc[0].id;
-          } else if (categoryLower.includes('subcontract') || categoryLower.includes('machin')) {
-            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" LIMIT 1');
-            if (acc.length) expAccId = acc[0].id;
-          } else {
-            const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR (name LIKE "%Raw Material%" OR name LIKE "%Cost of Goods%" OR type = "Expense") LIMIT 1');
-            if (acc.length) expAccId = acc[0].id;
-          }
-        }
-        if (!expAccId) expAccId = 'acc_4000';
-
-        // 2. Tax Receivable Accounts
-        const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
-        const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1310" OR (name LIKE "%Input SSCL%" AND type = "Asset") LIMIT 1');
-        const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1300';
-        const inputSsclAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_1310';
-
-        // 3. Accounts Payable Account
-        const [apAcc]: any = await db.query(
-          'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
-        );
-        const apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
-
-        if (expAccId && apAccId && billAmount > 0) {
-          const jeId = `JE-BILL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
-          
-          await db.query('INSERT INTO journal_entries SET ?', {
-            id: jeId,
-            date: ledgerEntry.date,
-            reference: data.invoiceNo || data.id,
-            description: `Auto GL: Supplier Bill (${data.id}) [${data.billCategory || 'Purchase'}] - ${data.supplierId}`,
-            totalAmount: billAmount
-          });
-
-          const lines: any[] = [];
-          // Debit: Net Expense / Inventory
-          lines.push([`JL-${Date.now().toString().slice(-6)}1`, jeId, expAccId, subtotal, 0, data.supplierId, 'Supplier']);
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, expAccId]);
-
-          // Debit: Input VAT Receivable (if any)
-          if (vatAmount > 0) {
-            lines.push([`JL-${Date.now().toString().slice(-6)}2`, jeId, inputVatAccId, vatAmount, 0, data.supplierId, 'Supplier']);
-            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [vatAmount, inputVatAccId]);
-          }
-
-          // Debit: Input SSCL Receivable (if any)
-          if (ssclAmount > 0) {
-            lines.push([`JL-${Date.now().toString().slice(-6)}3`, jeId, inputSsclAccId, ssclAmount, 0, data.supplierId, 'Supplier']);
-            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, inputSsclAccId]);
-          }
-
-          // Credit: Total Accounts Payable
-          lines.push([`JL-${Date.now().toString().slice(-6)}4`, jeId, apAccId, 0, billAmount, data.supplierId, 'Supplier']);
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, apAccId]);
-
-          await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
-        }
-      } catch (eGl) {
-        console.error('Error posting GL for supplier bill:', eGl);
-      }
+      // Auto GL: Record Line Items / Expense (Debit), Tax Receivables (Debit), and Accounts Payable (Credit)
+      await syncBillGLEntry(data, ledgerEntry.date);
     }
 
     // Sync PO billing status
@@ -9107,6 +9351,29 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
     }
 
     await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [data, req.params.id]);
+
+    // Re-sync Supplier Ledger and GL for this updated bill
+    const [fullRows]: any = await db.query('SELECT * FROM supplier_bills WHERE id = ?', [req.params.id]);
+    if (fullRows.length > 0) {
+      const b = fullRows[0];
+      const billDate = b.date ? (String(b.date).length === 10 ? b.date + ' 00:00:00' : String(b.date).replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' ');
+      await db.query('DELETE FROM supplier_ledger WHERE referenceNo = ? OR reference = ?', [b.invoiceNo || b.id, b.id]);
+      await db.query('INSERT INTO supplier_ledger SET ?', {
+        id: `SL-BILL-${Date.now().toString().slice(-6)}`,
+        supplierId: b.supplierId,
+        date: billDate,
+        type: 'purchase',
+        referenceNo: b.invoiceNo || b.id,
+        description: `Supplier Bill ${b.id}${b.poId ? ` (PO: ${b.poId})` : ''} - ${b.notes || 'Vendor Bill'}`,
+        debit: Number(b.amount) || 0,
+        credit: 0,
+        amount: Number(b.amount) || 0,
+        reference: b.invoiceNo || b.id,
+        notes: b.notes || ''
+      });
+      await syncSupplierBalance(b.supplierId);
+      await syncBillGLEntry(b, billDate);
+    }
 
     const targetPoIds = new Set<string>();
     if (oldPoId) targetPoIds.add(oldPoId);
@@ -14578,6 +14845,57 @@ app.post('/api/hr/employees/:id/machines', async (req, res) => {
 // ==========================
 app.get('/api/production/work-orders', async (req, res) => {
   try {
+    // Auto-sync any finished goods orders that are missing from work_orders
+    try {
+      const [missingOrders]: any = await db.query(`
+        SELECT f.* FROM finished_goods_orders f
+        WHERE NOT EXISTS (
+          SELECT 1 FROM work_orders w 
+          WHERE w.salesOrderNo = f.orderNo OR w.id = CONCAT('WO-', f.orderNo) OR w.orderNo = CONCAT('WO-', f.orderNo)
+        )
+      `);
+      for (const ord of (missingOrders || [])) {
+        const woId = `WO-${ord.orderNo}`;
+        let itemsList: any[] = [];
+        try { itemsList = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || []); } catch(e) {}
+        const bom = itemsList.length > 0 ? itemsList.map((it: any) => ({
+          material: it.productName || it.description || ord.productName || 'Order Material',
+          qty: Number(it.qty) || Number(ord.qty) || 1,
+          unit: it.uom || 'Nos',
+          unitCost: Number(it.unitPrice) || 0
+        })) : [{
+          material: ord.productName || 'Order Material',
+          qty: Number(ord.qty) || 1,
+          unit: 'Nos',
+          unitCost: Number(ord.unitPrice) || 0
+        }];
+
+        await db.query(`
+          INSERT IGNORE INTO work_orders 
+          (id, orderNo, salesOrderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, overheadPct, estimatedCost, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'Normal', 'Pending', ?, ?, ?, ?, ?, 15, ?, ?, ?)
+        `, [
+          woId,
+          woId,
+          ord.orderNo,
+          `WO: ${ord.orderNo} - ${ord.customerName}`,
+          ord.customerId || null,
+          ord.customerName,
+          ord.quoteId || null,
+          ord.orderDate || ord.createdAt || new Date(),
+          ord.targetDeliveryDate || null,
+          Math.max(1, Number(ord.qty) || 1),
+          JSON.stringify(bom),
+          ord.notes || 'Created from Sales Order',
+          Number(ord.totalPrice) || 0,
+          ord.createdAt || new Date(),
+          ord.updatedAt || new Date()
+        ]);
+      }
+    } catch (syncErr) {
+      console.error('Error auto-syncing missing work orders from sales orders:', syncErr);
+    }
+
     const [wos]: any = await db.query('SELECT * FROM work_orders ORDER BY createdAt DESC');
     const [ops]: any = await db.query('SELECT * FROM work_order_operations ORDER BY stepNumber ASC');
     const [qcs]: any = await db.query('SELECT * FROM qc_inspections ORDER BY id DESC');
@@ -15093,13 +15411,16 @@ app.post('/api/production/work-orders', async (req, res) => {
     if (rawOrderNo.startsWith('SO-') || rawOrderNo.startsWith('ORD-')) {
       // Caller passed the Sales Order number in orderNo
       finalSoNo = rawOrderNo;
-      finalWoNo = req.body.woNo || `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      finalWoNo = req.body.woNo || `WO-${rawOrderNo}`;
     } else if (rawOrderNo.startsWith('WO-')) {
       finalWoNo = rawOrderNo;
+    } else if (rawSalesOrderNo) {
+      finalSoNo = rawSalesOrderNo;
+      finalWoNo = `WO-${rawSalesOrderNo}`;
     } else if (rawOrderNo) {
-      finalWoNo = rawOrderNo;
+      finalWoNo = `WO-${rawOrderNo}`;
     } else {
-      finalWoNo = `WO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      finalWoNo = `WO-SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     }
 
     const woId = finalWoNo;

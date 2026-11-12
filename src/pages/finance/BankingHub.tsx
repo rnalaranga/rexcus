@@ -11,6 +11,7 @@ import { AccountModal } from './AccountModal';
 import { Modal } from '@/components/ui/Modal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { createJournal, deleteAccount } from '@/lib/api';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 export const BankingHub: React.FC = () => {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ export const BankingHub: React.FC = () => {
   const [showAddBank, setShowAddBank] = useState(false);
   const [editBank, setEditBank] = useState<any>(null);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [transferFromId, setTransferFromId] = useState('');
+  const [transferToId, setTransferToId] = useState('');
   const { showError, toast, showConfirm } = useDialog();
 
   if (loading) return <div className="p-8 text-center text-muted animate-pulse">Loading bank accounts...</div>;
@@ -49,8 +52,8 @@ export const BankingHub: React.FC = () => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget as HTMLFormElement);
     const amount = Number(formData.get('amount'));
-    const fromId = formData.get('fromAccountId') as string;
-    const toId = formData.get('toAccountId') as string;
+    const fromId = transferFromId || (formData.get('fromAccountId') as string);
+    const toId = transferToId || (formData.get('toAccountId') as string);
     const date = formData.get('date') as string;
     const reference = formData.get('reference') as string;
     const description = formData.get('description') as string || 'Bank Transfer';
@@ -172,22 +175,32 @@ export const BankingHub: React.FC = () => {
       )}
 
       {/* Transfer Modal */}
-      <Modal isOpen={showTransfer} onClose={() => setShowTransfer(false)} title="Bank Transfer">
+      <Modal isOpen={showTransfer} onClose={() => { setShowTransfer(false); setTransferFromId(''); setTransferToId(''); }} title="Bank Transfer">
         <form onSubmit={handleTransfer} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Transfer From</label>
-                <select name="fromAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                  <option value="">-- Select Source Bank --</option>
-                  {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(Number(a.balance))})</option>)}
-                </select>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Transfer From *</label>
+                <AccountAutocomplete
+                  value={transferFromId}
+                  onChange={setTransferFromId}
+                  accounts={bankAccounts}
+                  placeholder="Source bank..."
+                  typeFilter="Asset"
+                  required
+                  className="text-xs"
+                />
              </div>
              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1">Transfer To</label>
-                <select name="toAccountId" required className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-sm">
-                  <option value="">-- Select Destination Bank --</option>
-                  {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(Number(a.balance))})</option>)}
-                </select>
+                <label className="block text-xs font-bold text-muted uppercase mb-1">Transfer To *</label>
+                <AccountAutocomplete
+                  value={transferToId}
+                  onChange={setTransferToId}
+                  accounts={bankAccounts}
+                  placeholder="Destination bank..."
+                  typeFilter="Asset"
+                  required
+                  className="text-xs"
+                />
              </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

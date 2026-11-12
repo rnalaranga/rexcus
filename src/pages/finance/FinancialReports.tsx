@@ -13,6 +13,8 @@ import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 import { fetchAdvancedReport, fetchCustomers, fetchAccountLedgerReport, fetchSuppliers } from '@/lib/api';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import * as XLSX from 'xlsx';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -787,20 +789,18 @@ export const FinancialReports: React.FC = () => {
 
             {/* Customer filter */}
             {['invoices', 'unpaid', 'tax'].includes(activeTab) && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted font-medium">Customer:</span>
-                <select
-                  value={customerId}
-                  onChange={e => setCustomerId(e.target.value)}
-                  className="text-xs bg-surface border border-theme rounded-lg px-3 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500 max-w-[200px]"
-                >
-                  <option value="all">All Customers</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.company || c.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center gap-1.5 min-w-[200px] max-w-[240px]">
+                <span className="text-xs text-muted font-medium shrink-0">Customer:</span>
+                <div className="flex-1">
+                  <CustomerAutocomplete
+                    value={customerId === 'all' ? '' : customerId}
+                    onChange={(cId) => setCustomerId(cId || 'all')}
+                    customers={customers}
+                    placeholder="All Customers..."
+                    showClear={true}
+                    className="text-xs"
+                  />
+                </div>
               </div>
             )}
 
@@ -824,20 +824,18 @@ export const FinancialReports: React.FC = () => {
             {/* Vendor Bills Filters */}
             {activeTab === 'vendor_bills' && (
               <>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted font-medium">Vendor:</span>
-                  <select
-                    value={supplierId}
-                    onChange={e => setSupplierId(e.target.value)}
-                    className="text-xs bg-surface border border-theme rounded-lg px-3 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500 max-w-[180px]"
-                  >
-                    <option value="all">All Vendors</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.company || s.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-1.5 min-w-[200px] max-w-[240px]">
+                  <span className="text-xs text-muted font-medium shrink-0">Vendor:</span>
+                  <div className="flex-1">
+                    <SupplierAutocomplete
+                      value={supplierId === 'all' ? '' : supplierId}
+                      onChange={(sId) => setSupplierId(sId || 'all')}
+                      suppliers={suppliers}
+                      placeholder="All Vendors..."
+                      showClear={true}
+                      className="text-xs"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">

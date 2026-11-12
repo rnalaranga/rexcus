@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatCurrency, resolveFileUrl } from '@/lib/utils';
+import { useInvoices, useFinishedGoodsOrders } from '@/hooks/useData';
 
 export function toWords(num: number, currency = 'LKR'): string {
   const isUSD = String(currency || '').trim().toUpperCase() === 'USD' || currency === '$';
@@ -123,6 +124,9 @@ export interface InvoicePreviewProps {
   quotationNo?: string;
   dispatchNo?: string;
   orderNo?: string;
+  orderId?: string;
+  priorProformas?: any[];
+  priorInvoicedTotal?: number;
   poNo?: string;
   customerPoNo?: string;
   customer?: any;
@@ -162,6 +166,9 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   quotationNo, 
   dispatchNo, 
   orderNo, 
+  orderId,
+  priorProformas: propPriorProformas,
+  priorInvoicedTotal: propPriorInvoicedTotal,
   poNo, 
   customerPoNo,
   customer,
@@ -333,6 +340,92 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const paymentModeDisplay = modeOfPayment || 'Credit';
   const amountInWords = toWords(total, invoiceCurrency);
 
+  // Hook into data cache for proforma and sales order history
+  const { data: allInvoices = [] } = useInvoices();
+  const { data: allOrders = [] } = useFinishedGoodsOrders();
+
+  // Find prior proformas issued for this sales order (prior to current proforma)
+  const { priorProformasList, priorProformasTotal, priorPiDocNos, resolvedOrderGross } = React.useMemo(() => {
+    if (!isProforma) {
+      return { priorProformasList: [], priorProformasTotal: 0, priorPiDocNos: '', resolvedOrderGross: 0 };
+    }
+
+    if (propPriorProformas && Array.isArray(propPriorProformas)) {
+      const sum = typeof propPriorInvoicedTotal === 'number' && propPriorInvoicedTotal >= 0
+        ? propPriorInvoicedTotal
+        : propPriorProformas.reduce((acc, p) => acc + Number(p.total || p.amount || 0), 0);
+      const docs = propPriorProformas.map(p => p.invoiceNo || p.id).filter(Boolean).join(', ');
+      return { priorProformasList: propPriorProformas, priorProformasTotal: sum, priorPiDocNos: docs, resolvedOrderGross: 0 };
+    }
+
+    const currentDoc = String(docNo || '').trim().toLowerCase();
+    const targetOrderNo = String(orderNo || '').trim().toLowerCase();
+    const targetOrderId = String(orderId || '').trim().toLowerCase();
+    const targetQuotationNo = String(quotationNo || '').trim().toLowerCase();
+
+    // Match order from allOrders to get true order total if needed
+    const matchedOrder = (allOrders || []).find((o: any) => 
+      (targetOrderId && String(o.id || '').trim().toLowerCase() === targetOrderId) ||
+      (targetOrderNo && String(o.orderNo || '').trim().toLowerCase() === targetOrderNo) ||
+      (targetQuotationNo && String(o.quotationNo || '').trim().toLowerCase() === targetQuotationNo)
+    );
+
+    const grossFromOrder = Number(
+      matchedOrder?.subtotal ||
+      (matchedOrder?.totalPrice && matchedOrder?.taxAmount && !matchedOrder?.isTaxInclusive ? Number(matchedOrder.totalPrice) - Number(matchedOrder.taxAmount) : 0) ||
+      matchedOrder?.totalPrice ||
+      matchedOrder?.totalAmount ||
+      matchedOrder?.total ||
+      0
+    );
+
+    if (!targetOrderNo && !targetOrderId && !targetQuotationNo) {
+      return { priorProformasList: [], priorProformasTotal: 0, priorPiDocNos: '', resolvedOrderGross: grossFromOrder };
+    }
+
+    // Filter all proformas for this order
+    const matchedPIs = (allInvoices || []).filter((inv: any) => {
+      const isPI = Boolean(
+        inv.isProforma ||
+        inv.invoiceType === 'proforma' ||
+        inv.status === 'proforma' ||
+        String(inv.id || inv.invoiceNo || '').startsWith('PI-')
+      );
+      if (!isPI) return false;
+
+      const invId = String(inv.id || '').trim().toLowerCase();
+      const invNo = String(inv.invoiceNo || '').trim().toLowerCase();
+      
+      // Exclude current invoice itself
+      if (currentDoc && (invId === currentDoc || invNo === currentDoc)) {
+        return false;
+      }
+
+      const mOrd = targetOrderNo && inv.orderNo && String(inv.orderNo).trim().toLowerCase() === targetOrderNo;
+      const mId = targetOrderId && inv.orderId && String(inv.orderId).trim().toLowerCase() === targetOrderId;
+      const mQuote = targetQuotationNo && inv.quotationNo && String(inv.quotationNo).trim().toLowerCase() === targetQuotationNo;
+
+      return Boolean(mOrd || mId || mQuote);
+    });
+
+    // Sort by date / createdAt ascending
+    matchedPIs.sort((a: any, b: any) => {
+      const dA = new Date(a.date || a.createdAt || 0).getTime();
+      const dB = new Date(b.date || b.createdAt || 0).getTime();
+      return dA - dB;
+    });
+
+    const sum = matchedPIs.reduce((acc: number, p: any) => acc + Number(p.total || p.amount || p.subtotal || 0), 0);
+    const docs = matchedPIs.map((p: any) => p.invoiceNo || p.id).filter(Boolean).join(', ');
+
+    return {
+      priorProformasList: matchedPIs,
+      priorProformasTotal: sum,
+      priorPiDocNos: docs,
+      resolvedOrderGross: grossFromOrder
+    };
+  }, [isProforma, docNo, orderNo, orderId, quotationNo, propPriorProformas, propPriorInvoicedTotal, allInvoices, allOrders]);
+
   // Proforma Order Total, Advance Breakdown & Balance Calculation
   const { proformaOrderTotal, proformaAdvancePercent, proformaBalanceDue } = React.useMemo(() => {
     if (!isProforma) {
@@ -344,7 +437,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     // 1. Try explicit grossAmount prop
     let fullTotal = Number(propGrossAmount || 0);
 
-    // 2. Try sum of original amounts from items (either item.originalAmount or regex from item.details)
+    // 2. Try resolved order gross from sales order
+    if ((!fullTotal || fullTotal <= currentTotal) && resolvedOrderGross > 0) {
+      fullTotal = resolvedOrderGross;
+    }
+
+    // 3. Try sum of original amounts from items (either item.originalAmount or regex from item.details)
     if (!fullTotal || fullTotal <= currentTotal) {
       let sumOriginal = 0;
       let hasOriginal = false;
@@ -370,7 +468,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       }
     }
 
-    // 3. Try parsing percentage from items details, notes or additionalInfo
+    // 4. Try parsing percentage from items details, notes or additionalInfo
     let detectedPercent: number | null = null;
     if (Array.isArray(items)) {
       for (const it of items) {
@@ -414,9 +512,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       }
     }
 
-    // 4. If fullTotal is not yet determined but detectedPercent exists:
+    // 5. If fullTotal is not yet determined but detectedPercent exists:
     if ((!fullTotal || fullTotal <= currentTotal) && detectedPercent && detectedPercent > 0 && detectedPercent < 100) {
       fullTotal = Math.round((currentTotal / (detectedPercent / 100)) * 100) / 100;
+    }
+
+    // 6. Ensure fullTotal accounts for prior proformas + current proforma if higher
+    if (priorProformasTotal > 0 && (!fullTotal || fullTotal < (currentTotal + priorProformasTotal))) {
+      fullTotal = Math.max(fullTotal, currentTotal + priorProformasTotal);
     }
 
     // If still <= currentTotal or not found, fallback to currentTotal
@@ -430,14 +533,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       effPercent = fullTotal > 0 ? Math.round((currentTotal / fullTotal) * 100) : 100;
     }
 
-    const balanceDue = Math.max(0, Math.round((fullTotal - currentTotal) * 100) / 100);
+    const balanceDue = Math.max(0, Math.round((fullTotal - priorProformasTotal - currentTotal) * 100) / 100);
 
     return {
       proformaOrderTotal: fullTotal,
       proformaAdvancePercent: effPercent,
       proformaBalanceDue: balanceDue
     };
-  }, [isProforma, propGrossAmount, items, total, subtotal, notes, additionalInfo]);
+  }, [isProforma, propGrossAmount, resolvedOrderGross, priorProformasTotal, items, total, subtotal, notes, additionalInfo]);
 
   // VAT Rate determination - ensures statutory 18% is displayed
   let displayVatRate: number | string | null = null;
@@ -924,10 +1027,22 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                 </td>
               </tr>
 
+              {/* Prior Proformas if any */}
+              {priorProformasTotal > 0 && (
+                <tr style={{ borderBottom: tableBorder, backgroundColor: '#fffbeb' }}>
+                  <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', color: '#b45309', borderRight: tableBorder }}>
+                    {`Less: Previously Invoiced via Prior Proforma(s) ${priorPiDocNos ? `(${priorPiDocNos})` : ''}:`}
+                  </td>
+                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700', color: '#b45309' }}>
+                    {`- ${priorProformasTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </td>
+                </tr>
+              )}
+
               {/* 2. Advance Requested */}
               <tr style={{ borderBottom: tableBorder, backgroundColor: '#eff6ff' }}>
                 <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', color: '#1d4ed8', borderRight: tableBorder }}>
-                  {`Advance Payment Requested ${proformaAdvancePercent ? `(${proformaAdvancePercent}%)` : ''}:`}
+                  {`Current Proforma Payment Requested ${proformaAdvancePercent ? `(${proformaAdvancePercent}%)` : ''}:`}
                 </td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', color: '#1d4ed8' }}>
                   {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1064,78 +1179,89 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </td>
           </tr>
 
-          {/* SPECIAL INSTRUCTIONS & TERMS OF PAYMENT */}
+          {/* SPECIAL INSTRUCTIONS / REMARKS OR PROFORMA BALANCE SNAPSHOT */}
           {(() => {
             const rawNotes = notes && String(notes).trim() && !String(notes).trim().startsWith('{') ? String(notes).trim() : '';
             const isAutoGeneratedProformaNotice = /Proforma Invoice for \d+% payment against Sales Order.*Kindly arrange payment to the bank account/i.test(rawNotes)
               || /^Advance payment for manufacturing commencement$/i.test(rawNotes);
 
-            let proformaInstructions: string[] = [];
             if (isProforma) {
-              if (rawNotes && !isAutoGeneratedProformaNotice) {
-                proformaInstructions = rawNotes.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-              } else {
-                if (isUSD) {
-                  proformaInstructions = [
-                    `Terms of Payment - T/T (${cleanPaymentTerms})`,
-                    `All the Bank Charges (Buyer's and Seller's) will be paid by the buyer`,
-                    `Currency - USD ($)`
-                  ];
-                } else {
-                  proformaInstructions = [
-                    `** Cheques to be written in Favour of Rex Industries (PVT) LTD`,
-                    `Terms of Payment - ${cleanPaymentTerms}`,
-                    `Currency - LKR (Rs.)`
-                  ];
-                }
-              }
+              const hasPriorPIs = priorProformasTotal > 0;
+              const cleanUserNotes = rawNotes && !isAutoGeneratedProformaNotice && !rawNotes.includes('Cheques to be written in Favour of') && !rawNotes.startsWith('Terms of Payment') ? rawNotes : '';
+
+              return (
+                <tr style={{ borderBottom: activeBank ? tableBorder : 'none' }}>
+                  <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left', backgroundColor: '#fcfcfc' }}>
+                    <div style={{ fontWeight: '700', fontSize: '10px', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#0f172a' }}>
+                      Sales Order Billing & Balance Snapshot:
+                    </div>
+                    
+                    {/* Compact Snapshot Card Grid */}
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: hasPriorPIs ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', 
+                      gap: '8px', 
+                      padding: '6px 10px', 
+                      backgroundColor: '#f8fafc', 
+                      border: '1px solid #e2e8f0' 
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '9px', textTransform: 'uppercase', color: '#64748b', fontWeight: '700' }}>Total Order Value</div>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f172a', fontFamily: 'monospace' }}>
+                          {currSymbol} {proformaOrderTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+
+                      {hasPriorPIs && (
+                        <div>
+                          <div style={{ fontSize: '9px', textTransform: 'uppercase', color: '#b45309', fontWeight: '700' }}>
+                            Prior Invoiced {priorPiDocNos ? `(${priorPiDocNos})` : ''}
+                          </div>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#b45309', fontFamily: 'monospace' }}>
+                            {currSymbol} {priorProformasTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div style={{ fontSize: '9px', textTransform: 'uppercase', color: '#1d4ed8', fontWeight: '700' }}>
+                          This Proforma Request
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#1d4ed8', fontFamily: 'monospace' }}>
+                          {currSymbol} {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '9px', textTransform: 'uppercase', color: '#047857', fontWeight: '700' }}>
+                          Remaining Balance
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: '800', color: '#047857', fontFamily: 'monospace' }}>
+                          {currSymbol} {proformaBalanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {cleanUserNotes && (
+                      <div style={{ marginTop: '5px', fontSize: '9.5px', color: '#475569' }}>
+                        <span style={{ fontWeight: '700', color: '#0f172a' }}>Remarks: </span>
+                        <span>{cleanUserNotes}</span>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
             }
 
-            if (!isProforma && (!rawNotes || isAutoGeneratedProformaNotice)) return null;
+            if (!rawNotes || isAutoGeneratedProformaNotice) return null;
 
             return (
               <tr style={{ borderBottom: activeBank ? tableBorder : 'none' }}>
                 <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left', backgroundColor: '#fcfcfc' }}>
                   <div style={{ fontWeight: '700', fontSize: '10.5px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#0f172a' }}>
-                    {isProforma ? 'Special Instructions & Terms of Payment:' : 'Special Instructions / Remarks:'}
+                    Special Instructions / Remarks:
                   </div>
-                  {isProforma && proformaInstructions.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', color: '#1e293b', fontSize: '10.5px', lineHeight: '1.4' }}>
-                      {proformaInstructions.map((line, lIdx) => {
-                        const isChequeNotice = line.includes('Cheques to be written in Favour of');
-                        const isTermsOfPayment = line.startsWith('Terms of Payment');
-                        const isCurrencyLine = line.startsWith('Currency -');
-                        const isBankCharges = line.includes('Bank Charges');
-
-                        return (
-                          <div key={lIdx} style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ color: '#64748b', fontSize: '9px' }}>•</span>
-                            <span>
-                              {isChequeNotice ? (
-                                <strong style={{ color: '#0f172a' }}>{line}</strong>
-                              ) : isTermsOfPayment ? (
-                                <>
-                                  <strong style={{ color: '#0f172a' }}>Terms of Payment - </strong>
-                                  <span>{line.replace(/^Terms of Payment\s*[-:]\s*/i, '')}</span>
-                                </>
-                              ) : isCurrencyLine ? (
-                                <>
-                                  <strong style={{ color: '#0f172a' }}>Currency - </strong>
-                                  <span>{line.replace(/^Currency\s*[-:]\s*/i, '')}</span>
-                                </>
-                              ) : isBankCharges ? (
-                                <span style={{ fontWeight: '600' }}>{line}</span>
-                              ) : (
-                                <span>{line}</span>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <span style={{ color: '#1e293b' }}>{rawNotes}</span>
-                  )}
+                  <span style={{ color: '#1e293b', fontSize: '10.5px' }}>{rawNotes}</span>
                 </td>
               </tr>
             );

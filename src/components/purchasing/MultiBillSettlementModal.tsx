@@ -10,6 +10,7 @@ import {
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { settleVendorOutstanding, fetchAccounts, uploadFileToStorage } from '@/lib/api';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 interface MultiBillSettlementModalProps {
   isOpen: boolean;
@@ -445,17 +446,14 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
               <label className="block text-[10px] font-bold text-muted uppercase mb-1">
                 Disburse From (Bank / Cash Account) *
               </label>
-              <select
+              <AccountAutocomplete
                 value={creditAccountId}
-                onChange={e => setCreditAccountId(e.target.value)}
-                className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
-              >
-                {payingAccounts.map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.code} - {a.name} ({a.subtype || a.type})
-                  </option>
-                ))}
-              </select>
+                onChange={setCreditAccountId}
+                placeholder="Search payment source (Bank / Cash)..."
+                typeFilter="Asset"
+                required
+                className="text-xs"
+              />
             </div>
 
             {/* Accounts Payable Account */}
@@ -463,17 +461,13 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
               <label className="block text-[10px] font-bold text-muted uppercase mb-1">
                 Debit Account (Accounts Payable) *
               </label>
-              <select
+              <AccountAutocomplete
                 value={debitAccountId}
-                onChange={e => setDebitAccountId(e.target.value)}
-                className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-medium"
-              >
-                {apAccounts.map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.code} - {a.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setDebitAccountId}
+                placeholder="Search liability account (e.g. 2000 AP)..."
+                required
+                className="text-xs"
+              />
             </div>
           </div>
 

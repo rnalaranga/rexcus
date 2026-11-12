@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { createSupplierLedgerEntry, fetchAccounts, uploadFileToStorage } from '@/lib/api';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 interface RecordBillPaymentModalProps {
   isOpen: boolean;
@@ -329,26 +330,13 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
               <span>Debit Account (Liability) *</span>
               <span className="text-[9px] font-mono text-rex-500 font-bold bg-surface2 px-1 rounded">DR</span>
             </label>
-            <select
-              required
+            <AccountAutocomplete
               value={debitAccountId}
-              onChange={e => setDebitAccountId(e.target.value)}
-              className="w-full input-base text-xs font-medium"
-            >
-              <option value="">-- Select Liability Account --</option>
-              {liabilityAccounts.length > 0 && (
-                <optgroup label="Liabilities & Payables">
-                  {liabilityAccounts.map((a: any) => (
-                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="Other Accounts">
-                {accounts.filter((a: any) => a.type !== 'Liability').map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
-                ))}
-              </optgroup>
-            </select>
+              onChange={setDebitAccountId}
+              placeholder="Search liability account (e.g. 2000 Accounts Payable)..."
+              required
+              className="text-xs"
+            />
             <p className="text-[9px] text-muted mt-0.5">Supplier liability account being settled (2000 AP)</p>
           </div>
 
@@ -358,26 +346,14 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
               <span>Credit Account (Paid From) *</span>
               <span className="text-[9px] font-mono text-emerald-500 font-bold bg-surface2 px-1 rounded">CR</span>
             </label>
-            <select
-              required
+            <AccountAutocomplete
               value={creditAccountId}
-              onChange={e => setCreditAccountId(e.target.value)}
-              className="w-full input-base text-xs font-medium"
-            >
-              <option value="">-- Select Source Account --</option>
-              {bankAndCashAccounts.length > 0 && (
-                <optgroup label="Bank & Cash Accounts">
-                  {bankAndCashAccounts.map((a: any) => (
-                    <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="Other Accounts">
-                {accounts.filter((a: any) => !bankAndCashAccounts.some((b: any) => b.id === a.id)).map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
-                ))}
-              </optgroup>
-            </select>
+              onChange={setCreditAccountId}
+              placeholder="Search source account (e.g. Bank / Cash)..."
+              typeFilter="Asset"
+              required
+              className="text-xs"
+            />
             <p className="text-[9px] text-muted mt-0.5">Asset account payment is drawn from (Bank / Cash)</p>
           </div>
 
