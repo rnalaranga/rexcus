@@ -469,6 +469,19 @@ export const AccountingHub: React.FC = () => {
                       <p className="text-[10px] text-muted">{j.lines?.length || 0} lines</p>
                     </div>
 
+                    {/* Quick Edit Journal */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/finance/journal-builder?id=${j.id}`);
+                      }}
+                      className="p-1.5 rounded hover:bg-amber-500/15 text-muted hover:text-amber-500 transition-colors flex-shrink-0"
+                      title="Edit Journal Entry"
+                    >
+                      <Edit2 size={16} className="text-amber-500" />
+                    </button>
+
                     {/* Quick Delete Journal */}
                     <button
                       type="button"
@@ -668,7 +681,21 @@ export const AccountingHub: React.FC = () => {
                       <td className="py-2 px-3 text-right font-mono font-bold text-primary">
                         {formatCurrency(Number(line.runningBalance))}
                       </td>
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                        {line.entryId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLedgerAccount(null);
+                              navigate(`/finance/journal-builder?id=${line.entryId}`);
+                            }}
+                            className="p-1.5 rounded hover:bg-amber-500/15 text-muted hover:text-amber-500 transition-colors inline-flex items-center gap-1 text-[11px] mr-1"
+                            title="Edit this journal entry"
+                          >
+                            <Edit2 size={13} className="text-amber-500" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={async (e) => {

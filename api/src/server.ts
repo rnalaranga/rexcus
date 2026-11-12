@@ -11859,6 +11859,133 @@ app.get('/api/finance/journals', async (req, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
+app.get('/api/finance/journals/:id', async (req, res) => {
+  try {
+    const [entries]: any = await db.query('SELECT * FROM journal_entries WHERE id = ? LIMIT 1', [req.params.id]);
+    if (!entries || entries.length === 0) {
+      return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    const entry = entries[0];
+    const [lines]: any = await db.query(`
+      SELECT jl.*, ca.name as accountName, ca.code as accountCode 
+      FROM journal_lines jl 
+      LEFT JOIN chart_of_accounts ca ON jl.accountId = ca.id
+      WHERE jl.entryId = ?
+      ORDER BY jl.id ASC
+    `, [entry.id]);
+    entry.lines = lines;
+    res.json(entry);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/finance/journals/:id', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const entryId = req.params.id;
+    const { date, reference, description, totalAmount, lines } = req.body;
+
+    if (!lines || !Array.isArray(lines) || lines.length < 2) {
+      return res.status(400).json({ error: 'A journal entry must contain at least 2 lines.' });
+    }
+
+    // Strict Double-Entry Validation Rule (LKAS 1 / SLFRS)
+    const totalDebitSum = lines.reduce((sum: number, l: any) => sum + (Number(l.debit) || 0), 0);
+    const totalCreditSum = lines.reduce((sum: number, l: any) => sum + (Number(l.credit) || 0), 0);
+    const variance = Math.abs(totalDebitSum - totalCreditSum);
+    if (variance > 0.01) {
+      return res.status(400).json({
+        error: `Double-Entry Validation Failed (LKAS 1): Total Debits (${totalDebitSum.toFixed(2)}) must equal Total Credits (${totalCreditSum.toFixed(2)}). Variance: ${variance.toFixed(2)}`
+      });
+    }
+
+    await conn.beginTransaction();
+
+    // 1. Fetch old lines to revert previous account balances
+    const [oldLines]: any = await conn.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [entryId]);
+    for (const oldLine of oldLines) {
+      const [accRows]: any = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [oldLine.accountId]);
+      if (accRows.length > 0) {
+        const type = (accRows[0].type || '').toLowerCase();
+        const isDebitNormal = type.includes('asset') || type.includes('expense');
+        let currentBalance = Number(accRows[0].balance || 0);
+        const oldDebit = Number(oldLine.debit || 0);
+        const oldCredit = Number(oldLine.credit || 0);
+        const oldChange = oldDebit - oldCredit;
+        if (isDebitNormal) {
+          currentBalance -= oldChange;
+        } else {
+          currentBalance += oldChange;
+        }
+        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [currentBalance, oldLine.accountId]);
+      }
+    }
+
+    // 2. Delete old lines
+    await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [entryId]);
+
+    // 3. Update entry header
+    const formattedDate = date 
+      ? (String(date).includes(' ') || String(date).includes('T') 
+          ? String(date).replace('T', ' ').slice(0, 19) 
+          : `${String(date).trim()} 00:00:00`)
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await conn.query(
+      'UPDATE journal_entries SET date = ?, reference = ?, description = ?, totalAmount = ? WHERE id = ?',
+      [formattedDate, reference || null, description || '', Number(totalAmount || totalDebitSum), entryId]
+    );
+
+    // 4. Insert new lines and update balances
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.accountId) {
+        throw new Error(`Line ${i + 1} does not have an account selected.`);
+      }
+
+      const debitVal = Number(line.debit || 0);
+      const creditVal = Number(line.credit || 0);
+      const lineId = `JL-${entryId}-${i + 1}-${Math.random().toString(36).substring(2, 7)}`;
+
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: lineId,
+        entryId: entryId,
+        accountId: line.accountId, 
+        partyType: line.partyType || null, 
+        partyId: line.partyId || null, 
+        costCenterId: line.costCenterId || null,
+        description: line.description || '',
+        debit: debitVal,
+        credit: creditVal
+      });
+
+      const balanceChange = debitVal - creditVal;
+      const [accRows]: any = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+      if (accRows.length > 0) {
+        const type = (accRows[0].type || '').toLowerCase();
+        const isDebitNormal = type.includes('asset') || type.includes('expense');
+        let currentBalance = Number(accRows[0].balance || 0);
+        if (isDebitNormal) {
+          currentBalance += balanceChange;
+        } else {
+          currentBalance -= balanceChange;
+        }
+        await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [currentBalance, line.accountId]);
+      }
+    }
+
+    await conn.commit();
+    res.json({ success: true, id: entryId });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error updating journal:', error);
+    res.status(500).json({ error: error.message || 'Failed to update journal entry' });
+  } finally {
+    conn.release();
+  }
+});
+
 app.post('/api/finance/journals', async (req, res) => {
   const conn = await db.getConnection();
   try {

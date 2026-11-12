@@ -875,6 +875,15 @@ export const createTax = async (data: any) => (await (await fetch(`${API_URL}/fi
 export const deleteTax = async (id: string) => (await (await fetch(`${API_URL}/finance/taxes/${id}`, { method: 'DELETE' })).json());
 
 export const fetchJournals = async () => (await (await fetch(`${API_URL}/finance/journals`)).json());
+export const fetchJournal = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/journals/${encodeURIComponent(id)}`);
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to fetch journal entry');
+  }
+  return json;
+};
+
 export const createJournal = async (data: any) => {
   const res = await fetch(`${API_URL}/finance/journals`, { 
     method: 'POST', 
@@ -884,6 +893,19 @@ export const createJournal = async (data: any) => {
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json.error || 'Failed to post journal entry');
+  }
+  return json;
+};
+
+export const updateJournal = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/finance/journals/${encodeURIComponent(id)}`, { 
+    method: 'PUT', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(data) 
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to update journal entry');
   }
   return json;
 };

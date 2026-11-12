@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Save, Plus, Trash2, Landmark, FileText,
-  CheckCircle, AlertCircle, ChevronDown, ChevronUp, BookOpen
+  CheckCircle, AlertCircle, ChevronDown, ChevronUp, BookOpen, Edit2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useAccounts, useCostCenters, useJournals } from '@/hooks/useFinance';
 import { useCustomers, useSuppliers } from '@/hooks/useData';
-import { createJournal } from '@/lib/api';
+import { createJournal, fetchJournal, updateJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
@@ -32,6 +32,11 @@ interface JournalLine {
 
 export const JournalBuilder: React.FC = () => {
   const navigate = useNavigate();
+  const { id: paramId } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
+  const targetId = paramId || searchParams.get('id') || '';
+  const isEditMode = Boolean(targetId);
+
   const { data: accounts } = useAccounts();
   const { data: costCenters } = useCostCenters();
   const { data: customers } = useCustomers();
@@ -40,16 +45,53 @@ export const JournalBuilder: React.FC = () => {
   const { toast, showError } = useDialog();
 
   // Form state
-  const [docNo] = useState('JE-' + Date.now().toString().slice(-6));
+  const [docNo, setDocNo] = useState(targetId || ('JE-' + Date.now().toString().slice(-6)));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEditMode);
 
   const [lines, setLines] = useState<JournalLine[]>([
     { id: crypto.randomUUID(), accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
     { id: crypto.randomUUID(), accountId: '', partyType: '', partyId: '', costCenterId: '', description: '', debit: 0, credit: 0 },
   ]);
+
+  useEffect(() => {
+    if (!targetId) return;
+    let isMounted = true;
+    const loadEntry = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchJournal(targetId);
+        if (!isMounted) return;
+        if (data) {
+          setDocNo(data.id || targetId);
+          setDate(data.date ? String(data.date).split('T')[0].split(' ')[0] : new Date().toISOString().split('T')[0]);
+          setReference(data.reference || '');
+          setDescription(data.description || '');
+          if (Array.isArray(data.lines) && data.lines.length > 0) {
+            setLines(data.lines.map((l: any) => ({
+              id: l.id || crypto.randomUUID(),
+              accountId: l.accountId || '',
+              partyType: l.partyType || '',
+              partyId: l.partyId || '',
+              costCenterId: l.costCenterId || '',
+              description: l.description || '',
+              debit: Number(l.debit || 0),
+              credit: Number(l.credit || 0)
+            })));
+          }
+        }
+      } catch (err: any) {
+        showError(err.message || 'Failed to load journal entry', 'Load Error');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    loadEntry();
+    return () => { isMounted = false; };
+  }, [targetId]);
 
   const addLine = () => setLines(prev => [...prev, {
     id: crypto.randomUUID(), accountId: '', partyType: '', partyId: '',
@@ -87,18 +129,37 @@ export const JournalBuilder: React.FC = () => {
 
     setSaving(true);
     try {
-      await createJournal({
-        id: docNo, date, reference, description,
-        totalAmount: totalDebit, lines, createdBy: 'Admin'
-      });
-      toast('Journal entry posted successfully!', 'success');
+      if (isEditMode) {
+        await updateJournal(targetId, {
+          date, reference, description,
+          totalAmount: totalDebit, lines
+        });
+        toast(`Journal entry ${targetId} updated successfully!`, 'success');
+      } else {
+        await createJournal({
+          id: docNo, date, reference, description,
+          totalAmount: totalDebit, lines, createdBy: 'Admin'
+        });
+        toast('Journal entry posted successfully!', 'success');
+      }
       refetchJournals();
       navigate('/finance');
     } catch (e: any) {
-      showError(e?.message || 'Failed to post journal entry. Please try again.', 'Post Failed');
+      showError(e?.message || `Failed to ${isEditMode ? 'update' : 'post'} journal entry. Please try again.`, isEditMode ? 'Update Failed' : 'Post Failed');
     }
     setSaving(false);
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-background">
+        <div className="text-center p-8 space-y-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-muted font-medium">Loading journal entry...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden relative">
@@ -112,7 +173,9 @@ export const JournalBuilder: React.FC = () => {
             <ArrowLeft size={17} />
           </button>
           <div>
-            <h1 className="text-base font-black text-primary tracking-tight">New Journal Entry</h1>
+            <h1 className="text-base font-black text-primary tracking-tight">
+              {isEditMode ? 'Edit Journal Entry' : 'New Journal Entry'}
+            </h1>
             <p className="text-[11px] mt-0.5 flex items-center gap-2">
               <span className="text-muted font-mono">{docNo}</span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -139,7 +202,7 @@ export const JournalBuilder: React.FC = () => {
             disabled={!isBalanced || saving}
             className="bg-rex-600 hover:bg-rex-700 disabled:opacity-40"
           >
-            {saving ? 'Posting...' : 'Post Entry'}
+            {saving ? (isEditMode ? 'Saving Changes...' : 'Posting...') : (isEditMode ? 'Save Changes' : 'Post Entry')}
           </Button>
         </div>
       </div>

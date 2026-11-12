@@ -229,6 +229,7 @@ function AppRoutes() {
             <Route path="/finance" element={<AccountingHub />} />
             <Route path="/finance/accounting" element={<AccountingHub />} />
             <Route path="/finance/journal-builder" element={<JournalBuilder />} />
+            <Route path="/finance/journal-builder/:id" element={<JournalBuilder />} />
             <Route path="/finance/reports" element={<FinancialReports />} />
             <Route path="/finance/expense-builder" element={<ExpenseBuilder />} />
             <Route path="/finance/income-builder" element={<IncomeBuilder />} />
