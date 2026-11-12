@@ -4,13 +4,14 @@ import {
   ArrowLeft, Save, CreditCard, Building2, Calendar, 
   FileText, CheckCircle2, AlertTriangle, Layers, DollarSign, 
   History, ExternalLink, Hash, Receipt, Paperclip, UploadCloud, Eye, Trash2,
-  Zap, Droplets, PhoneCall, Home, Wrench, Fuel, ShieldCheck, Plus, CheckSquare, Square, RefreshCw
+  Zap, Droplets, PhoneCall, Home, Wrench, Fuel, ShieldCheck, Plus, CheckSquare, Square, RefreshCw, Crop
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { POPrintView } from '@/components/purchasing/POPrintView';
+import { ImageCropEditorModal } from '@/components/crm/ImageCropEditorModal';
 import { useSettings } from '@/contexts/SettingsContext';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
@@ -60,8 +61,14 @@ export const BillBuilder: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [billAttachment, setBillAttachment] = useState<string>('');
   const [billAttachmentName, setBillAttachmentName] = useState<string>('');
+  const [cropEditorImage, setCropEditorImage] = useState<{ src: string; name: string } | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
+
+  const isImageFile = (nameOrUri: string) => {
+    if (!nameOrUri) return false;
+    return nameOrUri.startsWith('data:image/') || /\.(jpg|jpeg|png|webp|gif|bmp)($|\?)/i.test(nameOrUri);
+  };
 
   // Tax Management
   const [taxEnabled, setTaxEnabled] = useState<boolean>(false);
@@ -514,10 +521,21 @@ export const BillBuilder: React.FC = () => {
       alert('File size exceeds 25MB limit.');
       return;
     }
-    setIsUploading(true);
+
     const reader = new FileReader();
     reader.onload = async () => {
       const rawDataUri = reader.result as string;
+
+      // If it's an image, launch the interactive crop studio
+      if (file.type.startsWith('image/')) {
+        setCropEditorImage({
+          src: rawDataUri,
+          name: file.name
+        });
+        return;
+      }
+
+      setIsUploading(true);
       setBillAttachment(rawDataUri);
       setBillAttachmentName(file.name);
 
@@ -536,7 +554,29 @@ export const BillBuilder: React.FC = () => {
     e.target.value = '';
   };
 
+  const handleSaveCroppedImage = async (croppedDataUrl: string, newFileName: string) => {
+    setIsUploading(true);
+    setBillAttachment(croppedDataUrl);
+    setBillAttachmentName(newFileName);
+
+    try {
+      const uploaded = await uploadFileToStorage(croppedDataUrl, newFileName, 'bills');
+      if (uploaded && uploaded.url) {
+        setBillAttachment(uploaded.url);
+      }
+    } catch (err) {
+      console.warn('Cropped bill upload warning:', err);
+    } finally {
+      setIsUploading(false);
+      setCropEditorImage(null);
+    }
+  };
+
   const handleSave = async () => {
+    if (isUploading) {
+      alert('Please wait for the document attachment to finish uploading before saving.');
+      return;
+    }
     if (!invoiceNo.trim()) {
       alert('Please enter the Vendor Invoice / Bill Number.');
       return;
@@ -1356,8 +1396,9 @@ export const BillBuilder: React.FC = () => {
                         </td>
                         <td className="py-2.5 px-3 align-top pt-3.5">
                           <AccountAutocomplete
-                            value={item.accountId}
+                            value={item.accountId || expenseAccountId || ''}
                             onChange={accId => updateLineItem(item.id, 'accountId', accId)}
+                            accounts={accounts}
                             placeholder="Search account (4000, 5002, 7000)..."
                             className="text-xs"
                           />
@@ -1424,6 +1465,23 @@ export const BillBuilder: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {isImageFile(billAttachmentName || billAttachment) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setCropEditorImage({
+                          src: billAttachment,
+                          name: billAttachmentName || 'Vendor_Bill.jpg'
+                        });
+                      }}
+                      className="text-xs text-emerald-600 hover:text-emerald-700 px-2.5 py-1.5 h-auto flex items-center gap-1 font-semibold"
+                      title="Crop, rotate, and enhance bill document"
+                    >
+                      <Crop size={14} /> Crop / Edit
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -1566,6 +1624,16 @@ export const BillBuilder: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {cropEditorImage && (
+        <ImageCropEditorModal
+          isOpen={Boolean(cropEditorImage)}
+          onClose={() => setCropEditorImage(null)}
+          imageSrc={cropEditorImage.src}
+          fileName={cropEditorImage.name}
+          onSave={handleSaveCroppedImage}
+        />
       )}
     </div>
   );

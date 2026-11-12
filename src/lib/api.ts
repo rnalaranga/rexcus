@@ -850,6 +850,7 @@ export const fetchAccounts = async () => (await (await fetch(`${API_URL}/finance
 export const createAccount = async (data: any) => (await (await fetch(`${API_URL}/finance/accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const updateAccount = async (id: string, data: any) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })).json());
 export const deleteAccount = async (id: string) => (await (await fetch(`${API_URL}/finance/accounts/${id}`, { method: 'DELETE' })).json());
+export const recalculateAccountBalances = async () => (await (await fetch(`${API_URL}/finance/recalculate-balances`, { method: 'POST' })).json());
 export const fetchAccountLedger = async (id: string, params?: { startDate?: string; endDate?: string }) => {
   const q = new URLSearchParams();
   if (params?.startDate) q.append('startDate', params.startDate);

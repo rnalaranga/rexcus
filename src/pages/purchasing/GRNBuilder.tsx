@@ -4,7 +4,7 @@ import {
   ArrowLeft, Save, Truck, PackageCheck, FileSignature, MapPin, 
   ShieldCheck, Printer, FileText, Calendar, Building2, UserCheck, 
   Package, CheckCircle2, AlertTriangle, AlertCircle, RefreshCw, Trash2, X, Plus, Scissors,
-  Paperclip, UploadCloud, Eye
+  Paperclip, UploadCloud, Eye, Edit2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -30,6 +30,8 @@ export const GRNBuilder: React.FC = () => {
   const poParam = searchParams.get('po');
 
   const isViewMode = Boolean(targetId);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const isReadonly = Boolean(isViewMode && !isEditMode);
 
   const { data: pos, loading: loadingPOs } = usePurchaseOrders();
   const { data: allGRNs } = useGRNs();
@@ -556,6 +558,7 @@ export const GRNBuilder: React.FC = () => {
       ? 'QA Quarantine Staging (Hold - Non-conforming)'
       : storageLocation;
 
+    const cleanUserNotes = (notes || '').replace(/^(Vehicle:[^|]+\|\s*Location:[^|]+\|(\s*Heat:[^|]+\|)?(\s*Batch:[^|]+\|)?(\s*MTR:[^|]+\|)?\s*)+/, '').trim();
     const payload = {
       id: docNo,
       poId: selectedPoIds[0] || null,
@@ -581,7 +584,7 @@ export const GRNBuilder: React.FC = () => {
       subtotal: netSubtotal,
       taxAmount: totalTax,
       totalAmount: grandTotalGRNValue,
-      notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${notes}`
+      notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${cleanUserNotes}`
     };
 
     try {
@@ -818,13 +821,15 @@ export const GRNBuilder: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-black text-primary tracking-tight">
-                {isViewMode 
-                  ? `Goods Receipt Note (${docNo})` 
-                  : (receiptMode === 'direct' ? 'Create Direct Goods Receipt (No PO)' : 'Create Goods Receipt Note')}
+                {isEditMode
+                  ? `Edit Goods Receipt Note (${docNo})`
+                  : (isViewMode 
+                    ? `Goods Receipt Note (${docNo})` 
+                    : (receiptMode === 'direct' ? 'Create Direct Goods Receipt (No PO)' : 'Create Goods Receipt Note'))}
               </h1>
               {isViewMode && (
                 <>
-                  <Badge value={status === 'received' ? 'Received' : status} size="sm" />
+                  <Badge value={isEditMode ? 'Editing' : (status === 'received' ? 'Received' : status)} size="sm" />
                   {selectedPoIds.length === 0 && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
                       Direct Receipt
@@ -842,31 +847,62 @@ export const GRNBuilder: React.FC = () => {
         <div className="flex items-center gap-2">
           {isViewMode ? (
             <>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                icon={Printer} 
-                onClick={() => setIsPrintModalOpen(true)}
-              >
-                Print GRN
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                icon={Trash2} 
-                onClick={handleDeleteGRN}
-                className="text-red-500 border-red-500/30 hover:bg-red-500/10"
-              >
-                Delete GRN
-              </Button>
-              <Button 
-                variant="primary" 
-                size="sm" 
-                icon={FileText} 
-                onClick={() => navigate(`/purchasing/bill-builder?grn=${docNo}`)}
-              >
-                Create Bill
-              </Button>
+              {isEditMode ? (
+                <>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setIsEditMode(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    size="sm" 
+                    icon={Save} 
+                    onClick={handleSave}
+                  >
+                    Save Changes
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    icon={Printer} 
+                    onClick={() => setIsPrintModalOpen(true)}
+                  >
+                    Print GRN
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    icon={Edit2} 
+                    onClick={() => setIsEditMode(true)}
+                    className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10 font-semibold"
+                  >
+                    Edit GRN
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    icon={Trash2} 
+                    onClick={handleDeleteGRN}
+                    className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+                  >
+                    Delete GRN
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    size="sm" 
+                    icon={FileText} 
+                    onClick={() => navigate(`/purchasing/bill-builder?grn=${docNo}`)}
+                  >
+                    Create Bill
+                  </Button>
+                </>
+              )}
             </>
           ) : (
             <Button 
@@ -1037,7 +1073,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                     <Calendar size={12} className="text-muted" /> Receipt Date
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {date || 'N/A'}
                     </div>
@@ -1056,7 +1092,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                     <Truck size={12} className="text-muted" /> Vehicle / Carrier No.
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {vehicleNo || 'N/A'}
                     </div>
@@ -1076,7 +1112,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                     <MapPin size={12} className="text-muted" /> Receiving Bay / Location
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-medium">
                       {storageLocation}
                     </div>
@@ -1096,7 +1132,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center gap-1.5">
                     <UserCheck size={12} className="text-muted" /> Inspected & Received By
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-medium">
                       {receivedBy || 'Warehouse Manager'}
                     </div>
@@ -1115,7 +1151,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
                     <ShieldCheck size={12} className="text-rex-500" /> Heat / Melt No. (ISO 8.5.2)
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {heatNo || 'N/A'}
                     </div>
@@ -1135,7 +1171,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
                     <Package size={12} className="text-secondary" /> Batch / Lot No.
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {batchNo || 'N/A'}
                     </div>
@@ -1155,7 +1191,7 @@ export const GRNBuilder: React.FC = () => {
                   <label className="block text-[11px] font-bold text-secondary uppercase mb-1 flex items-center gap-1.5">
                     <FileText size={12} className="text-secondary" /> Mill Test Cert No. (MTR)
                   </label>
-                  {isViewMode ? (
+                  {isReadonly ? (
                     <div className="p-2.5 bg-surface border border-theme-subtle rounded-lg text-xs font-mono">
                       {mtrCertNo || 'N/A'}
                     </div>
@@ -1289,7 +1325,7 @@ export const GRNBuilder: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={taxEnabled}
-                      disabled={isViewMode}
+                      disabled={isReadonly}
                       onChange={e => setTaxEnabled(e.target.checked)}
                       className="rounded text-primary h-3.5 w-3.5"
                     />
@@ -1303,7 +1339,7 @@ export const GRNBuilder: React.FC = () => {
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_vat18'); setHideVatSeparately(false); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           taxProfileId === 'tp_vat18' && !hideVatSeparately
@@ -1315,7 +1351,7 @@ export const GRNBuilder: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_vat18_absorbed'); setHideVatSeparately(true); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           taxProfileId === 'tp_vat18_absorbed' || (taxProfileId === 'tp_vat18' && hideVatSeparately)
@@ -1327,7 +1363,7 @@ export const GRNBuilder: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep'); setHideVatSeparately(false); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           (taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl') && !hideVatSeparately
@@ -1339,7 +1375,7 @@ export const GRNBuilder: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_opt1_absorbed'); setHideVatSeparately(true); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           taxProfileId === 'tp_opt1_absorbed'
@@ -1351,7 +1387,7 @@ export const GRNBuilder: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_opt3_both_separate'); setHideVatSeparately(false); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           taxProfileId === 'tp_opt3_both_separate'
@@ -1363,7 +1399,7 @@ export const GRNBuilder: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        disabled={isViewMode}
+                        disabled={isReadonly}
                         onClick={() => { setTaxProfileId('tp_opt4_sscl_included_vat_sep'); setHideVatSeparately(false); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
                           taxProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedTaxProfile?.name?.toLowerCase().includes('sscl included')
@@ -1377,7 +1413,7 @@ export const GRNBuilder: React.FC = () => {
 
                     <select
                       value={taxProfileId}
-                      disabled={isViewMode}
+                      disabled={isReadonly}
                       onChange={e => {
                         const val = e.target.value;
                         setTaxProfileId(val);
@@ -1402,7 +1438,7 @@ export const GRNBuilder: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={isTaxInclusive}
-                          disabled={isViewMode}
+                          disabled={isReadonly}
                           onChange={e => setIsTaxInclusive(e.target.checked)}
                           className="rounded text-primary h-3.5 w-3.5"
                         />
@@ -1412,7 +1448,7 @@ export const GRNBuilder: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={hideVatSeparately}
-                          disabled={isViewMode}
+                          disabled={isReadonly}
                           onChange={e => setHideVatSeparately(e.target.checked)}
                           className="rounded text-primary h-3.5 w-3.5"
                         />
@@ -1489,7 +1525,7 @@ export const GRNBuilder: React.FC = () => {
                 )}
               </div>
 
-              {!isViewMode && (
+              {!isReadonly && (
                 <div className="pt-2.5 border-t border-theme-subtle">
                   <label className="flex items-start gap-2 cursor-pointer text-[11px] text-secondary leading-tight select-none">
                     <input 
@@ -1513,7 +1549,7 @@ export const GRNBuilder: React.FC = () => {
                   <PackageCheck size={16} /> Incoming Freight Breakdown ({items.length} items)
                 </h2>
                 <div className="flex items-center gap-2">
-                  {!isViewMode && receiptMode === 'direct' && (
+                  {!isReadonly && receiptMode === 'direct' && (
                     <>
                       <Button 
                         variant="outline" 
@@ -1535,7 +1571,7 @@ export const GRNBuilder: React.FC = () => {
                       </Button>
                     </>
                   )}
-                  {!isViewMode && receiptMode === 'po' && items.length > 0 && (
+                  {!isReadonly && receiptMode === 'po' && items.length > 0 && (
                     <>
                       <Button 
                         variant="ghost" 
@@ -1568,17 +1604,17 @@ export const GRNBuilder: React.FC = () => {
                         <th className="px-3 py-3 text-center text-primary">Qty Received</th>
                         <th className="px-3 py-3 text-right">Total Value</th>
                         <th className="px-5 py-3 text-center">Condition</th>
-                        {!isViewMode && <th className="px-3 py-3 text-right w-16">Action</th>}
+                        {!isReadonly && <th className="px-3 py-3 text-right w-16">Action</th>}
                       </tr>
                     ) : (
                       <tr className="text-[10px] uppercase tracking-widest text-muted">
                         {selectedPoIds.length > 1 && <th className="px-3 py-3 text-center">PO #</th>}
                         <th className="px-5 py-3 w-1/4">Material Description</th>
                         <th className="px-3 py-3 text-center">Ordered</th>
-                        {!isViewMode && <th className="px-3 py-3 text-center">Prev. Recv</th>}
-                        {!isViewMode && <th className="px-3 py-3 text-center text-amber-500">Remaining</th>}
+                        {!isReadonly && <th className="px-3 py-3 text-center">Prev. Recv</th>}
+                        {!isReadonly && <th className="px-3 py-3 text-center text-amber-500">Remaining</th>}
                         <th className="px-3 py-3 text-center text-primary">
-                          {isViewMode ? 'Received Qty' : 'Receiving Qty'}
+                          {isReadonly ? 'Received Qty' : 'Receiving Qty'}
                         </th>
                         <th className="px-3 py-3 text-right">PO Price (LKR)</th>
                         <th className="px-3 py-3 text-right text-emerald-500 font-bold">GRN Unit Cost (LKR)</th>
@@ -1621,7 +1657,7 @@ export const GRNBuilder: React.FC = () => {
                           </td>
 
                           <td className="p-3 text-right">
-                            {isViewMode ? (
+                            {isReadonly ? (
                               <span className="font-mono text-xs font-semibold text-secondary">
                                 {formatCurrency(Number(item.unitCost || 0), true)}
                               </span>
@@ -1642,7 +1678,7 @@ export const GRNBuilder: React.FC = () => {
                           </td>
 
                           <td className="p-3 text-center">
-                            {isViewMode ? (
+                            {isReadonly ? (
                               <span className="font-bold text-xs text-primary font-mono">
                                 {item.qtyReceived} {item.unit || ''}
                               </span>
@@ -1672,7 +1708,7 @@ export const GRNBuilder: React.FC = () => {
                           </td>
 
                           <td className="p-3 text-center">
-                            {isViewMode ? (
+                            {isReadonly ? (
                               <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold ${
                                 item.condition === 'Good' || !item.condition
                                   ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
@@ -1702,7 +1738,7 @@ export const GRNBuilder: React.FC = () => {
                             )}
                           </td>
 
-                          {!isViewMode && (
+                          {!isReadonly && (
                             <td className="p-3 text-right">
                               <button 
                                 type="button" 
@@ -1747,7 +1783,7 @@ export const GRNBuilder: React.FC = () => {
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 w-fit">
                                     <Scissors size={10} /> Cut: {item.cutLength} mm ({item.pieces || 1} pcs)
                                   </span>
-                                  {!isViewMode && (
+                                  {!isReadonly && (
                                     <label className="inline-flex items-center gap-1.5 text-[10px] text-secondary cursor-pointer select-none">
                                       <input
                                         type="checkbox"
@@ -1770,7 +1806,7 @@ export const GRNBuilder: React.FC = () => {
                               {ordered} {item.unit || ''}
                             </td>
 
-                            {!isViewMode && (
+                            {!isReadonly && (
                               <td className="p-3 text-center font-medium text-xs font-mono">
                                 <span className={prevRecv > 0 ? "text-blue-500 font-bold" : "text-muted"}>
                                   {prevRecv} {item.unit || ''}
@@ -1778,7 +1814,7 @@ export const GRNBuilder: React.FC = () => {
                               </td>
                             )}
 
-                            {!isViewMode && (
+                            {!isReadonly && (
                               <td className="p-3 text-center font-medium text-xs font-mono">
                                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                                   remaining === 0 
@@ -1791,7 +1827,7 @@ export const GRNBuilder: React.FC = () => {
                             )}
 
                             <td className="p-3 text-center">
-                              {isViewMode ? (
+                              {isReadonly ? (
                                 <span className="font-bold text-xs text-primary font-mono">
                                   {item.qtyReceived} {item.unit || ''}
                                 </span>
@@ -1827,7 +1863,7 @@ export const GRNBuilder: React.FC = () => {
 
                             {/* Editable Actual Received Unit Cost */}
                             <td className="p-3 text-right">
-                              {isViewMode ? (
+                              {isReadonly ? (
                                 <div className="flex flex-col items-end">
                                   <span className="font-mono text-xs font-bold text-primary">
                                     {formatCurrency(actualCost, true)}
@@ -1896,7 +1932,7 @@ export const GRNBuilder: React.FC = () => {
                             </td>
 
                             <td className="p-3 text-center">
-                              {isViewMode ? (
+                              {isReadonly ? (
                                 <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold ${
                                   item.condition === 'Good' || !item.condition
                                     ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
@@ -1928,7 +1964,7 @@ export const GRNBuilder: React.FC = () => {
                     )}
                     {items.length === 0 && (
                       <tr>
-                        <td colSpan={receiptMode === 'direct' ? (isViewMode ? 5 : 6) : (selectedPoIds.length > 1 ? 10 : 9)} className="p-8 text-center text-muted text-xs">
+                        <td colSpan={receiptMode === 'direct' ? (isReadonly ? 5 : 6) : (selectedPoIds.length > 1 ? 10 : 9)} className="p-8 text-center text-muted text-xs">
                           {receiptMode === 'direct' 
                             ? 'No materials added yet. Click "+ Add Material" above to record incoming items directly without a Purchase Order.'
                             : 'No items loaded. Select one or more Purchase Orders on the left to receive inventory.'}
@@ -1945,7 +1981,7 @@ export const GRNBuilder: React.FC = () => {
               <label className="block text-[11px] font-bold text-muted uppercase mb-2">
                 Quality Inspection Remarks & Notes
               </label>
-              {isViewMode ? (
+              {isReadonly ? (
                 <p className="text-xs text-secondary leading-relaxed p-3 bg-surface border border-theme-subtle rounded-lg">
                   {notes || 'No notes added.'}
                 </p>
@@ -1959,6 +1995,27 @@ export const GRNBuilder: React.FC = () => {
                 />
               )}
             </GlassCard>
+
+            {/* Bottom Save bar if in edit mode */}
+            {isEditMode && (
+              <div className="flex justify-end items-center gap-3 pt-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setIsEditMode(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm" 
+                  icon={Save} 
+                  onClick={handleSave}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

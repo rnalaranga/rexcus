@@ -5,7 +5,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
-import { useAccounts, useTaxes } from '@/hooks/useFinance';
+import { useAccounts, useTaxes, useTaxProfiles } from '@/hooks/useFinance';
 import { useSuppliers } from '@/hooks/useData';
 import { createJournal } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -14,7 +14,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 export const ExpenseBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { data: accounts } = useAccounts();
-  const { data: taxes } = useTaxes();
+  const { data: taxProfiles = [] } = useTaxProfiles();
   const { data: suppliers = [] } = useSuppliers();
   const { showError, toast } = useDialog();
 
@@ -27,7 +27,7 @@ export const ExpenseBuilder: React.FC = () => {
   
   const [expenseAccountId, setExpenseAccountId] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
-  const [taxRateId, setTaxRateId] = useState('');
+  const [taxMode, setTaxMode] = useState<string>('none'); // 'none' | 'vat18' | 'sscl_vat'
 
   const expenseAccounts = accounts.filter(a => a.type === 'Expense');
   
@@ -39,10 +39,35 @@ export const ExpenseBuilder: React.FC = () => {
     return acc;
   }, {} as Record<string, any[]>);
 
-  const paymentAccounts = accounts.filter(a => a.type === 'Asset' || a.type === 'Liability');
+  // Payment/Credit accounts: Exclude Accounts Receivable! An expense cannot credit customer receivables.
+  const paymentAccounts = accounts.filter(a => {
+    if (a.type === 'Liability') return true;
+    if (a.type === 'Asset') {
+      const nameLower = (a.name || '').toLowerCase();
+      if (nameLower.includes('receivable') || a.code === '1500' || a.code === '1200' || a.code === '1690') return false;
+      return true;
+    }
+    return false;
+  }).sort((a, b) => (a.code === '2000' ? -1 : b.code === '2000' ? 1 : 0));
 
-  const selectedTax = taxes.find(t => t.id === taxRateId);
-  const taxAmount = selectedTax ? (amount * selectedTax.rate) / 100 : 0;
+  // Auto-default payment account to Accounts Payable if not set
+  React.useEffect(() => {
+    if (!paymentAccountId && paymentAccounts.length > 0) {
+      const ap = paymentAccounts.find(a => a.code === '2000' || a.name.toLowerCase().includes('accounts payable'));
+      if (ap) setPaymentAccountId(ap.id);
+    }
+  }, [paymentAccounts, paymentAccountId]);
+
+  // Tax calculations
+  let ssclAmount = 0;
+  let vatAmount = 0;
+  if (taxMode === 'vat18') {
+    vatAmount = Math.round(amount * 0.18 * 100) / 100;
+  } else if (taxMode === 'sscl_vat') {
+    ssclAmount = Math.round(amount * 0.025 * 100) / 100;
+    vatAmount = Math.round((amount + ssclAmount) * 0.18 * 100) / 100;
+  }
+  const taxAmount = vatAmount + ssclAmount;
   const totalAmount = amount + taxAmount;
 
   const handleSave = async () => {
@@ -52,15 +77,22 @@ export const ExpenseBuilder: React.FC = () => {
     
     const partyInfo = supplierId ? { partyType: 'Supplier', partyId: supplierId } : {};
 
+    // Find accounts for VAT Input and SSCL Expense
+    const vatAcc = accounts.find(a => a.code === '1690' || (a.type === 'Asset' && a.name.toLowerCase().includes('input vat'))) || { id: 'acc_1690' };
+    const ssclAcc = accounts.find(a => a.code === '5010' || (a.type === 'Expense' && a.name.toLowerCase().includes('sscl'))) || { id: 'acc_5010' };
+
     const lines = [];
-    lines.push({ id: crypto.randomUUID(), accountId: expenseAccountId, description, debit: amount, credit: 0, ...partyInfo });
-    if (selectedTax && taxAmount > 0) {
-      lines.push({ id: crypto.randomUUID(), accountId: selectedTax.accountId, description: `VAT Input: ${description}`, debit: taxAmount, credit: 0, ...partyInfo });
+    lines.push({ id: crypto.randomUUID(), accountId: expenseAccountId, description: description || 'Expense Charge', debit: amount, credit: 0, ...partyInfo });
+    if (vatAmount > 0) {
+      lines.push({ id: crypto.randomUUID(), accountId: vatAcc.id, description: `VAT Input Tax Recoverable (18%): ${description || reference}`, debit: vatAmount, credit: 0, ...partyInfo });
     }
-    lines.push({ id: crypto.randomUUID(), accountId: paymentAccountId, description, debit: 0, credit: totalAmount, ...partyInfo });
+    if (ssclAmount > 0) {
+      lines.push({ id: crypto.randomUUID(), accountId: ssclAcc.id, description: `SSCL Expense (2.5%): ${description || reference}`, debit: ssclAmount, credit: 0, ...partyInfo });
+    }
+    lines.push({ id: crypto.randomUUID(), accountId: paymentAccountId, description: `Credit: ${description || reference}`, debit: 0, credit: totalAmount, ...partyInfo });
 
     await createJournal({
-      id: docNo, date, reference, description: `Direct Expense: ${description}`, totalAmount, lines, createdBy: 'Admin'
+      id: docNo, date, reference, description: `Direct Expense: ${description || reference}`, totalAmount, lines, createdBy: 'Admin'
     });
     toast('Expense recorded successfully!', 'success');
     navigate('/finance');
@@ -145,13 +177,16 @@ export const ExpenseBuilder: React.FC = () => {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-orange-500 uppercase mb-1 flex items-center gap-1.5 justify-center"><Percent size={12}/> Applicable Tax / VAT</label>
-                <select value={taxRateId} onChange={e => setTaxRateId(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-orange-500 text-center">
-                  <option value="">No Tax (0%)</option>
-                  {taxes.map(t => <option key={t.id} value={t.id}>{t.name} ({Number(t.rate)}%)</option>)}
+                <select value={taxMode} onChange={e => setTaxMode(e.target.value)} className="w-full bg-white dark:bg-zinc-900 border border-theme-subtle px-3 py-2.5 rounded-lg text-sm font-medium focus:border-orange-500 text-center">
+                  <option value="none">No Tax (0%)</option>
+                  <option value="vat18">VAT 18% (Claimable Input Tax → 1690)</option>
+                  <option value="sscl_vat">SSCL 2.5% + VAT 18% (Standard Purchase Tax)</option>
                 </select>
                 {taxAmount > 0 && (
-                   <div className="text-center mt-2 text-sm font-semibold text-orange-500">
-                     + {formatCurrency(taxAmount)}
+                   <div className="text-center mt-2 text-xs font-mono font-semibold space-y-0.5">
+                     {ssclAmount > 0 && <div className="text-muted">SSCL (2.5%): + {formatCurrency(ssclAmount)}</div>}
+                     {vatAmount > 0 && <div className="text-orange-500">VAT Input (18%): + {formatCurrency(vatAmount)}</div>}
+                     <div className="text-amber-500 font-bold">Total Tax: + {formatCurrency(taxAmount)}</div>
                    </div>
                 )}
               </div>

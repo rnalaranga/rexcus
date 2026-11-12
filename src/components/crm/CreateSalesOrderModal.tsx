@@ -750,6 +750,10 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) {
+      toast('Please wait for PO document attachment to finish uploading...', 'warning');
+      return;
+    }
     if (!formData.orderNo.trim()) {
       toast('Order Number is required', 'error');
       return;

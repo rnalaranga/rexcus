@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Printer, Search, RefreshCw, Eye, X, FileText, Calendar, 
-  ArrowRightLeft, AlertCircle, CheckCircle2, ChevronRight 
+  ArrowRightLeft, AlertCircle, CheckCircle2, ChevronRight, FileSpreadsheet 
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -164,6 +165,80 @@ export const CreditDebitNotesTab: React.FC = () => {
     return true;
   });
 
+  const handleExportNotesExcel = () => {
+    if (filteredNotes.length === 0) {
+      toast('No credit/debit notes to export.', 'info');
+      return;
+    }
+
+    const rows: any[] = [];
+    rows.push({
+      'Note No': 'Note No',
+      'Type': 'Type',
+      'Date': 'Date',
+      'Party Type': 'Party Type',
+      'Party Name': 'Party Name',
+      'Related Document': 'Related Document',
+      'Reason': 'Reason',
+      'Subtotal (LKR)': 'Subtotal (LKR)',
+      'Tax Amount (LKR)': 'Tax Amount (LKR)',
+      'Total Amount (LKR)': 'Total Amount (LKR)',
+      'Status': 'Status',
+      'Notes': 'Notes'
+    });
+
+    let totalSubtotal = 0;
+    let totalTax = 0;
+    let grandTotal = 0;
+
+    filteredNotes.forEach(n => {
+      const sub = Number(n.subtotal || 0);
+      const tax = Number(n.taxAmount || 0);
+      const tot = Number(n.totalAmount || 0);
+      totalSubtotal += sub;
+      totalTax += tax;
+      grandTotal += tot;
+
+      rows.push({
+        'Note No': n.noteNo || '',
+        'Type': n.type === 'credit_note' ? 'Credit Note (CN)' : 'Debit Note (DN)',
+        'Date': String(n.date || '').split('T')[0],
+        'Party Type': n.partyType ? (n.partyType === 'customer' ? 'Customer' : 'Supplier') : '',
+        'Party Name': n.partyName || '',
+        'Related Document': n.relatedDocNo ? `${n.relatedDocType || 'Doc'}: ${n.relatedDocNo}` : '-',
+        'Reason': n.reason || '',
+        'Subtotal (LKR)': sub,
+        'Tax Amount (LKR)': tax,
+        'Total Amount (LKR)': tot,
+        'Status': n.status || 'Active',
+        'Notes': n.notes || ''
+      });
+    });
+
+    // Summary row
+    rows.push({
+      'Note No': 'TOTALS',
+      'Type': '',
+      'Date': '',
+      'Party Type': '',
+      'Party Name': '',
+      'Related Document': '',
+      'Reason': '',
+      'Subtotal (LKR)': totalSubtotal,
+      'Tax Amount (LKR)': totalTax,
+      'Total Amount (LKR)': grandTotal,
+      'Status': '',
+      'Notes': ''
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, { skipHeader: true });
+    const workbook = XLSX.utils.book_new();
+    const sheetName = typeFilter === 'credit_note' ? 'Credit Notes' : typeFilter === 'debit_note' ? 'Debit Notes' : 'Credit & Debit Notes';
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `Credit_Debit_Notes_${typeFilter}_${dateStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Top Filter & Action Bar */}
@@ -201,6 +276,16 @@ export const CreditDebitNotesTab: React.FC = () => {
               </button>
             ))}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportNotesExcel}
+            icon={FileSpreadsheet}
+            className="text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 font-bold"
+          >
+            Export Excel
+          </Button>
 
           <Button
             variant="ghost"

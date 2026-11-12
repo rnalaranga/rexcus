@@ -29,6 +29,7 @@ app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve public static assets (e.g. /rex-logo.png, etc.)
 const publicCandidates = [
@@ -1745,6 +1746,8 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN expenseAccountId VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN billCategory VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN billType VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",
@@ -2695,6 +2698,36 @@ app.post('/api/settings/r2/test', async (req, res) => {
   }
 });
 
+async function saveBase64Attachment(dataUri: string, filename: string = 'document', folder: string = 'attachments'): Promise<string> {
+  if (!dataUri || typeof dataUri !== 'string') return dataUri;
+  if (!dataUri.startsWith('data:')) return dataUri;
+
+  const commaIdx = dataUri.indexOf(',');
+  if (commaIdx === -1) return dataUri;
+
+  try {
+    const header = dataUri.substring(0, commaIdx);
+    const base64Data = dataUri.substring(commaIdx + 1).replace(/\s/g, '');
+    const mimeMatch = header.match(/^data:([^;]+)/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    try {
+      const cfg = await getR2Config();
+      if (cfg.enabled && cfg.accountId && cfg.accessKeyId && cfg.secretAccessKey && cfg.bucketName) {
+        const result = await uploadToR2(buffer, filename, mimeType, folder);
+        return result.url;
+      }
+    } catch (e) {}
+
+    const localResult = await saveFileLocally(buffer, filename, mimeType, folder);
+    return localResult.url;
+  } catch (err) {
+    console.warn('Failed to save base64 attachment, keeping original:', err);
+    return dataUri;
+  }
+}
+
 app.post('/api/upload', async (req, res) => {
   try {
     const { dataUri, filename, folder } = req.body;
@@ -2711,13 +2744,16 @@ app.post('/api/upload', async (req, res) => {
       });
     }
 
-    const matches = dataUri.match(/^data:([A-Za-z0-9\-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
+    const commaIdx = dataUri.indexOf(',');
+    if (commaIdx === -1) {
       return res.status(400).json({ error: 'Invalid data URI format' });
     }
 
-    const mimeType = matches[1];
-    const buffer = Buffer.from(matches[2], 'base64');
+    const header = dataUri.substring(0, commaIdx);
+    const base64Data = dataUri.substring(commaIdx + 1).replace(/\s/g, '');
+    const mimeMatch = header.match(/^data:([^;]+)/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const buffer = Buffer.from(base64Data, 'base64');
 
     // Attempt upload to Cloudflare R2 if configured
     try {
@@ -5114,6 +5150,10 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       return res.status(400).json({ error: 'Customer PO Number or PO Status (PO Pending / Without PO) is required' });
     }
 
+    if (customerPoAttachment && typeof customerPoAttachment === 'string' && customerPoAttachment.startsWith('data:')) {
+      customerPoAttachment = await saveBase64Attachment(customerPoAttachment, 'customer_po', 'customer_po');
+    }
+
     const [rows]: any = await db.query('SELECT * FROM quotations WHERE id = ? OR quotationNo = ? OR docNo = ? LIMIT 1', [id, id, id]);
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Quotation not found' });
@@ -7044,6 +7084,11 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     // Optional Customer PO Notice (Allow shared blanket POs across multiple sales orders)
     const rawPo = String(data.customerPoNo || '').trim();
     
+    // Auto-save base64 attachment to server disk storage if needed
+    if (data.customerPoAttachment && typeof data.customerPoAttachment === 'string' && data.customerPoAttachment.startsWith('data:')) {
+      data.customerPoAttachment = await saveBase64Attachment(data.customerPoAttachment, data.customerPoAttachmentName || 'customer_po', 'customer_po');
+    }
+
     // Parse items if provided
     let itemsList: any[] = [];
     if (data.items) {
@@ -7150,6 +7195,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       customerPoNo: data.customerPoNo || null,
       customerPoDate: data.customerPoDate || null,
       customerPoAttachment: data.customerPoAttachment ? (typeof data.customerPoAttachment === 'object' ? JSON.stringify(data.customerPoAttachment) : String(data.customerPoAttachment)) : null,
+      customerPoAttachmentName: data.customerPoAttachmentName || null,
       notes: data.notes || '',
       createdAt: now,
       updatedAt: now
@@ -7183,6 +7229,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
         { col: 'customerPoNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL' },
         { col: 'customerPoDate', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoDate VARCHAR(50) DEFAULT NULL' },
         { col: 'customerPoAttachment', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoAttachment LONGTEXT DEFAULT NULL' },
+        { col: 'customerPoAttachmentName', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerPoAttachmentName VARCHAR(255) DEFAULT NULL' },
         { col: 'discount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discount DECIMAL(15,2) DEFAULT 0.00' },
         { col: 'discountType', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discountType VARCHAR(20) DEFAULT \'percent\'' },
         { col: 'discountAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN discountAmount DECIMAL(15,2) DEFAULT 0.00' },
@@ -7425,6 +7472,9 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
     }
     if (data.customerPoAttachment && typeof data.customerPoAttachment === 'object') {
       data.customerPoAttachment = JSON.stringify(data.customerPoAttachment);
+    }
+    if (data.customerPoAttachment && typeof data.customerPoAttachment === 'string' && data.customerPoAttachment.startsWith('data:')) {
+      data.customerPoAttachment = await saveBase64Attachment(data.customerPoAttachment, data.customerPoAttachmentName || 'customer_po', 'customer_po');
     }
     const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
     data.updatedAt = nowStr;
@@ -8974,7 +9024,7 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
     const data = { ...req.body };
     delete data.id;
 
-    // Find previous POs
+    // Find previous GRN data
     const [exRows]: any = await db.query('SELECT poId, poIds, items FROM grns WHERE id = ?', [req.params.id]);
     const targetPoIds = new Set<string>();
     if (exRows.length > 0) {
@@ -8983,13 +9033,42 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
       if (ex.poIds) {
         try { JSON.parse(ex.poIds).forEach((p: string) => targetPoIds.add(p)); } catch { targetPoIds.add(ex.poIds); }
       }
+
+      // 1. Revert previous inventory quantities for this GRN
+      let oldItems: any[] = [];
+      if (typeof ex.items === 'string') {
+        try { oldItems = JSON.parse(ex.items); } catch(e) {}
+      } else if (Array.isArray(ex.items)) {
+        oldItems = ex.items;
+      }
+      for (const item of oldItems) {
+        const invId = item.inventoryId || item.id;
+        const oldQty = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
+        if (invId && oldQty > 0) {
+          try {
+            await db.query('UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ?', [oldQty, invId]);
+          } catch (e) {
+            console.error('Error reverting inventory in GRN update:', e);
+          }
+        }
+      }
+
+      // Revert old stock ledger entries and remnants
+      await db.query('DELETE FROM stock_ledger WHERE reference = ?', [req.params.id]);
+      await db.query('DELETE FROM stock_remnants WHERE sourceBarId = ?', [req.params.id]);
     }
 
-    if (data.items !== undefined && typeof data.items === 'object') {
-      if (Array.isArray(data.items)) {
-        for (const it of data.items) { if (it.poId) targetPoIds.add(it.poId); }
+    let parsedNewItems: any[] = [];
+    if (data.items !== undefined) {
+      if (typeof data.items === 'string') {
+        try { parsedNewItems = JSON.parse(data.items); } catch(e) {}
+      } else if (Array.isArray(data.items)) {
+        parsedNewItems = data.items;
       }
-      data.items = JSON.stringify(data.items);
+      for (const it of parsedNewItems) {
+        if (it.poId) targetPoIds.add(it.poId);
+      }
+      data.items = JSON.stringify(parsedNewItems);
     }
     if (data.poId) targetPoIds.add(data.poId);
     if (Array.isArray(data.poIds)) data.poIds.forEach((p: string) => targetPoIds.add(p));
@@ -9013,6 +9092,36 @@ app.put('/api/purchasing/grns/:id', async (req, res) => {
 
     await db.query('UPDATE grns SET ? WHERE id = ?', [safeGrnData, req.params.id]);
 
+    // 2. Apply new inventory additions & stock ledger entries
+    for (const item of parsedNewItems) {
+      const invId = item.inventoryId || item.id;
+      const qtyRecv = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
+      const itemUnitCost = Number(item.unitCost !== undefined ? item.unitCost : (item.unitPrice || 0));
+      const totalCost = qtyRecv * itemUnitCost;
+      if (invId && qtyRecv > 0) {
+        try {
+          await db.query('UPDATE inventory SET quantity = quantity + ? WHERE id = ?', [qtyRecv, invId]);
+
+          const itemPoRef = item.poId || data.poId || 'N/A';
+          const ledgerEntry = {
+            id: 'LGR-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000),
+            inventoryId: invId,
+            date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
+            type: 'IN',
+            qty: qtyRecv,
+            unitCost: itemUnitCost,
+            totalCost,
+            reference: req.params.id,
+            notes: `GRN Updated (PO: ${itemPoRef}, Rate: LKR ${itemUnitCost})${item.condition ? ` - Condition: ${item.condition}` : ''}`
+          };
+          await db.query('INSERT INTO stock_ledger SET ?', ledgerEntry);
+        } catch (e) {
+          console.error('Error applying inventory in GRN update:', e);
+        }
+      }
+    }
+
+    // 3. Recalculate PO receipt status
     if (targetPoIds.size > 0) {
       await syncPOReceiptStatus(Array.from(targetPoIds));
     }
@@ -9136,24 +9245,26 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
   try {
     const references = [billData.id, billData.invoiceNo].filter(Boolean);
     // 1. Revert previous GL journal entries if any for this bill
-    const [jes]: any = await db.query('SELECT id FROM journal_entries WHERE reference IN (?)', [references]);
-    if (jes.length > 0) {
-      const jeIds = jes.map((je: any) => je.id);
-      const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId IN (?)', [jeIds]);
-      for (const line of lines) {
-        const [accounts]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ?', [line.accountId]);
-        if (!accounts.length) continue;
-        const accType = accounts[0].type;
-        const isDebitNormal = accType === 'Asset' || accType === 'Expense';
-        const balanceChange = Number(line.debit) - Number(line.credit);
-        if (isDebitNormal) {
-          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
-        } else {
-          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
+    if (references.length > 0) {
+      const [jes]: any = await db.query('SELECT id FROM journal_entries WHERE reference IN (?)', [references]);
+      if (jes.length > 0) {
+        const jeIds = jes.map((je: any) => je.id);
+        const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+        for (const line of lines) {
+          const [accounts]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+          if (!accounts.length) continue;
+          const accType = accounts[0].type;
+          const isDebitNormal = accType === 'Asset' || accType === 'Expense';
+          const balanceChange = Number(line.debit) - Number(line.credit);
+          if (isDebitNormal) {
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
+          } else {
+            await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
+          }
         }
+        await db.query('DELETE FROM journal_lines WHERE entryId IN (?)', [jeIds]);
+        await db.query('DELETE FROM journal_entries WHERE id IN (?)', [jeIds]);
       }
-      await db.query('DELETE FROM journal_lines WHERE entryId IN (?)', [jeIds]);
-      await db.query('DELETE FROM journal_entries WHERE id IN (?)', [jeIds]);
     }
 
     // 2. Post new GL journal entry
@@ -9167,8 +9278,8 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
     if (billData.taxBreakdown) {
       try {
         const tb = typeof billData.taxBreakdown === 'string' ? JSON.parse(billData.taxBreakdown) : billData.taxBreakdown;
-        if (tb.tax1Rate > 0) ssclAmount = Number(tb.tax1Amount) || 0;
-        if (tb.tax2Rate > 0) vatAmount = Number(tb.tax2Amount) || 0;
+        if (Number(tb.tax1Rate) > 0 || Number(tb.tax1Amount) > 0) ssclAmount = Number(tb.tax1Amount) || 0;
+        if (Number(tb.tax2Rate) > 0 || Number(tb.tax2Amount) > 0) vatAmount = Number(tb.tax2Amount) || 0;
       } catch (e) {}
     }
     if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
@@ -9179,44 +9290,48 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
     if (!expAccId) {
       const categoryLower = (billData.billCategory || '').toLowerCase();
       if (categoryLower.includes('electricity') || categoryLower.includes('ceb')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" LIMIT 1');
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" ORDER BY (code = "5001") DESC LIMIT 1');
         if (acc.length) expAccId = acc[0].id;
       } else if (categoryLower.includes('diesel') || categoryLower.includes('fuel')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" LIMIT 1');
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" ORDER BY (code = "5000") DESC LIMIT 1');
         if (acc.length) expAccId = acc[0].id;
       } else if (categoryLower.includes('maintenance') || categoryLower.includes('repair')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" LIMIT 1');
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" ORDER BY (code = "5002") DESC LIMIT 1');
         if (acc.length) expAccId = acc[0].id;
       } else if (categoryLower.includes('subcontract') || categoryLower.includes('machin')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" LIMIT 1');
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" ORDER BY (code = "4002") DESC LIMIT 1');
         if (acc.length) expAccId = acc[0].id;
       } else {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR (name LIKE "%Raw Material%" OR name LIKE "%Cost of Goods%" OR type = "Expense") LIMIT 1');
+        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR code = "5100" OR (name LIKE "%Raw Material%" OR name LIKE "%Direct Material%" OR type = "Expense") ORDER BY (code = "4000" OR code = "5100") DESC LIMIT 1');
         if (acc.length) expAccId = acc[0].id;
       }
     }
     if (!expAccId) expAccId = 'acc_4000';
 
-    const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "1690" OR code = "1300" OR (name LIKE "%Input VAT%" AND type = "Asset") LIMIT 1');
-    const [ssclAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE (code = "5010" OR name LIKE "%SSCL Expense%" OR name LIKE "%SSCL%") AND type = "Expense" LIMIT 1');
-    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1690';
-    const ssclExpenseAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_5010';
-
+    // Accounts Payable: Strictly Liability
     const [apAcc]: any = await db.query(
-      'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
+      'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Trade Payable%") AND type = "Liability" AND isTaxAccount = 0 ORDER BY (code = "2000") DESC LIMIT 1'
     );
     const apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
 
+    // VAT Input Tax (Receivable): Asset
+    const [vatAcc]: any = await db.query(
+      'SELECT id FROM chart_of_accounts WHERE (code = "1690" OR code = "1300" OR (name LIKE "%VAT%" AND (name LIKE "%Input%" OR name LIKE "%Recoverable%" OR name LIKE "%Receivable%"))) AND type = "Asset" ORDER BY (code = "1690") DESC LIMIT 1'
+    );
+    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1690';
+
+    // SSCL Expense: Expense
+    const [ssclAcc]: any = await db.query(
+      'SELECT id FROM chart_of_accounts WHERE (code = "5010" OR name LIKE "%SSCL Expense%" OR name LIKE "%SSCL%") AND type = "Expense" ORDER BY (code = "5010") DESC LIMIT 1'
+    );
+    const ssclExpenseAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_5010';
+
+    // Supplier Info
+    const [suppRows]: any = await db.query('SELECT name, company FROM suppliers WHERE id = ?', [billData.supplierId]);
+    const supplierLabel = suppRows.length ? (suppRows[0].company || suppRows[0].name) : billData.supplierId;
+
     if (apAccId && billAmount > 0) {
       const jeId = `JE-BILL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
-      await db.query('INSERT INTO journal_entries SET ?', {
-        id: jeId,
-        date: ledgerDate,
-        reference: billData.invoiceNo || billData.id,
-        description: `Auto GL: Supplier Bill (${billData.id}) [${billData.billCategory || 'Purchase'}] - ${billData.supplierId}`,
-        totalAmount: billAmount,
-        status: 'posted'
-      });
 
       // Parse item-by-item allocations
       let parsedItems: any[] = [];
@@ -9231,6 +9346,7 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
 
       const lines: any[] = [];
       let lineCounter = 1;
+      let totalDebits = 0;
 
       if (validItemLines.length > 0) {
         let allocatedSubtotal = 0;
@@ -9238,35 +9354,56 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
           const lineTotal = Math.round((Number(it.total) || (Number(it.qty || 1) * Number(it.unitCost || 0))) * 100) / 100;
           if (lineTotal <= 0) continue;
           allocatedSubtotal += lineTotal;
+          totalDebits += lineTotal;
           const itemAccId = it.accountId || expAccId;
-          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, itemAccId, lineTotal, 0, billData.supplierId, 'Supplier']);
+          const itemDesc = it.description || it.desc || it.name || `Bill Item: ${billData.billCategory || 'Purchase'}`;
+          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, itemAccId, lineTotal, 0, itemDesc, billData.supplierId, 'Supplier']);
           await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [lineTotal, itemAccId]);
         }
 
         const unallocated = Math.round((subtotal - allocatedSubtotal) * 100) / 100;
         if (unallocated > 0) {
-          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, unallocated, 0, billData.supplierId, 'Supplier']);
+          totalDebits += unallocated;
+          lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, unallocated, 0, `Direct Charge: ${billData.notes || billData.billCategory || 'Expense'}`, billData.supplierId, 'Supplier']);
           await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [unallocated, expAccId]);
         }
       } else {
-        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, subtotal, 0, billData.supplierId, 'Supplier']);
+        totalDebits += subtotal;
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, expAccId, subtotal, 0, `Direct Charge: ${billData.notes || billData.billCategory || 'Expense'}`, billData.supplierId, 'Supplier']);
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [subtotal, expAccId]);
       }
 
+      // Input VAT Debit (Claimable Tax Asset)
       if (vatAmount > 0) {
-        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, inputVatAccId, vatAmount, 0, billData.supplierId, 'Supplier']);
+        totalDebits += vatAmount;
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, inputVatAccId, vatAmount, 0, `VAT Input Tax Recoverable (18%) - ${billData.invoiceNo || billData.id}`, billData.supplierId, 'Supplier']);
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [vatAmount, inputVatAccId]);
       }
 
+      // SSCL Expense Debit (Non-claimable Purchase Tax Expense)
       if (ssclAmount > 0) {
-        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, ssclExpenseAccId, ssclAmount, 0, billData.supplierId, 'Supplier']);
+        totalDebits += ssclAmount;
+        lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, ssclExpenseAccId, ssclAmount, 0, `SSCL Expense (Non-claimable 2.5%) - ${billData.invoiceNo || billData.id}`, billData.supplierId, 'Supplier']);
         await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [ssclAmount, ssclExpenseAccId]);
       }
 
-      lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, apAccId, 0, billAmount, billData.supplierId, 'Supplier']);
-      await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [billAmount, apAccId]);
+      // Accounts Payable Credit (Total consideration owed to Vendor)
+      const apCreditAmount = Math.round(totalDebits * 100) / 100;
+      lines.push([`JL-${Date.now().toString().slice(-6)}${lineCounter++}`, jeId, apAccId, 0, apCreditAmount, `Accounts Payable - ${supplierLabel} (${billData.invoiceNo || billData.id})`, billData.supplierId, 'Supplier']);
+      await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [apCreditAmount, apAccId]);
 
-      await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
+      // Post Journal Entry header
+      await db.query('INSERT INTO journal_entries SET ?', {
+        id: jeId,
+        date: ledgerDate,
+        reference: billData.invoiceNo || billData.id,
+        description: `Auto GL: Supplier Bill (${billData.id}) [${billData.billCategory || 'Purchase'}] - ${supplierLabel}`,
+        totalAmount: apCreditAmount,
+        status: 'posted'
+      });
+
+      // Insert Journal Lines with description
+      await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, description, partyId, partyType) VALUES ?', [lines]);
     }
   } catch (err) {
     console.error('Error in syncBillGLEntry:', err);
@@ -9286,6 +9423,10 @@ app.post('/api/purchasing/bills', async (req, res) => {
     if (rawData.contacts && typeof rawData.contacts === 'object') rawData.contacts = JSON.stringify(rawData.contacts);
     if (rawData.items && typeof rawData.items === 'object') rawData.items = JSON.stringify(rawData.items);
     if (rawData.taxBreakdown && typeof rawData.taxBreakdown === 'object') rawData.taxBreakdown = JSON.stringify(rawData.taxBreakdown);
+
+    if (rawData.billAttachment && typeof rawData.billAttachment === 'string' && rawData.billAttachment.startsWith('data:')) {
+      rawData.billAttachment = await saveBase64Attachment(rawData.billAttachment, rawData.billAttachmentName || 'vendor_bill', 'bills');
+    }
 
     // Filter incoming payload against existing columns in supplier_bills
     const [cols]: any = await db.query('SHOW COLUMNS FROM supplier_bills');
@@ -9337,6 +9478,10 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
     const rawData = { ...req.body };
     if (rawData.items && typeof rawData.items === 'object') rawData.items = JSON.stringify(rawData.items);
     if (rawData.taxBreakdown && typeof rawData.taxBreakdown === 'object') rawData.taxBreakdown = JSON.stringify(rawData.taxBreakdown);
+    
+    if (rawData.billAttachment && typeof rawData.billAttachment === 'string' && rawData.billAttachment.startsWith('data:')) {
+      rawData.billAttachment = await saveBase64Attachment(rawData.billAttachment, rawData.billAttachmentName || 'vendor_bill', 'bills');
+    }
     
     // Find previous poId
     const [prevRows]: any = await db.query('SELECT poId FROM supplier_bills WHERE id = ?', [req.params.id]);
@@ -9683,45 +9828,29 @@ app.delete('/api/followups/:id', async (req, res) => {
 // -- INVOICES --
 app.get('/api/invoices/next-number', async (req, res) => {
   try {
-    const rawDate = (req.query.date as string) || new Date().toISOString();
-    const dateObj = new Date(rawDate);
-    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
-    
-    const yy = validDate.getFullYear().toString().slice(-2);
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const mmm = months[validDate.getMonth()];
-    
-    // Entity / Branch code (1-15 alphanumeric characters, default REX)
-    let entity = ((req.query.entity as string) || 'REX').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!entity) entity = 'REX';
-    if (entity.length > 15) entity = entity.slice(0, 15);
-
-    const [rows]: any = await db.query(
-      `SELECT invoiceNo FROM invoices 
-       WHERE invoiceNo LIKE ? OR invoiceNo LIKE ? 
-       ORDER BY id DESC`,
-      [`${yy}${mmm}_${entity}_%`, `%_${entity}_%`]
-    );
-
-    let maxNum = 0;
+    const [rows]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'invoice' LIMIT 1");
+    let nextNum = 1001;
+    let prefix = 'INV-';
+    let pad = 4;
     if (rows && rows.length > 0) {
-      for (const row of rows) {
-        if (!row.invoiceNo) continue;
-        const parts = row.invoiceNo.trim().split('_');
-        const lastPart = parts[parts.length - 1];
-        if (/^\d+$/.test(lastPart)) {
-          const num = parseInt(lastPart, 10);
-          if (num > maxNum) maxNum = num;
-        }
-      }
+      nextNum = Number(rows[0].next_number) || 1001;
+      prefix = rows[0].prefix || 'INV-';
+      pad = Number(rows[0].padding) || 4;
     }
 
-    const nextSeq = (maxNum + 1).toString().padStart(5, '0');
-    const invoiceNo = `${yy}${mmm}_${entity}_${nextSeq}`;
+    // Verify against existing invoices to guarantee no collision
+    const [invRows]: any = await db.query("SELECT invoiceNo, id FROM invoices");
+    const existingSet = new Set((invRows || []).map((r: any) => r.invoiceNo || r.id));
+    let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+    while (existingSet.has(candidate)) {
+      nextNum++;
+      candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+    }
 
-    res.json({ invoiceNo, yy, mmm, entity, seq: nextSeq });
+    const invoiceNo = candidate;
+    res.json({ invoiceNo, nextNumber: nextNum, prefix, padding: pad });
   } catch (error: any) {
-    console.error(error);
+    console.error('Error fetching next invoice number:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -9788,33 +9917,36 @@ app.post('/api/invoices', async (req, res) => {
     } else if (data.leadId && !data.customerId) {
       data.customerId = data.leadId;
     }
+    const [seqRows]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'invoice' FOR UPDATE");
+    let nextNum = 1001;
+    let prefix = 'INV-';
+    let pad = 4;
+    if (seqRows && seqRows.length > 0) {
+      nextNum = Number(seqRows[0].next_number) || 1001;
+      prefix = seqRows[0].prefix || 'INV-';
+      pad = Number(seqRows[0].padding) || 4;
+    }
+
     if (data.invoiceNo) {
       data.invoiceNo = data.invoiceNo.trim().replace(/\s+/g, '');
-    } else {
-      const rawDate = data.date || new Date().toISOString();
-      const dObj = new Date(rawDate);
-      const validD = isNaN(dObj.getTime()) ? new Date() : dObj;
-      const yy = validD.getFullYear().toString().slice(-2);
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const mmm = months[validD.getMonth()];
-      const entity = 'REX';
-      const [rows]: any = await db.query(
-        `SELECT invoiceNo FROM invoices WHERE invoiceNo LIKE ? ORDER BY id DESC`,
-        [`${yy}${mmm}_${entity}_%`]
-      );
-      let maxNum = 0;
-      if (rows && rows.length > 0) {
-        for (const row of rows) {
-          if (!row.invoiceNo) continue;
-          const parts = row.invoiceNo.trim().split('_');
-          const lastPart = parts[parts.length - 1];
-          if (/^\d+$/.test(lastPart)) {
-            const num = parseInt(lastPart, 10);
-            if (num > maxNum) maxNum = num;
-          }
+      const prefixEscaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const numMatch = data.invoiceNo.match(new RegExp(`^${prefixEscaped}(\\d+)$`));
+      if (numMatch) {
+        const parsed = parseInt(numMatch[1], 10);
+        if (!isNaN(parsed) && parsed >= nextNum) {
+          await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'invoice'", [parsed + 1]);
         }
       }
-      data.invoiceNo = `${yy}${mmm}_${entity}_${(maxNum + 1).toString().padStart(5, '0')}`;
+    } else {
+      const [invRows]: any = await db.query("SELECT invoiceNo, id FROM invoices");
+      const existingSet = new Set((invRows || []).map((r: any) => r.invoiceNo || r.id));
+      let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+      while (existingSet.has(candidate)) {
+        nextNum++;
+        candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+      }
+      data.invoiceNo = candidate;
+      await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'invoice'", [nextNum + 1]);
     }
     if (!data.id) data.id = data.invoiceNo;
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
@@ -11456,6 +11588,38 @@ app.put('/api/finance/accounts/:id', async (req, res) => {
     await db.query('UPDATE chart_of_accounts SET ? WHERE id = ?', [data, req.params.id]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/finance/recalculate-balances', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    // 1. Reset all chart of accounts balances to 0.00
+    await conn.query('UPDATE chart_of_accounts SET balance = 0.00');
+    // 2. Recalculate accurately from all posted journal lines
+    await conn.query(`
+      UPDATE chart_of_accounts coa
+      JOIN (
+        SELECT accountId, 
+               COALESCE(SUM(debit), 0) as sumDebit, 
+               COALESCE(SUM(credit), 0) as sumCredit 
+        FROM journal_lines 
+        GROUP BY accountId
+      ) jl ON coa.id = jl.accountId
+      SET coa.balance = CASE 
+        WHEN coa.type IN ('Asset', 'Expense') THEN (jl.sumDebit - jl.sumCredit)
+        ELSE (jl.sumCredit - jl.sumDebit)
+      END
+    `);
+    await conn.commit();
+    res.json({ success: true, message: 'Account balances synchronized with General Ledger successfully' });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error recalculating balances:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
 });
 
 app.delete('/api/finance/accounts/:id', async (req, res) => {

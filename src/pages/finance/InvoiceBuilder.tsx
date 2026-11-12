@@ -1115,25 +1115,20 @@ export const InvoiceBuilder: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  // Fetch next invoice number whenever date changes to match IRD YYMMM format (only for new invoices if user hasn't typed a custom number)
+  // Fetch next invoice number (sequential INV-xxxx from document sequences)
   useEffect(() => {
     if (isEditing || isCustomInvoiceNo) return;
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number?date=${date}`)
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number`)
       .then(r => r.json())
       .then(d => { if (d.invoiceNo && !isCustomInvoiceNo && !isEditing) setDocNo(d.invoiceNo); })
       .catch(() => {
-        const dObj = new Date(date);
-        const validD = isNaN(dObj.getTime()) ? new Date() : dObj;
-        const yy = validD.getFullYear().toString().slice(-2);
-        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const mmm = months[validD.getMonth()];
-        setDocNo(`${yy}${mmm}_REX_${Date.now().toString().slice(-5)}`);
+        setDocNo(`INV-${Date.now().toString().slice(-4)}`);
       });
-  }, [date, isEditing, isCustomInvoiceNo]);
+  }, [isEditing, isCustomInvoiceNo]);
 
   const handleGenerateNextNumber = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number?date=${date}`);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number`);
       if (res.ok) {
         const d = await res.json();
         if (d.invoiceNo) {

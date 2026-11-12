@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2, Wallet } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2, Wallet, RefreshCw } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -16,6 +16,7 @@ import { TaxManager } from '@/components/TaxManager';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { CreditDebitNotesTab } from './CreditDebitNotesTab';
 import { InventoryValuationTab } from './InventoryValuationTab';
+import * as XLSX from 'xlsx';
 
 type Tab = 'coa' | 'journals' | 'notes' | 'taxes' | 'inventory';
 
@@ -72,6 +73,61 @@ export const AccountingHub: React.FC = () => {
     const data = await fetchAccountLedger(account.id);
     setLedgerData(data);
     setLedgerLoading(false);
+  };
+
+  const handleExportLedgerExcel = () => {
+    if (!ledgerData || !ledgerData.account) return;
+    const acct = ledgerData.account;
+    const lines = ledgerData.lines || [];
+
+    const rows: any[] = [];
+    rows.push({
+      Date: 'Account Code:',
+      Reference: acct.code,
+      Description: acct.name,
+      Party: '',
+      Debit: 'Type:',
+      Credit: acct.type,
+      Balance: `Current Balance: ${formatCurrency(Number(acct.balance || 0))}`
+    });
+    rows.push({});
+    rows.push({
+      Date: 'Date',
+      Reference: 'Reference',
+      Description: 'Description',
+      Party: 'Party',
+      Debit: 'Debit (LKR)',
+      Credit: 'Credit (LKR)',
+      Balance: 'Balance (LKR)'
+    });
+
+    lines.forEach((l: any) => {
+      rows.push({
+        Date: String(l.date || '').split('T')[0],
+        Reference: l.reference || l.entryId || '',
+        Description: l.description || l.entryDescription || '',
+        Party: l.partyName || '',
+        Debit: Number(l.debit) || 0,
+        Credit: Number(l.credit) || 0,
+        Balance: Number(l.runningBalance) || 0
+      });
+    });
+
+    rows.push({
+      Date: 'Closing Balance',
+      Reference: '',
+      Description: '',
+      Party: '',
+      Debit: '',
+      Credit: '',
+      Balance: Number(acct.balance || 0)
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, { skipHeader: true });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Account Ledger');
+    const safeName = (acct.name || 'Account').replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(workbook, `Ledger_${acct.code}_${safeName}.xlsx`);
   };
 
   const handleDownloadTemplate = () => {
@@ -206,6 +262,30 @@ export const AccountingHub: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <PageHelpButton moduleId="finance-accounting" />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={RefreshCw}
+            onClick={async () => {
+              try {
+                const { recalculateAccountBalances } = await import('@/lib/api');
+                const res = await recalculateAccountBalances();
+                if (res.success) {
+                  toast('Account balances recalculated and synced with General Ledger!', 'success');
+                  refetchCOA();
+                  refetchJournals();
+                } else {
+                  showError(res.error || 'Failed to sync balances', 'Error');
+                }
+              } catch (err: any) {
+                showError(err.message || 'Failed to sync balances', 'Error');
+              }
+            }}
+            className="border border-theme-subtle text-cyan-600 dark:text-cyan-400 font-medium"
+            title="Audit and recalculate all Chart of Accounts balances directly from General Ledger transactions"
+          >
+            Audit Balances
+          </Button>
           <Button variant="ghost" size="sm" icon={Wallet} onClick={() => navigate('/finance/cashbook')} className="border border-theme-subtle text-amber-500 font-medium">Daily Cashbook</Button>
           <Button variant="ghost" size="sm" icon={Download} onClick={() => window.print()}>Export</Button>
           <Button variant="ghost" size="sm" icon={Receipt} onClick={() => navigate('/finance/income-builder')} className="border border-theme-subtle text-emerald-500">Record Income</Button>
@@ -389,6 +469,28 @@ export const AccountingHub: React.FC = () => {
                       <p className="text-[10px] text-muted">{j.lines?.length || 0} lines</p>
                     </div>
 
+                    {/* Quick Delete Journal */}
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (await showConfirm(`Are you sure you want to delete journal entry ${j.id}? This will reverse all debits/credits across accounts.`, 'Delete Journal')) {
+                          try {
+                            const { deleteJournal } = await import('@/lib/api');
+                            await deleteJournal(j.id);
+                            toast(`Journal entry ${j.id} deleted successfully`, 'success');
+                            if (expandedJournal === j.id) setExpandedJournal(null);
+                            refetchJournals();
+                            refetchCOA();
+                          } catch (err: any) { showError(err.message, 'Error'); }
+                        }
+                      }}
+                      className="p-1.5 rounded hover:bg-rose-500/15 text-muted hover:text-rose-500 transition-colors flex-shrink-0"
+                      title="Delete Journal Entry"
+                    >
+                      <Trash2 size={16} className="text-rose-500" />
+                    </button>
+
                     {/* Expand icon */}
                     <div className="text-muted flex-shrink-0">
                       {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -506,9 +608,20 @@ export const AccountingHub: React.FC = () => {
                 <p className="text-[10px] text-muted uppercase tracking-wider">Sub-Type</p>
                 <p className="text-sm font-bold">{ledgerData.account?.subtype || '-'}</p>
               </div>
-              <div className="ml-auto text-right">
-                <p className="text-[10px] text-muted uppercase tracking-wider">Current Balance</p>
-                <p className="text-lg font-black text-primary">{formatCurrency(Number(ledgerData.account?.balance || 0))}</p>
+              <div className="ml-auto text-right flex flex-col items-end justify-between gap-1.5">
+                <div>
+                  <p className="text-[10px] text-muted uppercase tracking-wider">Current Balance</p>
+                  <p className="text-lg font-black text-primary">{formatCurrency(Number(ledgerData.account?.balance || 0))}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={FileSpreadsheet}
+                  onClick={handleExportLedgerExcel}
+                  className="text-xs h-7 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 font-bold"
+                >
+                  Export Excel (.xlsx)
+                </Button>
               </div>
             </div>
 
@@ -523,19 +636,25 @@ export const AccountingHub: React.FC = () => {
                     <th className="text-right py-2 px-3 text-muted font-bold uppercase tracking-wider">Debit</th>
                     <th className="text-right py-2 px-3 text-muted font-bold uppercase tracking-wider">Credit</th>
                     <th className="text-right py-2 px-3 text-muted font-bold uppercase tracking-wider">Balance</th>
+                    <th className="text-center py-2 px-3 text-muted font-bold uppercase tracking-wider">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ledgerData.lines?.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-muted">No transactions found for this account.</td>
+                      <td colSpan={7} className="text-center py-8 text-muted">No transactions found for this account.</td>
                     </tr>
                   )}
                   {ledgerData.lines?.map((line: any, idx: number) => (
                     <tr key={line.id || idx} className={`border-b border-theme-subtle ${idx % 2 === 0 ? '' : 'bg-surface/50'} hover:bg-surface2 transition-colors`}>
                       <td className="py-2 px-3 text-muted font-mono">{String(line.date).split('T')[0]}</td>
                       <td className="py-2 px-3 text-muted font-mono text-[10px]">{line.reference || line.entryId}</td>
-                      <td className="py-2 px-3 text-secondary max-w-[200px] truncate">{line.description || line.entryDescription}</td>
+                      <td className="py-2 px-3 text-secondary max-w-[200px] truncate" title={line.description || line.entryDescription}>
+                        {line.description || line.entryDescription || '-'}
+                        {line.partyName && (
+                          <span className="block text-[10px] text-muted truncate">Party: {line.partyName}</span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-right font-mono">
                         {Number(line.debit) > 0 ? (
                           <span className="text-blue-600 dark:text-blue-400 font-semibold">{formatCurrency(Number(line.debit))}</span>
@@ -549,6 +668,36 @@ export const AccountingHub: React.FC = () => {
                       <td className="py-2 px-3 text-right font-mono font-bold text-primary">
                         {formatCurrency(Number(line.runningBalance))}
                       </td>
+                      <td className="py-2 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const entryId = line.entryId;
+                            if (!entryId) return;
+                            const ok = await showConfirm(
+                              `Are you sure you want to delete this ledger transaction (${entryId})? This will reverse debits/credits across all affected accounts.`,
+                              'Delete Ledger Entry',
+                              { confirmLabel: 'Delete Entry', cancelLabel: 'Cancel' }
+                            );
+                            if (!ok) return;
+                            try {
+                              const { deleteJournal } = await import('@/lib/api');
+                              await deleteJournal(entryId);
+                              toast(`Ledger entry ${entryId} deleted and balances reverted successfully`, 'success');
+                              await openLedger(ledgerAccount);
+                              refetchCOA();
+                              refetchJournals();
+                            } catch (err: any) {
+                              showError(err.message || 'Failed to delete ledger entry', 'Error');
+                            }
+                          }}
+                          className="p-1.5 rounded hover:bg-rose-500/15 text-muted hover:text-rose-500 transition-colors inline-flex items-center gap-1 text-[11px]"
+                          title="Delete this transaction entry"
+                        >
+                          <Trash2 size={13} className="text-rose-500" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -559,6 +708,7 @@ export const AccountingHub: React.FC = () => {
                       <td className="py-3 px-3 text-right font-mono text-primary text-sm">
                         {formatCurrency(Number(ledgerData.account?.balance || 0))}
                       </td>
+                      <td />
                     </tr>
                   </tfoot>
                 )}
