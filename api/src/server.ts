@@ -13849,6 +13849,10 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         LEFT JOIN customers c ON i.customerId = c.id
         LEFT JOIN leads l ON (i.leadId = l.id OR (i.customerId = l.id AND c.id IS NULL))
         WHERE 1=1
+          AND (i.isProforma IS NULL OR i.isProforma = 0 OR i.isProforma = false)
+          AND (i.invoiceType != 'proforma' OR i.invoiceType IS NULL)
+          AND (i.invoiceNo NOT LIKE 'PI-%' OR i.invoiceNo IS NULL)
+          AND (i.id NOT LIKE 'PI-%')
       `;
       const params: any[] = [];
 
@@ -13871,7 +13875,7 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         params.push(status);
       }
 
-      query += ' ORDER BY COALESCE(i.date, i.createdAt) DESC, i.id DESC';
+      query += ' ORDER BY i.invoiceNo DESC, COALESCE(i.date, i.createdAt) DESC, i.id DESC';
 
       const [rows]: any = await db.query(query, params);
 
@@ -13885,7 +13889,7 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
       let totalBalanceDue = 0;
 
       const processed = rows.map((inv: any) => {
-        const sub = Number(inv.subtotal || inv.amount || 0);
+        let sub = Number(inv.subtotal || inv.amount || 0);
         const gross = Number(inv.total || inv.amount || 0);
         const paid = Number(inv.paidAmount || 0);
         const balanceDue = Math.max(0, gross - paid);
@@ -13894,61 +13898,74 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         let vat = 0;
         let parsedBreakdown: any = null;
 
-        if (inv.taxBreakdown) {
-          try {
-            parsedBreakdown = typeof inv.taxBreakdown === 'string' ? JSON.parse(inv.taxBreakdown) : inv.taxBreakdown;
-            sscl = Number(parsedBreakdown.tax1Amount || parsedBreakdown.sscl || 0);
-            vat = Number(parsedBreakdown.tax2Amount || parsedBreakdown.vat || 0);
-          } catch (e) {}
-        }
+        const isUSD = String(inv.currency || '').toUpperCase() === 'USD' || String(inv.taxProfileId || '').includes('export_zero_rated');
 
-        const storedTax = Number(inv.taxAmount || 0);
+        if (isUSD) {
+          // Zero-rated export invoices: NO VAT, NO SSCL
+          sscl = 0;
+          vat = 0;
+          sub = gross;
+        } else {
+          if (inv.taxBreakdown) {
+            try {
+              parsedBreakdown = typeof inv.taxBreakdown === 'string' ? JSON.parse(inv.taxBreakdown) : inv.taxBreakdown;
+              sscl = Number(parsedBreakdown.tax1Amount || parsedBreakdown.sscl || 0);
+              vat = Number(parsedBreakdown.tax2Amount || parsedBreakdown.vat || 0);
+            } catch (e) {}
+          }
 
-        // If SSCL is 0 but VAT exists (or total tax exists), decompose or extract SSCL
-        if (storedTax > 0 || vat > 0) {
-          const totalKnownTax = (vat > 0 && sscl === 0) ? (storedTax > vat ? storedTax : vat) : storedTax;
-          
-          if (sscl === 0) {
-            // Check if profile or standard Sri Lanka rate implies SSCL (Option 2/3/4 standard)
-            const isSsclProfile = inv.taxType === 'vat_sscl' || inv.taxType === 'both' ||
-                                  inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt') ||
-                                  inv.taxProfileId === 'tp_vat_sscl' || !inv.taxProfileId || inv.taxProfileId === 'profile';
+          const storedTax = Number(inv.taxAmount || 0);
 
-            if (isSsclProfile && sub > 0) {
-              // Sri Lanka statutory SSCL is 2.5% on liable turnover (or 2.56% on net)
-              sscl = Math.round(sub * 0.025 * 100) / 100;
-              // If VAT was stored as full tax amount:
-              if (vat === 0) {
-                vat = Math.round((totalKnownTax - sscl) * 100) / 100;
-                if (vat <= 0) {
-                  vat = totalKnownTax;
-                  sscl = 0;
-                }
+          // Sri Lanka Statutory Tax Logic:
+          // VAT (18%) is applied on [Cost/Net Supply + SSCL (2.5%)].
+          // Option 2 (Standard): Supply Value (subtotal) already includes SSCL 2.5% absorbed, and VAT 18% is added on top.
+          // Formula:
+          //   Subtotal (entered) = Cost + SSCL = Cost * 1.025
+          //   Cost = Subtotal / 1.025
+          //   SSCL (2.5%) = Subtotal - Cost
+          //   VAT (18%) = Subtotal * 0.18
+          //   Gross Total = Subtotal + VAT (or Subtotal * 1.18)
+
+          if (storedTax > 0 || vat > 0) {
+            const knownTax = (vat > 0 && sscl === 0) ? (storedTax > vat ? storedTax : vat) : storedTax;
+
+            if (sscl === 0) {
+              // Case A: VAT was already calculated as 18% on entered subtotal (VAT = sub * 0.18)
+              // This means entered subtotal is already (Cost + SSCL 2.5%).
+              // Therefore, extract SSCL from that subtotal and net out base Cost:
+              const rawCost = sub / 1.025;
+              sscl = Math.round((sub - rawCost) * 100) / 100;
+              vat = Math.round(knownTax * 100) / 100;
+              sub = Math.round(rawCost * 100) / 100; // Net cost before taxes
+            } else {
+              // Both SSCL and VAT are defined in breakdown
+              // If subtotal still included SSCL, net it out to pure cost
+              if (sub > 0 && Math.abs(gross - (sub + sscl + vat)) > 1) {
+                sub = Math.round((sub - sscl) * 100) / 100;
               }
-            } else if (vat === 0) {
-              vat = storedTax;
             }
-          }
-        } else if (storedTax === 0 && sub > 0 && gross > sub) {
-          // Difference between gross and subtotal represents tax
-          const diffTax = gross - sub;
-          sscl = Math.round(sub * 0.025 * 100) / 100;
-          vat = Math.round((diffTax - sscl) * 100) / 100;
-          if (vat <= 0) {
-            vat = diffTax;
-            sscl = 0;
-          }
-        } else if (storedTax === 0 && sub > 0 && (inv.taxType === 'vat_sscl' || inv.taxType === 'vat' || inv.taxProfileId?.includes('opt2') || inv.taxProfileId?.includes('opt1') || inv.isTaxInclusive)) {
-          // Inclusive pricing tax extraction
-          if (inv.taxType === 'vat_sscl' || inv.taxProfileId?.includes('sscl') || inv.taxProfileId?.includes('tp_opt2')) {
-            sscl = Math.round(sub * 0.025 * 100) / 100;
-            vat = Math.round((sub + sscl) * 0.18 * 100) / 100;
-          } else {
-            vat = Math.round(sub * 0.18 * 100) / 100;
+          } else if (gross > sub && sub > 0) {
+            // Gross is higher than subtotal, meaning taxes are in the difference
+            const diffTax = gross - sub;
+            // If diffTax equals ~18% of subtotal, subtotal was (Cost + SSCL)
+            const rawCost = sub / 1.025;
+            sscl = Math.round((sub - rawCost) * 100) / 100;
+            vat = Math.round(diffTax * 100) / 100;
+            sub = Math.round(rawCost * 100) / 100;
+          } else if (gross > 0 && sub === gross) {
+            // Taxes were absorbed / included in the entered price or not explicitly defined
+            // Extract Cost, SSCL (2.5%), and VAT (18%) mathematically:
+            // Gross = (Cost * 1.025) * 1.18 = Cost * 1.2095
+            const rawCost = gross / 1.2095;
+            const ssclBase = rawCost * 0.025;
+            const vatBase = (rawCost + ssclBase) * 0.18;
+            sscl = Math.round(ssclBase * 100) / 100;
+            vat = Math.round(vatBase * 100) / 100;
+            sub = Math.round(rawCost * 100) / 100;
           }
         }
 
-        const invTax = (sscl + vat) > 0 ? (sscl + vat) : storedTax;
+        const invTax = Math.round((sscl + vat) * 100) / 100;
 
         const invDateObj = inv.date ? new Date(inv.date) : (inv.createdAt ? new Date(inv.createdAt) : new Date());
         const dueDateObj = inv.dueDate ? new Date(inv.dueDate) : invDateObj;
@@ -13985,6 +14002,8 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
           orderNo: inv.orderNo || '',
           quotationNo: inv.quotationNo || '',
           dispatchNo: inv.dispatchNo || '',
+          currency: inv.currency || 'LKR',
+          exchangeRate: Number(inv.exchangeRate) || 1,
           taxType: inv.taxType || 'none',
           status: balanceDue <= 0.01 ? 'paid' : (paid > 0 ? 'partial' : (daysOverdue > 0 ? 'overdue' : (inv.status || 'unpaid'))),
           subtotal: sub,

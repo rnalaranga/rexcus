@@ -148,42 +148,84 @@ export const FinancialReports: React.FC = () => {
   const filteredRows = useMemo(() => {
     if (!reportData?.rows) return [];
     
-    // Normalize rows: ensure each taxable invoice has SSCL and VAT computed
-    const normalized = reportData.rows.map((r: any) => {
-      const sub = Number(r.subtotal || 0);
+    // Normalize rows:
+    // 1. Exclude any proforma invoices from commercial tax invoices
+    let rowsToProcess = reportData.rows.filter((r: any) => {
+      if (['invoices', 'unpaid', 'tax'].includes(activeTab)) {
+        const invNo = String(r.invoiceNo || r.id || '').toUpperCase();
+        if (invNo.startsWith('PI-') || r.isProforma || r.invoiceType === 'proforma') return false;
+      }
+      return true;
+    });
+
+    // 2. Sort by Invoice Number order (e.g. 26NOV_REX_00733, 00732, 00731...)
+    if (['invoices', 'unpaid', 'tax'].includes(activeTab)) {
+      rowsToProcess = [...rowsToProcess].sort((a: any, b: any) => {
+        const noA = String(a.invoiceNo || a.id || '');
+        const noB = String(b.invoiceNo || b.id || '');
+        return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    // 3. Ensure each taxable invoice has Net Cost, SSCL (2.5%), and VAT (18%) computed correctly
+    // Sri Lanka Statutory Logic:
+    // (Cost + SSCL 2.5%) * 18% = VAT
+    // Therefore, where SSCL was not defined separately, the entered Subtotal already includes SSCL 2.5%:
+    // Cost = Subtotal / 1.025
+    // SSCL = Subtotal - Cost
+    // VAT = Subtotal * 0.18 (or stored VAT)
+    const normalized = rowsToProcess.map((r: any) => {
+      let sub = Number(r.subtotal || 0);
       const gross = Number(r.total || r.totalAmount || 0);
       let sscl = Number(r.ssclAmount || 0);
       let vat = Number(r.vatAmount || 0);
       const storedTax = Number(r.taxAmount || 0);
+      const isUSD = String(r.currency || '').toUpperCase() === 'USD' || String(r.taxProfileId || '').includes('export_zero_rated');
 
-      // If invoice has tax (or gross > subtotal) but SSCL is 0
-      if ((storedTax > 0 || gross > sub) && sub > 0) {
-        if (sscl === 0 && vat > 0) {
-          // Total tax is stored as VAT, extract 2.5% SSCL on liable turnover
-          sscl = Math.round(sub * 0.025 * 100) / 100;
-          vat = Math.max(0, Math.round((storedTax - sscl) * 100) / 100);
-          if (vat <= 0) {
-            vat = storedTax;
-            sscl = 0;
+      if (isUSD) {
+        // Zero-rated Export in USD: NO TAX
+        sscl = 0;
+        vat = 0;
+        sub = gross;
+      } else {
+        if (storedTax > 0 || vat > 0) {
+          const knownVat = (vat > 0 && sscl === 0) ? (storedTax > vat ? storedTax : vat) : storedTax;
+
+          if (sscl === 0 && sub > 0) {
+            // Entered subtotal includes SSCL 2.5%:
+            const rawCost = sub / 1.025;
+            sscl = Math.round((sub - rawCost) * 100) / 100;
+            vat = Math.round(knownVat * 100) / 100;
+            sub = Math.round(rawCost * 100) / 100;
           }
-        } else if (sscl === 0 && vat === 0) {
-          const totalTax = storedTax > 0 ? storedTax : Math.max(0, gross - sub);
-          sscl = Math.round(sub * 0.025 * 100) / 100;
-          vat = Math.max(0, Math.round((totalTax - sscl) * 100) / 100);
-          if (vat <= 0) {
-            vat = totalTax;
-            sscl = 0;
-          }
+        } else if (gross > sub && sub > 0) {
+          // Difference represents tax
+          const diffTax = gross - sub;
+          const rawCost = sub / 1.025;
+          sscl = Math.round((sub - rawCost) * 100) / 100;
+          vat = Math.round(diffTax * 100) / 100;
+          sub = Math.round(rawCost * 100) / 100;
+        } else if (gross > 0 && sub === gross) {
+          // Tax included in total:
+          // Gross = Cost * 1.025 * 1.18 = Cost * 1.2095
+          const rawCost = gross / 1.2095;
+          const ssclBase = rawCost * 0.025;
+          const vatBase = (rawCost + ssclBase) * 0.18;
+          sscl = Math.round(ssclBase * 100) / 100;
+          vat = Math.round(vatBase * 100) / 100;
+          sub = Math.round(rawCost * 100) / 100;
         }
       }
 
-      const totalTax = (sscl + vat) > 0 ? (sscl + vat) : storedTax;
+      const totalTax = Math.round((sscl + vat) * 100) / 100;
 
       return {
         ...r,
+        subtotal: sub,
         ssclAmount: sscl,
         vatAmount: vat,
-        taxAmount: totalTax
+        taxAmount: totalTax,
+        currency: isUSD ? 'USD' : (r.currency || 'LKR')
       };
     });
 
@@ -201,7 +243,7 @@ export const FinancialReports: React.FC = () => {
         (r.partyName && r.partyName.toLowerCase().includes(q))
       );
     });
-  }, [reportData?.rows, search]);
+  }, [reportData?.rows, search, activeTab]);
 
   // Filtered account ledger transactions (Single Account mode)
   const filteredLedgerLines = useMemo(() => {
@@ -1159,24 +1201,24 @@ export const FinancialReports: React.FC = () => {
                             </td>
                             <td className="py-2 px-2 font-mono text-[11px] text-slate-600">{r.customerVat || '—'}</td>
                             <td className="py-2 px-2 font-mono text-[11px] text-slate-600">{r.poNo || '—'}</td>
-                            <td className="py-2 px-2 text-right font-mono">{formatCurrency(r.subtotal)}</td>
+                            <td className="py-2 px-2 text-right font-mono">{formatCurrency(r.subtotal, false, r.currency || 'LKR')}</td>
                             <td className="py-2 px-2 text-right font-mono text-amber-700 font-medium">
-                              {r.ssclAmount > 0 ? formatCurrency(r.ssclAmount) : '—'}
+                              {r.ssclAmount > 0 ? formatCurrency(r.ssclAmount, false, r.currency || 'LKR') : '—'}
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-emerald-700 font-medium">
-                              {r.vatAmount > 0 ? formatCurrency(r.vatAmount) : '—'}
+                              {r.vatAmount > 0 ? formatCurrency(r.vatAmount, false, r.currency || 'LKR') : '—'}
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-slate-600">
-                              {r.taxAmount > 0 ? formatCurrency(r.taxAmount) : '—'}
+                              {r.taxAmount > 0 ? formatCurrency(r.taxAmount, false, r.currency || 'LKR') : '—'}
                             </td>
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
-                              {formatCurrency(r.total)}
+                              {formatCurrency(r.total, false, r.currency || 'LKR')}
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-emerald-600">
-                              {r.paidAmount > 0 ? formatCurrency(r.paidAmount) : '—'}
+                              {r.paidAmount > 0 ? formatCurrency(r.paidAmount, false, r.currency || 'LKR') : '—'}
                             </td>
                             <td className="py-2 px-3 text-right font-mono font-black text-rose-700">
-                              {formatCurrency(r.balanceDue)}
+                              {formatCurrency(r.balanceDue, false, r.currency || 'LKR')}
                             </td>
                             <td className="py-2 px-2 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase ${

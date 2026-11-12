@@ -566,19 +566,17 @@ export const ServiceInspectionHub: React.FC = () => {
       header: 'Actions',
       render: (_, job) => (
         <div className="flex items-center gap-1 flex-wrap">
-          {/* Action 1: Dismantle & Diagnosing */}
-          {(job.status === 'intake' || job.status === 'in_inspection' || job.status === 'diagnosis_complete') && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-7 px-2 rounded-none border-theme text-secondary hover:text-primary hover:bg-surface2"
-              onClick={() => openDiagnosis(job)}
-              title="Record Dismantling & Technical Assessment"
-            >
-              <Wrench className="w-3.5 h-3.5 mr-1 text-rex-500" />
-              {job.findings ? 'Edit Findings' : 'Dismantle & Diagnose'}
-            </Button>
-          )}
+          {/* Action 1: Dismantle & Diagnosing / Edit Findings */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 px-2 rounded-none border-theme text-secondary hover:text-primary hover:bg-surface2"
+            onClick={() => openDiagnosis(job)}
+            title="Record / Edit Dismantling & Technical Assessment Findings"
+          >
+            <Wrench className="w-3.5 h-3.5 mr-1 text-rex-500" />
+            {job.findings ? 'Edit Findings' : 'Dismantle & Diagnose'}
+          </Button>
 
           {/* Action 2: Generate Quotation */}
           {job.findings && !job.quotationNo && (
@@ -1005,17 +1003,71 @@ export const ServiceInspectionHub: React.FC = () => {
 
           {/* Diagnostic Findings */}
           <div>
-            <label className="block text-xs font-bold text-secondary mb-1">
-              Dismantling Findings & Failure Root Cause *
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-secondary">
+                Dismantling Findings & Technical Assessment *
+              </label>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] px-2 py-0 border-rex-500/40 text-rex-600 dark:text-rex-400 rounded-none hover:bg-rex-500/10 font-medium"
+                  onClick={() => {
+                    const current = diagForm.findings || '';
+                    const newText = current ? (current.endsWith('\n') ? `${current}• ` : `${current}\n• `) : '• ';
+                    setDiagForm({ ...diagForm, findings: newText });
+                  }}
+                  title="Add a bullet point line"
+                >
+                  + Add Bullet (•)
+                </Button>
+              </div>
+            </div>
             <textarea
-              rows={3}
+              rows={4}
               required
-              placeholder="e.g. Drive-end bearing 6312 completely seized. Rotor shaft bearing journal worn out by 0.45mm. Stator windings show insulation degradation. Oil seals cracked."
+              placeholder="e.g.&#10;• Drive-end bearing 6312 completely seized.&#10;• Rotor shaft bearing journal worn out by 0.45mm.&#10;• Stator windings show insulation degradation.&#10;• Oil seals cracked."
               value={diagForm.findings}
               onChange={(e) => setDiagForm({ ...diagForm, findings: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const target = e.currentTarget;
+                  const pos = target.selectionStart;
+                  const val = target.value;
+                  const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+                  const currentLine = val.substring(lineStart, pos);
+                  const bulletMatch = currentLine.match(/^(\s*[•\-\*]\s*)/);
+                  if (bulletMatch) {
+                    // If current line only contains the bullet symbol and whitespace, clear the bullet on double enter
+                    if (currentLine.trim() === '•' || currentLine.trim() === '-' || currentLine.trim() === '*') {
+                      e.preventDefault();
+                      const before = val.substring(0, lineStart);
+                      const after = val.substring(pos);
+                      const newVal = before + after;
+                      setDiagForm({ ...diagForm, findings: newVal });
+                      setTimeout(() => {
+                        target.selectionStart = target.selectionEnd = lineStart;
+                      }, 0);
+                      return;
+                    }
+                    e.preventDefault();
+                    const prefix = bulletMatch[1].startsWith('•') ? '\n• ' : `\n${bulletMatch[1]}`;
+                    const before = val.substring(0, pos);
+                    const after = val.substring(pos);
+                    const newVal = before + prefix + after;
+                    setDiagForm({ ...diagForm, findings: newVal });
+                    setTimeout(() => {
+                      target.selectionStart = target.selectionEnd = pos + prefix.length;
+                    }, 0);
+                  }
+                }
+              }}
               className="w-full px-3 py-2 text-xs bg-surface border border-theme-subtle rounded-none text-primary focus:outline-none focus:border-rex-500 leading-relaxed font-mono"
             />
+            <div className="text-[10px] text-muted mt-0.5">
+              Press <kbd className="px-1 py-0.5 bg-surface2 border border-theme-subtle rounded text-[9px] font-mono">Enter</kbd> while in a bulleted line to auto-continue next bullet. Click <strong>+ Add Bullet</strong> to start a line.
+            </div>
           </div>
 
           {/* Required Replacement Parts Bill */}
@@ -1559,8 +1611,22 @@ export const ServiceInspectionHub: React.FC = () => {
             {/* Diagnostic Findings */}
             <div>
               <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Workshop Teardown & Inspection Findings:</div>
-              <div className="p-2.5 bg-slate-50 rounded-none border border-slate-200 min-h-[50px] leading-relaxed">
-                {activeJob?.findings || 'Equipment teardown and inspection in progress.'}
+              <div className="p-2.5 bg-slate-50 rounded-none border border-slate-200 min-h-[50px] text-xs text-slate-900 leading-relaxed font-sans">
+                {activeJob?.findings ? (
+                  <ul className="space-y-1">
+                    {activeJob.findings.split('\n').filter((l: string) => l.trim().length > 0).map((line: string, i: number) => {
+                      const cleanLine = line.replace(/^[\s•\-\*]+\s*/, '');
+                      return (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="text-rex-600 font-bold select-none">•</span>
+                          <span>{cleanLine}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <span className="text-slate-400 italic">Equipment teardown and inspection in progress.</span>
+                )}
               </div>
             </div>
 
