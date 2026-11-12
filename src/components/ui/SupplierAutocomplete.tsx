@@ -67,9 +67,13 @@ export const SupplierAutocomplete: React.FC<SupplierAutocompleteProps> = ({
   const updateCoords = () => {
     if (wrapRef.current) {
       const rect = wrapRef.current.getBoundingClientRect()
+      // Position fixed is viewport-relative (do not add window.scrollY/scrollX)
+      const spaceBelow = window.innerHeight - rect.bottom
+      const openUpwards = spaceBelow < 280 && rect.top > 280
+      
       setCoords({
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX,
+        top: openUpwards ? Math.max(10, rect.top - 280) : rect.bottom,
+        left: Math.max(10, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 380) - 10)),
         width: rect.width
       })
     }
@@ -209,6 +213,36 @@ export const SupplierAutocomplete: React.FC<SupplierAutocompleteProps> = ({
           </button>
         )}
       </div>
+
+      {/* Selected Vendor Detail Card */}
+      {selected && !open && (
+        <div className="mt-1.5 p-2 rounded-lg bg-surface2/60 border border-theme-subtle flex items-center justify-between gap-2 text-xs animate-fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <Building2 size={13} />
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-primary truncate text-[11px] flex items-center gap-1.5">
+                <span>{selected.company || selected.name}</span>
+                <span className="font-mono font-normal text-[10px] text-muted">({selected.id})</span>
+              </div>
+              <div className="text-[10px] text-muted flex items-center gap-2 truncate">
+                {selected.phone && <span>📞 {selected.phone}</span>}
+                {selected.email && <span className="truncate">✉️ {selected.email}</span>}
+                {selected.taxNo && <span>TIN: {selected.taxNo}</span>}
+              </div>
+            </div>
+          </div>
+          {Number(selected.outstandingBalance || 0) > 0 && (
+            <div className="text-right shrink-0">
+              <span className="text-[9px] uppercase font-bold text-muted block">Payables Due</span>
+              <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
+                {formatCurrency(selected.outstandingBalance, true)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Floating Suggestions Portal */}
       {open && typeof document !== 'undefined' && createPortal(

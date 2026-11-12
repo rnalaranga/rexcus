@@ -16,8 +16,9 @@ import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
 import { useGRNs, usePurchaseOrders, useBills } from '@/hooks/usePurchasing';
 import { useSuppliers } from '@/hooks/useData';
-import { useTaxProfiles } from '@/hooks/useFinance';
+import { useTaxProfiles, useAccounts } from '@/hooks/useFinance';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { POAutocomplete } from '@/components/purchasing/POAutocomplete';
 import { createBill, updateBill, uploadFileToStorage } from '@/lib/api';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
@@ -34,6 +35,7 @@ export const BillBuilder: React.FC = () => {
   const { data: bills, refetch: refetchBills } = useBills();
   const { data: suppliers } = useSuppliers();
   const { data: taxProfiles = [] } = useTaxProfiles();
+  const { data: accounts = [] } = useAccounts();
   const { settings } = useSettings();
 
   const [previewPo, setPreviewPo] = useState<any | null>(null);
@@ -45,6 +47,7 @@ export const BillBuilder: React.FC = () => {
   
   const [supplierId, setSupplierId] = useState('');
   const [billCategory, setBillCategory] = useState<string>('Raw Material / Inventory');
+  const [expenseAccountId, setExpenseAccountId] = useState<string>('');
   
   // Single or Multiple PO linking
   const [isMultiPoMode, setIsMultiPoMode] = useState<boolean>(false);
@@ -80,6 +83,7 @@ export const BillBuilder: React.FC = () => {
         setInvoiceNo(existing.invoiceNo || '');
         setSupplierId(existing.supplierId || '');
         setBillCategory(existing.billCategory || 'Raw Material / Inventory');
+        setExpenseAccountId(existing.expenseAccountId || '');
         
         let loadedPoIds: string[] = [];
         if (existing.poIds) {
@@ -232,6 +236,34 @@ export const BillBuilder: React.FC = () => {
       setSupplierId(selectedPO.supplierId);
     }
   }, [selectedPO, supplierId]);
+
+  // Auto-suggest GL Charge Account based on bill category
+  useEffect(() => {
+    if (idParam || expenseAccountId || accounts.length === 0) return;
+    const cat = (billCategory || '').toLowerCase();
+    let matchedAcc: any = null;
+    if (cat.includes('electricity') || cat.includes('ceb')) {
+      matchedAcc = accounts.find((a: any) => a.code === '5001' || a.name?.toLowerCase().includes('electricity'));
+    } else if (cat.includes('fuel') || cat.includes('diesel')) {
+      matchedAcc = accounts.find((a: any) => a.code === '5000' || a.name?.toLowerCase().includes('diesel') || a.name?.toLowerCase().includes('fuel'));
+    } else if (cat.includes('maintenance') || cat.includes('repair')) {
+      matchedAcc = accounts.find((a: any) => a.code === '5002' || a.name?.toLowerCase().includes('maintenance') || a.name?.toLowerCase().includes('repair'));
+    } else if (cat.includes('sub contract') || cat.includes('machining')) {
+      matchedAcc = accounts.find((a: any) => a.code === '4002' || a.name?.toLowerCase().includes('sub contract'));
+    } else if (cat.includes('water')) {
+      matchedAcc = accounts.find((a: any) => a.code === '5003' || a.name?.toLowerCase().includes('water'));
+    } else if (cat.includes('rent')) {
+      matchedAcc = accounts.find((a: any) => a.code === '5004' || a.name?.toLowerCase().includes('rent'));
+    } else if (cat.includes('raw material') || cat.includes('inventory')) {
+      matchedAcc = accounts.find((a: any) => a.code === '4000' || a.name?.toLowerCase().includes('raw material') || a.subtype?.toLowerCase().includes('cost of sales'));
+    }
+    if (!matchedAcc) {
+      matchedAcc = accounts.find((a: any) => a.code === '4000' || (a.type === 'Expense' && a.code?.startsWith('4')));
+    }
+    if (matchedAcc) {
+      setExpenseAccountId(matchedAcc.id);
+    }
+  }, [billCategory, accounts, expenseAccountId, idParam]);
 
   // Calculate default amount based on GRN or remaining balance
   useEffect(() => {
@@ -454,6 +486,7 @@ export const BillBuilder: React.FC = () => {
         billNo: docNo,
         supplierId, 
         billCategory,
+        expenseAccountId: expenseAccountId || null,
         billType: (activeLinkedPoIds.length > 0 || grnId) ? 'grn' : 'manual',
         poId: primaryPoId, 
         poIds: poIdsPayload,
@@ -553,6 +586,14 @@ export const BillBuilder: React.FC = () => {
                       if (p.cat !== 'Raw Material / Inventory' && activeLinkedPoIds.length === 0) {
                         setGrnId('');
                       }
+                      const cat = p.cat.toLowerCase();
+                      let matchedAcc: any = null;
+                      if (cat.includes('electricity')) matchedAcc = accounts.find((a: any) => a.code === '5001' || a.name?.toLowerCase().includes('electricity'));
+                      else if (cat.includes('fuel')) matchedAcc = accounts.find((a: any) => a.code === '5000' || a.name?.toLowerCase().includes('diesel') || a.name?.toLowerCase().includes('fuel'));
+                      else if (cat.includes('maintenance')) matchedAcc = accounts.find((a: any) => a.code === '5002' || a.name?.toLowerCase().includes('maintenance') || a.name?.toLowerCase().includes('repair'));
+                      else if (cat.includes('sub contract')) matchedAcc = accounts.find((a: any) => a.code === '4002' || a.name?.toLowerCase().includes('sub contract'));
+                      else if (cat.includes('raw material')) matchedAcc = accounts.find((a: any) => a.code === '4000' || a.name?.toLowerCase().includes('raw material'));
+                      if (matchedAcc) setExpenseAccountId(matchedAcc.id);
                     }}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                       isSelected 
@@ -871,6 +912,26 @@ export const BillBuilder: React.FC = () => {
                     className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs" 
                   />
                 </div>
+              </div>
+
+              {/* Charge Account (Chart of Accounts) */}
+              <div>
+                <label className="block text-[11px] font-bold text-muted uppercase mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={12}/> Charge Account (Chart of Accounts) *
+                  </span>
+                  <span className="text-[10px] text-amber-500 font-mono font-bold">Debited in General Ledger</span>
+                </label>
+                <AccountAutocomplete
+                  value={expenseAccountId}
+                  onChange={(accId) => setExpenseAccountId(accId)}
+                  accounts={accounts}
+                  placeholder="Type code or name to search account (e.g. 4000 Raw Materials, 5001 Electricity)..."
+                  className="text-xs"
+                />
+                <span className="text-[10px] text-muted block mt-0.5">
+                  The selected account will be charged (Debited). Accounts Payable (2000) will be credited automatically.
+                </span>
               </div>
 
               <div className="pt-2">

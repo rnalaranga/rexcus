@@ -1743,6 +1743,7 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN expenseAccountId VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE grns ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE quotation_templates ADD COLUMN data LONGTEXT DEFAULT NULL",

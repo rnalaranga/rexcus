@@ -68,9 +68,12 @@ export const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
   const updateCoords = () => {
     if (wrapRef.current) {
       const rect = wrapRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const openUpwards = spaceBelow < 280 && rect.top > 280
+
       setCoords({
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX,
+        top: openUpwards ? Math.max(10, rect.top - 280) : rect.bottom,
+        left: Math.max(10, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 380) - 10)),
         width: rect.width
       })
     }
