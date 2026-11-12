@@ -1163,15 +1163,20 @@ export const Invoices: React.FC = () => {
                 customerAddress={getCustomerInfo(viewInvoice).address || viewInvoice.customerAddress || viewInvoice.deliveryAddress || ''}
                 customerPhone={getCustomerInfo(viewInvoice).phone || viewInvoice.customerPhone || ''}
                 customerVat={viewInvoice.customerVat || getCustomerInfo(viewInvoice).vat || ''}
-                items={viewInvoice.items ? JSON.parse(viewInvoice.items).map((i: any) => ({ 
+                items={viewInvoice.items ? (typeof viewInvoice.items === 'string' ? JSON.parse(viewInvoice.items) : viewInvoice.items).map((i: any) => ({ 
                   reference: i.reference || '',
                   description: i.desc || i.description, 
+                  details: i.details,
+                  specifications: i.specifications,
                   qty: Number(i.qty), 
-                  unitPrice: Number(i.price || i.unitPrice) 
+                  unitPrice: Number(i.price || i.unitPrice),
+                  originalAmount: i.originalAmount,
+                  advancePercent: i.advancePercent
                 })) : []}
                 subtotal={Number(viewInvoice.subtotal)}
                 taxAmount={Number(viewInvoice.taxAmount || viewInvoice.tax || 0)}
                 total={Number(viewInvoice.total)}
+                grossAmount={Number(viewInvoice.grossAmount || 0)}
                 isTaxInclusive={Boolean(viewInvoice.isTaxInclusive)}
                 hideVatSeparately={Boolean(viewInvoice.hideVatSeparately)}
                 notes={viewInvoice.notes || ''}

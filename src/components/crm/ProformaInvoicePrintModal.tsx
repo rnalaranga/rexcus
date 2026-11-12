@@ -46,6 +46,15 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
   const invoiceSubtotal = Number(invoice.subtotal || invoice.amount || invoice.total || 0);
   const invoiceTaxAmount = Number(invoice.taxAmount || 0);
   const invoiceTotal = Number(invoice.total || (invoiceSubtotal + invoiceTaxAmount) || invoice.amount || 0);
+  const invoiceGrossAmount = Number(
+    invoice.grossAmount || 
+    order?.subtotal || 
+    (order?.totalPrice && order?.taxAmount && !order?.isTaxInclusive ? Number(order.totalPrice) - Number(order.taxAmount) : 0) ||
+    order?.totalPrice || 
+    order?.totalAmount || 
+    order?.total || 
+    0
+  );
   const invoiceDate = invoice.date || invoice.createdAt || new Date().toISOString().slice(0, 10);
   const deliveryDate = invoice.deliveryDate || order?.targetDeliveryDate || order?.deliveryDate || invoiceDate;
 
@@ -221,6 +230,7 @@ export const ProformaInvoicePrintModal: React.FC<Props> = ({
               subtotal={invoiceSubtotal}
               taxAmount={invoiceTaxAmount}
               total={invoiceTotal}
+              grossAmount={invoiceGrossAmount > 0 ? invoiceGrossAmount : undefined}
               notes={invoice.notes || ''}
               company={settings}
               modeOfPayment={invoice.modeOfPayment || 'Bank Wire / TT'}

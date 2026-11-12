@@ -333,6 +333,112 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   const paymentModeDisplay = modeOfPayment || 'Credit';
   const amountInWords = toWords(total, invoiceCurrency);
 
+  // Proforma Order Total, Advance Breakdown & Balance Calculation
+  const { proformaOrderTotal, proformaAdvancePercent, proformaBalanceDue } = React.useMemo(() => {
+    if (!isProforma) {
+      return { proformaOrderTotal: 0, proformaAdvancePercent: 0, proformaBalanceDue: 0 };
+    }
+
+    const currentTotal = Number(total || subtotal || 0);
+
+    // 1. Try explicit grossAmount prop
+    let fullTotal = Number(propGrossAmount || 0);
+
+    // 2. Try sum of original amounts from items (either item.originalAmount or regex from item.details)
+    if (!fullTotal || fullTotal <= currentTotal) {
+      let sumOriginal = 0;
+      let hasOriginal = false;
+      if (Array.isArray(items)) {
+        for (const it of items) {
+          if (it.originalAmount && Number(it.originalAmount) > 0) {
+            sumOriginal += Number(it.originalAmount);
+            hasOriginal = true;
+          } else if (it.details && typeof it.details === 'string') {
+            const m = it.details.match(/Original Item Value:\s*(?:[A-Za-z$]+\s*)?([\d,]+(?:\.\d+)?)/i);
+            if (m && m[1]) {
+              const val = parseFloat(m[1].replace(/,/g, ''));
+              if (!isNaN(val) && val > 0) {
+                sumOriginal += val;
+                hasOriginal = true;
+              }
+            }
+          }
+        }
+      }
+      if (hasOriginal && sumOriginal > 0) {
+        fullTotal = sumOriginal;
+      }
+    }
+
+    // 3. Try parsing percentage from items details, notes or additionalInfo
+    let detectedPercent: number | null = null;
+    if (Array.isArray(items)) {
+      for (const it of items) {
+        if (it.advancePercent && Number(it.advancePercent) > 0) {
+          detectedPercent = Number(it.advancePercent);
+          break;
+        }
+        if (it.details && typeof it.details === 'string') {
+          const m = it.details.match(/Advance Deposit\s*\((\d+(?:\.\d+)?)\s*%\)/i);
+          if (m && m[1]) {
+            detectedPercent = parseFloat(m[1]);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!detectedPercent && notes && typeof notes === 'string') {
+      const m = notes.match(/(\d+(?:\.\d+)?)\s*%\s*(?:advance|payment|deposit)/i) ||
+                notes.match(/(?:advance|payment|deposit)\s*(?:of\s*)?(\d+(?:\.\d+)?)\s*%/i);
+      if (m && m[1]) {
+        detectedPercent = parseFloat(m[1]);
+      }
+    }
+
+    if (!detectedPercent && additionalInfo && typeof additionalInfo === 'string') {
+      const m = additionalInfo.match(/Advance:\s*(\d+(?:\.\d+)?)\s*%/i);
+      if (m && m[1]) {
+        detectedPercent = parseFloat(m[1]);
+      }
+    }
+
+    // Also check if additionalInfo has "Order Total: <num>"
+    if ((!fullTotal || fullTotal <= currentTotal) && additionalInfo && typeof additionalInfo === 'string') {
+      const m = additionalInfo.match(/Order Total:\s*([\d,]+(?:\.\d+)?)/i);
+      if (m && m[1]) {
+        const val = parseFloat(m[1].replace(/,/g, ''));
+        if (!isNaN(val) && val > 0) {
+          fullTotal = val;
+        }
+      }
+    }
+
+    // 4. If fullTotal is not yet determined but detectedPercent exists:
+    if ((!fullTotal || fullTotal <= currentTotal) && detectedPercent && detectedPercent > 0 && detectedPercent < 100) {
+      fullTotal = Math.round((currentTotal / (detectedPercent / 100)) * 100) / 100;
+    }
+
+    // If still <= currentTotal or not found, fallback to currentTotal
+    if (!fullTotal || fullTotal < currentTotal) {
+      fullTotal = currentTotal;
+    }
+
+    // Calculate effective percentage
+    let effPercent = detectedPercent;
+    if (!effPercent) {
+      effPercent = fullTotal > 0 ? Math.round((currentTotal / fullTotal) * 100) : 100;
+    }
+
+    const balanceDue = Math.max(0, Math.round((fullTotal - currentTotal) * 100) / 100);
+
+    return {
+      proformaOrderTotal: fullTotal,
+      proformaAdvancePercent: effPercent,
+      proformaBalanceDue: balanceDue
+    };
+  }, [isProforma, propGrossAmount, items, total, subtotal, notes, additionalInfo]);
+
   // VAT Rate determination - ensures statutory 18% is displayed
   let displayVatRate: number | string | null = null;
 
@@ -805,100 +911,143 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             </tr>
           ))}
 
-          {/* GROSS ITEMS TOTAL & DISCOUNT (if discount applied) */}
-          {effectiveDiscountAmt > 0 && (
+          {/* PROFORMA INVOICE TOTALS BREAKDOWN */}
+          {isProforma ? (
             <>
-              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
-                <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', borderRight: tableBorder }}>
-                  Subtotal (Gross Item Total):
+              {/* 1. Total Order / Supply Value */}
+              <tr style={{ borderBottom: tableBorder }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                  {`Total Order / Supply Value (${invoiceCurrency}):`}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>
-                  {(isTaxInclusive ? effectiveGrossAmount : (effectiveGrossAmount * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                  {proformaOrderTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
-              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fff5f5' }}>
-                <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', color: '#b91c1c', borderRight: tableBorder }}>
-                  {`Less: Special Discount ${discountType === 'percent' && Number(discount) > 0 ? `(${discount}%)` : ''}:`}
+
+              {/* 2. Advance Requested */}
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#eff6ff' }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', color: '#1d4ed8', borderRight: tableBorder }}>
+                  {`Advance Payment Requested ${proformaAdvancePercent ? `(${proformaAdvancePercent}%)` : ''}:`}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#b91c1c' }}>
-                  {`- ${effectiveDiscountAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', color: '#1d4ed8' }}>
+                  {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+
+              {/* 3. Remaining Balance */}
+              <tr style={{ borderBottom: tableBorder, backgroundColor: '#f8fafc' }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', color: '#334155', borderRight: tableBorder }}>
+                  Remaining Balance Payable (Upon Delivery / Completion):
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
+                  {proformaBalanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
             </>
-          )}
-
-          {/* TOTAL VALUE OF SUPPLY */}
-          <tr style={{ borderBottom: tableBorder }}>
-            <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? 'Total Advance Amount Requested:' : (isVatHidden ? 'Total Value of Supply (VAT Included):' : (effectiveDiscountAmt > 0 ? 'Total Net Value of Supply:' : 'Total Value of Supply:'))}
-            </td>
-            <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {(isTaxInclusive || isProforma ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-          </tr>
-
-          {/* Option 3: SSCL Amount (Separate line) - Strictly suppressed on Proforma */}
-          {!isProforma && isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0 && (
-            <tr style={{ borderBottom: tableBorder }}>
-              <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-                {`${taxProfile?.tax1_name || 'SSCL'} Amount (Total Value of Supply @ ${t1Rate}%):`}
-              </td>
-              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-                {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </td>
-            </tr>
-          )}
-
-          {/* Option 2 & 3: VAT Amount (Separate line) - Strictly suppressed on Proforma */}
-          {!isProforma && isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0) && (
-            <tr style={{ borderBottom: tableBorder }}>
-              <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-                {vatRateLabel}
-              </td>
-              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-                {Number(taxBreakdown?.tax2Amount || taxAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </td>
-            </tr>
-          )}
-
-          {/* TOTAL CONSIDERATION */}
-          <tr style={{ borderBottom: tableBorder }}>
-            <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-              {isProforma ? `Total Amount Payable (${invoiceCurrency}):` : (isVatHidden ? 'Total Amount / Consideration (VAT Included):' : 'Total Amount/consideration including VAT:')}
-            </td>
-            <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
-              {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-          </tr>
-
-          {/* ADVANCE DEDUCTION & NET BALANCE DUE */}
-          {advanceDeducted > 0 && (
+          ) : (
             <>
-              <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
+              {/* GROSS ITEMS TOTAL & DISCOUNT (if discount applied) */}
+              {effectiveDiscountAmt > 0 && (
+                <>
+                  <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
+                    <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', borderRight: tableBorder }}>
+                      Subtotal (Gross Item Total):
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>
+                      {(isTaxInclusive ? effectiveGrossAmount : (effectiveGrossAmount * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                  <tr style={{ borderBottom: tableBorder, backgroundColor: '#fff5f5' }}>
+                    <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', color: '#b91c1c', borderRight: tableBorder }}>
+                      {`Less: Special Discount ${discountType === 'percent' && Number(discount) > 0 ? `(${discount}%)` : ''}:`}
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#b91c1c' }}>
+                      {`- ${effectiveDiscountAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    </td>
+                  </tr>
+                </>
+              )}
+
+              {/* TOTAL VALUE OF SUPPLY */}
+              <tr style={{ borderBottom: tableBorder }}>
                 <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
-                  {`Less: Advance Payment Received ${receiptNos ? `(${receiptNos})` : ''}:`}
+                  {isVatHidden ? 'Total Value of Supply (VAT Included):' : (effectiveDiscountAmt > 0 ? 'Total Net Value of Supply:' : 'Total Value of Supply:')}
                 </td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700', color: '#047857' }}>
-                  {`- ${Number(advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                </td>
-              </tr>
-              <tr style={{ borderBottom: tableBorder, backgroundColor: '#f8fafc' }}>
-                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '800', borderRight: tableBorder }}>
-                  Net Balance Payable / Due:
-                </td>
-                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', fontSize: '13px', color: '#1e293b' }}>
-                  {Math.max(0, total - advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                  {(isTaxInclusive ? subtotal : (subtotal * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
+
+              {/* Option 3: SSCL Amount (Separate line) - Strictly suppressed on Proforma */}
+              {isSsclSeparate && Number(taxBreakdown?.tax1Amount) > 0 && (
+                <tr style={{ borderBottom: tableBorder }}>
+                  <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                    {`${taxProfile?.tax1_name || 'SSCL'} Amount (Total Value of Supply @ ${t1Rate}%):`}
+                  </td>
+                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                    {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              )}
+
+              {/* Option 2 & 3: VAT Amount (Separate line) - Strictly suppressed on Proforma */}
+              {isVatSeparate && (Number(taxBreakdown?.tax2Amount) > 0 || taxAmount > 0) && (
+                <tr style={{ borderBottom: tableBorder }}>
+                  <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                    {vatRateLabel}
+                  </td>
+                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                    {Number(taxBreakdown?.tax2Amount || taxAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              )}
+
+              {/* TOTAL CONSIDERATION */}
+              <tr style={{ borderBottom: tableBorder }}>
+                <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                  {isVatHidden ? 'Total Amount / Consideration (VAT Included):' : 'Total Amount/consideration including VAT:'}
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700' }}>
+                  {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+
+              {/* ADVANCE DEDUCTION & NET BALANCE DUE */}
+              {advanceDeducted > 0 && (
+                <>
+                  <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
+                    <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '700', borderRight: tableBorder }}>
+                      {`Less: Advance Payment Received ${receiptNos ? `(${receiptNos})` : ''}:`}
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '700', color: '#047857' }}>
+                      {`- ${Number(advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    </td>
+                  </tr>
+                  <tr style={{ borderBottom: tableBorder, backgroundColor: '#f8fafc' }}>
+                    <td colSpan={4} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: '800', borderRight: tableBorder }}>
+                      Net Balance Payable / Due:
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: '800', fontSize: '13px', color: '#1e293b' }}>
+                      {Math.max(0, total - advanceDeducted).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </>
+              )}
             </>
           )}
 
           {/* TOTAL AMOUNT IN WORDS */}
           <tr style={{ borderBottom: tableBorder }}>
             <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'left' }}>
-              <span style={{ fontWeight: '700' }}>Total Amount in words:*</span>{' '}
+              <span style={{ fontWeight: '700' }}>{isProforma ? 'Total Advance Payable in words:*' : 'Total Amount in words:*'}</span>{' '}
               <span>{amountInWords}</span>
-              {advanceDeducted > 0 && (
+              {isProforma && proformaBalanceDue > 0 && (
+                <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#0f172a' }}>
+                  <span style={{ fontWeight: '700' }}>Remaining Balance Payable in words:</span>{' '}
+                  <span style={{ fontStyle: 'italic', fontWeight: '600' }}>{toWords(proformaBalanceDue, invoiceCurrency)}</span>
+                </div>
+              )}
+              {!isProforma && advanceDeducted > 0 && (
                 <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#0f172a' }}>
                   <span style={{ fontWeight: '700' }}>Net Balance Payable in words:</span>{' '}
                   <span style={{ fontStyle: 'italic', fontWeight: '600' }}>{toWords(Math.max(0, total - advanceDeducted), invoiceCurrency)}</span>

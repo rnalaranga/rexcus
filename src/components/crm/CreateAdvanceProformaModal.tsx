@@ -133,8 +133,14 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
     }
   }, [detectedCurrency, detectedExchangeRate]);
 
-  // Raw Order total
-  const rawOrderTotal = Number(order?.totalPrice || order?.totalAmount || 0);
+  // Raw Order total excluding taxes (strictly Net Supply value for Proforma)
+  const rawOrderTotal = Number(
+    order?.subtotal || 
+    (order?.totalPrice && order?.taxAmount && !order?.isTaxInclusive ? Number(order.totalPrice) - Number(order.taxAmount) : 0) ||
+    order?.totalPrice || 
+    order?.totalAmount || 
+    0
+  );
 
   // Effective Order total adjusted for selected currency
   const effectiveOrderTotal = useMemo(() => {
@@ -609,6 +615,9 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
           uom: line.uom || 'Nos',
           unitPrice: lineUnitPrice,
           amount: lineAmount,
+          originalUnitPrice: Number(line.unitPrice),
+          originalAmount: Number(line.amount),
+          advancePercent: advancePercent,
           taxRate: (taxOption === 'opt2' || taxOption === 'opt3') ? 18 : 0
         };
       });
@@ -636,6 +645,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         taxAmount: 0,
         total: calculation.totalPayable,
         amount: calculation.totalPayable,
+        grossAmount: currentLinesTotal,
         paidAmount: 0,
         status: 'unpaid',
         currency: currency,
@@ -660,7 +670,7 @@ export const CreateAdvanceProformaModal: React.FC<Props> = ({
         notes: notes,
         attention: customerAttention,
         paymentTerms: modeOfPayment ? `${modeOfPayment}` : (currency === 'USD' ? 'T/T' : 'Bank Wire / TT'),
-        additionalInfo: `Price Basis: ${priceBasis}`
+        additionalInfo: `Price Basis: ${priceBasis} | Order Total: ${currentLinesTotal} | Advance: ${advancePercent}%`
       };
 
       if (quotationNo) payload.quotationNo = quotationNo;
