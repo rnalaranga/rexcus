@@ -62,6 +62,76 @@ interface WorkOrderFullBomAdjustModalProps {
   onSuccess: (updatedData?: any) => void;
 }
 
+const getInitialParts = (initialBoms: any[], workOrder: any): BomAdjustPart[] => {
+  if (Array.isArray(initialBoms) && initialBoms.length > 0) {
+    return initialBoms.map((b, idx) => ({
+      partId: b.partId || b.id || `part-${idx + 1}`,
+      title: b.title || `BOM Part ${idx + 1}`,
+      partNo: b.partNo || '',
+      drawingNo: b.drawingNo || '',
+      description: b.description || '',
+      autoMats: Array.isArray(b.autoMats) && b.autoMats.length > 0
+        ? b.autoMats.map((m: any, mIdx: number) => ({
+            id: m.id || `auto-${idx}-${mIdx}`,
+            material: m.material || 'Raw Stock',
+            spec: m.spec || '',
+            profile: m.profile || (m.dia ? 'Round Bar' : 'Plate / Sheet'),
+            qty: Number(m.qty || 1),
+            unit: m.unit || 'pcs',
+            unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
+            notes: m.notes || ''
+          }))
+        : (Array.isArray(b.allMaterials) && (!b.manualMats || b.manualMats.length === 0)
+            ? b.allMaterials.map((m: any, mIdx: number) => ({
+                id: m.id || `auto-${idx}-${mIdx}`,
+                material: m.material || 'Raw Stock',
+                spec: m.spec || '',
+                profile: m.profile || 'Raw Stock',
+                qty: Number(m.qty || 1),
+                unit: m.unit || 'pcs',
+                unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
+                notes: m.notes || ''
+              }))
+            : []),
+      manualMats: Array.isArray(b.manualMats)
+        ? b.manualMats.map((m: any, mIdx: number) => ({
+            id: m.id || `manual-${idx}-${mIdx}`,
+            material: m.material || 'Bought-out Component',
+            spec: m.spec || 'Standard Hardware',
+            profile: m.profile || 'Bought-out',
+            qty: Number(m.qty || 1),
+            unit: m.unit || 'pcs',
+            unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
+            notes: m.notes || ''
+          }))
+        : [],
+      machiningOps: Array.isArray(b.machiningOps)
+        ? b.machiningOps.map((op: any, oIdx: number) => ({
+            id: op.id || `proc-${idx}-${oIdx}`,
+            procName: op.procName || op.operationName || `Operation ${oIdx + 1}`,
+            quoHr: Number(op.quoHr || op.plannedHours || 0),
+            estHr: Number(op.estHr !== undefined ? op.estHr : (op.quoHr || op.plannedHours || 0)),
+            setTime: Number(op.setTime || 0),
+            hrRate: Number(op.hrRate || op.hourlyLaborRate || 750),
+            machineRate: Number(op.machineRate || op.hourlyMachineRate || 1200),
+            setTimeRate: Number(op.setTimeRate || op.hrRate || 750)
+          }))
+        : []
+    }));
+  }
+
+  return [{
+    partId: 'part-1',
+    title: workOrder?.title || 'Main Manufactured Part',
+    partNo: '',
+    drawingNo: '',
+    description: 'Standard Work Order Bill of Materials',
+    autoMats: [],
+    manualMats: [],
+    machiningOps: []
+  }];
+};
+
 export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalProps> = ({
   isOpen,
   onClose,
@@ -70,9 +140,9 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
   initialPartIndex = 0,
   onSuccess
 }) => {
-  const [parts, setParts] = useState<BomAdjustPart[]>([]);
+  const [parts, setParts] = useState<BomAdjustPart[]>(() => getInitialParts(initialBoms, workOrder));
   const [activePartIdx, setActivePartIdx] = useState<number>(0);
-  const [overheadPct, setOverheadPct] = useState<number>(15);
+  const [overheadPct, setOverheadPct] = useState<number>(() => Number(workOrder?.overheadPct !== undefined && workOrder?.overheadPct !== null ? workOrder.overheadPct : 15));
   const [syncRouting, setSyncRouting] = useState<boolean>(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -91,78 +161,9 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
     setSearchPartQuery('');
     setFilterMode('all');
 
-    if (Array.isArray(initialBoms) && initialBoms.length > 0) {
-      const clonedParts: BomAdjustPart[] = initialBoms.map((b, idx) => ({
-        partId: b.partId || b.id || `part-${idx + 1}`,
-        title: b.title || `BOM Part ${idx + 1}`,
-        partNo: b.partNo || '',
-        drawingNo: b.drawingNo || '',
-        description: b.description || '',
-        autoMats: Array.isArray(b.autoMats) && b.autoMats.length > 0
-          ? b.autoMats.map((m: any, mIdx: number) => ({
-              id: m.id || `auto-${idx}-${mIdx}`,
-              material: m.material || 'Raw Stock',
-              spec: m.spec || '',
-              profile: m.profile || (m.dia ? 'Round Bar' : 'Plate / Sheet'),
-              qty: Number(m.qty || 1),
-              unit: m.unit || 'pcs',
-              unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
-              notes: m.notes || ''
-            }))
-          : (Array.isArray(b.allMaterials) && (!b.manualMats || b.manualMats.length === 0)
-              ? b.allMaterials.map((m: any, mIdx: number) => ({
-                  id: m.id || `auto-${idx}-${mIdx}`,
-                  material: m.material || 'Raw Stock',
-                  spec: m.spec || '',
-                  profile: m.profile || 'Raw Stock',
-                  qty: Number(m.qty || 1),
-                  unit: m.unit || 'pcs',
-                  unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
-                  notes: m.notes || ''
-                }))
-              : []),
-        manualMats: Array.isArray(b.manualMats)
-          ? b.manualMats.map((m: any, mIdx: number) => ({
-              id: m.id || `manual-${idx}-${mIdx}`,
-              material: m.material || 'Bought-out Component',
-              spec: m.spec || 'Standard Hardware',
-              profile: m.profile || 'Bought-out',
-              qty: Number(m.qty || 1),
-              unit: m.unit || 'pcs',
-              unitPrice: Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0)),
-              notes: m.notes || ''
-            }))
-          : [],
-        machiningOps: Array.isArray(b.machiningOps)
-          ? b.machiningOps.map((op: any, oIdx: number) => ({
-              id: op.id || `proc-${idx}-${oIdx}`,
-              procName: op.procName || op.operationName || `Operation ${oIdx + 1}`,
-              quoHr: Number(op.quoHr || op.plannedHours || 0),
-              estHr: Number(op.estHr !== undefined ? op.estHr : (op.quoHr || op.plannedHours || 0)),
-              setTime: Number(op.setTime || 0),
-              hrRate: Number(op.hrRate || op.hourlyLaborRate || 750),
-              machineRate: Number(op.machineRate || op.hourlyMachineRate || 1200),
-              setTimeRate: Number(op.setTimeRate || op.hrRate || 750)
-            }))
-          : []
-      }));
-
-      setParts(clonedParts);
-      setActivePartIdx(Math.min(initialPartIndex, clonedParts.length - 1));
-    } else {
-      // Default single fallback part
-      setParts([{
-        partId: 'part-1',
-        title: workOrder?.title || 'Main Manufactured Part',
-        partNo: '',
-        drawingNo: '',
-        description: 'Standard Work Order Bill of Materials',
-        autoMats: [],
-        manualMats: [],
-        machiningOps: []
-      }]);
-      setActivePartIdx(0);
-    }
+    const loadedParts = getInitialParts(initialBoms, workOrder);
+    setParts(loadedParts);
+    setActivePartIdx(Math.min(initialPartIndex, Math.max(0, loadedParts.length - 1)));
   }, [isOpen, initialBoms, workOrder, initialPartIndex]);
 
   // Keyboard shortcut support: Esc to close, Ctrl+S to save
@@ -180,8 +181,20 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, parts, overheadPct, syncRouting]);
 
+  // Safe fallback part in case parts is empty or activePartIdx is out of range
+  const fallbackPart: BomAdjustPart = useMemo(() => ({
+    partId: 'part-fallback',
+    title: workOrder?.title || 'Manufactured Part',
+    partNo: '',
+    drawingNo: '',
+    description: '',
+    autoMats: [],
+    manualMats: [],
+    machiningOps: []
+  }), [workOrder]);
+
   // LIVE CALCULATIONS
-  const currentPart = parts[activePartIdx] || parts[0];
+  const currentPart = parts[activePartIdx] || parts[0] || fallbackPart;
 
   // Helper calculation for single operation cost
   const calcOpCost = (op: { quoHr: number; estHr?: number; setTime?: number; hrRate: number; machineRate: number; setTimeRate?: number }) => {
@@ -245,21 +258,21 @@ export const WorkOrderFullBomAdjustModal: React.FC<WorkOrderFullBomAdjustModalPr
     const q = searchPartQuery.trim().toLowerCase();
     return parts.map((part, originalIdx) => ({ part, originalIdx })).filter(({ part }) => {
       const matchesSearch = !q || 
-        part.title.toLowerCase().includes(q) ||
-        (part.partNo || '').toLowerCase().includes(q) ||
-        (part.drawingNo || '').toLowerCase().includes(q) ||
-        (part.description || '').toLowerCase().includes(q) ||
-        part.autoMats.some(m => m.material.toLowerCase().includes(q) || (m.spec || '').toLowerCase().includes(q)) ||
-        part.manualMats.some(m => m.material.toLowerCase().includes(q)) ||
-        part.machiningOps.some(o => o.procName.toLowerCase().includes(q));
+        (part?.title || '').toLowerCase().includes(q) ||
+        (part?.partNo || '').toLowerCase().includes(q) ||
+        (part?.drawingNo || '').toLowerCase().includes(q) ||
+        (part?.description || '').toLowerCase().includes(q) ||
+        (part?.autoMats || []).some(m => (m?.material || '').toLowerCase().includes(q) || (m?.spec || '').toLowerCase().includes(q)) ||
+        (part?.manualMats || []).some(m => (m?.material || '').toLowerCase().includes(q)) ||
+        (part?.machiningOps || []).some(o => (o?.procName || '').toLowerCase().includes(q));
 
       if (!matchesSearch) return false;
 
       if (filterMode === 'mats') {
-        return (part.autoMats.length + part.manualMats.length) > 0;
+        return ((part?.autoMats?.length || 0) + (part?.manualMats?.length || 0)) > 0;
       }
       if (filterMode === 'ops') {
-        return part.machiningOps.length > 0;
+        return (part?.machiningOps?.length || 0) > 0;
       }
       return true;
     });
