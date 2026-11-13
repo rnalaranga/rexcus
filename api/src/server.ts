@@ -6187,6 +6187,52 @@ app.get('/api/gate-passes', async (req, res) => {
   }
 });
 
+// Helper to generate sequential Gate Pass numbers from document_sequences (GP-1001, GP-1002...)
+async function generateNextGatePassId(connOrDb: any = db): Promise<string> {
+  const [seqRows]: any = await connOrDb.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'gate_pass' FOR UPDATE");
+  let nextNum = 1001;
+  let prefix = 'GP-';
+  let pad = 4;
+  if (seqRows && seqRows.length > 0) {
+    nextNum = Number(seqRows[0].next_number) || 1001;
+    prefix = seqRows[0].prefix || 'GP-';
+    pad = Number(seqRows[0].padding) || 4;
+  }
+  const [existing]: any = await connOrDb.query("SELECT id FROM gate_passes");
+  const existingSet = new Set((existing || []).map((r: any) => r.id));
+  let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+  while (existingSet.has(candidate)) {
+    nextNum++;
+    candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+  }
+  await connOrDb.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'gate_pass'", [nextNum + 1]);
+  return candidate;
+}
+
+app.get('/api/gate-passes/next-number', async (req, res) => {
+  try {
+    const [rows]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'gate_pass' LIMIT 1");
+    let nextNum = 1001;
+    let prefix = 'GP-';
+    let pad = 4;
+    if (rows && rows.length > 0) {
+      nextNum = Number(rows[0].next_number) || 1001;
+      prefix = rows[0].prefix || 'GP-';
+      pad = Number(rows[0].padding) || 4;
+    }
+    const [existing]: any = await db.query("SELECT id FROM gate_passes");
+    const existingSet = new Set((existing || []).map((r: any) => r.id));
+    let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+    while (existingSet.has(candidate)) {
+      nextNum++;
+      candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+    }
+    res.json({ gatePassNo: candidate, nextNumber: nextNum, prefix, padding: pad });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/gate-passes/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -6206,12 +6252,18 @@ app.post('/api/gate-passes', async (req, res) => {
       data.items = JSON.stringify(data.items);
     }
     
-    // Auto-generate Gate Pass ID (GP-XXXX)
+    // Auto-generate Gate Pass ID using document_sequences (GP-XXXX)
     let gpId = data.id;
     if (!gpId) {
-      const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
-      const nextNum = (countResult[0]?.c || 0) + 1;
-      gpId = 'GP-' + nextNum.toString().padStart(4, '0');
+      gpId = await generateNextGatePassId(db);
+    } else {
+      const numMatch = String(gpId).match(/\d+$/);
+      if (numMatch) {
+        const parsed = parseInt(numMatch[0], 10);
+        if (!isNaN(parsed)) {
+          await db.query("UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'gate_pass'", [parsed + 1]);
+        }
+      }
     }
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -7745,10 +7797,8 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-    // 1. Auto-generate Gate Pass ID (GP-XXXX)
-    const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
-    const nextNum = (countResult[0]?.c || 0) + 1;
-    const gpId = 'GP-' + nextNum.toString().padStart(4, '0');
+    // 1. Auto-generate Gate Pass ID using document_sequences (GP-XXXX)
+    const gpId = await generateNextGatePassId(db);
 
     // Parse items to deduce dispatch stock and prepare gate pass items
     let parsedItems: any[] = [];
@@ -17444,11 +17494,9 @@ app.post('/api/production/work-orders/:id/partial-dispatch', async (req, res) =>
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-    // 1. Generate Gate Pass ID (GP-XXXX) and Delivery Note ID (DN-XXXX)
-    const [countResult]: any = await db.query('SELECT COUNT(*) as c FROM gate_passes');
-    const nextNum = (countResult[0]?.c || 0) + 1;
-    const gpId = 'GP-' + nextNum.toString().padStart(4, '0');
-    const dnId = 'DN-' + nextNum.toString().padStart(4, '0');
+    // 1. Generate Gate Pass ID using document_sequences (GP-XXXX) and Delivery Note ID (DN-XXXX)
+    const gpId = await generateNextGatePassId(db);
+    const dnId = 'DN-' + gpId.replace(/^GP-/, '');
 
     // Items list for gate pass & delivery note
     const dispatchItemsList = (items && items.length > 0)
@@ -17789,10 +17837,8 @@ app.post('/api/production/service-jobs', async (req, res) => {
     }
     const jobId = jobNo;
 
-    // Generate Inward Gate Pass
-    const [gpSeqRow]: any = await conn.query("SELECT COUNT(*) as c FROM gate_passes");
-    const nextGpNum = (gpSeqRow[0]?.c || 0) + 1;
-    const gpId = 'GP-' + nextGpNum.toString().padStart(4, '0');
+    // Generate Inward Gate Pass using document_sequences
+    const gpId = await generateNextGatePassId(conn);
 
     const gpItems = [
       {
@@ -18405,10 +18451,8 @@ app.post('/api/production/service-jobs/:id/release', async (req, res) => {
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-    // Generate Outward Gate Pass
-    const [gpSeqRow]: any = await conn.query("SELECT COUNT(*) as c FROM gate_passes");
-    const nextGpNum = (gpSeqRow[0]?.c || 0) + 1;
-    const gpId = 'GP-' + nextGpNum.toString().padStart(4, '0');
+    // Generate Outward Gate Pass using document_sequences
+    const gpId = await generateNextGatePassId(conn);
 
     const gpItems = [
       {
