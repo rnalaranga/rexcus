@@ -9339,42 +9339,76 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
     let expAccId = billData.expenseAccountId || null;
     if (!expAccId) {
       const categoryLower = (billData.billCategory || '').toLowerCase();
+      // First check user configured default accounts in settings
+      const [mapRows]: any = await db.query(
+        "SELECT id, val FROM settings WHERE id IN ('default_purchase_expense_account_id', 'default_electricity_account_id', 'default_fuel_account_id', 'default_maintenance_account_id', 'default_subcontract_expense_account_id')"
+      );
+      const accMap: Record<string, string> = {};
+      (mapRows || []).forEach((r: any) => { if (r.val) accMap[r.id] = r.val; });
+
       if (categoryLower.includes('electricity') || categoryLower.includes('ceb')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" ORDER BY (code = "5001") DESC LIMIT 1');
-        if (acc.length) expAccId = acc[0].id;
+        expAccId = accMap.default_electricity_account_id || null;
+        if (!expAccId) {
+          const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5001" OR name LIKE "%Electricity%" ORDER BY (code = "5001") DESC LIMIT 1');
+          if (acc.length) expAccId = acc[0].id;
+        }
       } else if (categoryLower.includes('diesel') || categoryLower.includes('fuel')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" ORDER BY (code = "5000") DESC LIMIT 1');
-        if (acc.length) expAccId = acc[0].id;
+        expAccId = accMap.default_fuel_account_id || null;
+        if (!expAccId) {
+          const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5000" OR name LIKE "%Diesel%" ORDER BY (code = "5000") DESC LIMIT 1');
+          if (acc.length) expAccId = acc[0].id;
+        }
       } else if (categoryLower.includes('maintenance') || categoryLower.includes('repair')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" ORDER BY (code = "5002") DESC LIMIT 1');
-        if (acc.length) expAccId = acc[0].id;
+        expAccId = accMap.default_maintenance_account_id || null;
+        if (!expAccId) {
+          const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "5002" OR name LIKE "%Maintenance%" ORDER BY (code = "5002") DESC LIMIT 1');
+          if (acc.length) expAccId = acc[0].id;
+        }
       } else if (categoryLower.includes('subcontract') || categoryLower.includes('machin')) {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" ORDER BY (code = "4002") DESC LIMIT 1');
-        if (acc.length) expAccId = acc[0].id;
+        expAccId = accMap.default_subcontract_expense_account_id || null;
+        if (!expAccId) {
+          const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4002" OR name LIKE "%Sub Contract%" ORDER BY (code = "4002") DESC LIMIT 1');
+          if (acc.length) expAccId = acc[0].id;
+        }
       } else {
-        const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR code = "5100" OR (name LIKE "%Raw Material%" OR name LIKE "%Direct Material%" OR type = "Expense") ORDER BY (code = "4000" OR code = "5100") DESC LIMIT 1');
-        if (acc.length) expAccId = acc[0].id;
+        expAccId = accMap.default_purchase_expense_account_id || null;
+        if (!expAccId) {
+          const [acc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "4000" OR code = "5100" OR (name LIKE "%Raw Material%" OR name LIKE "%Direct Material%" OR type = "Expense") ORDER BY (code = "4000" OR code = "5100") DESC LIMIT 1');
+          if (acc.length) expAccId = acc[0].id;
+        }
       }
     }
     if (!expAccId) expAccId = 'acc_4000';
 
-    // Accounts Payable: Strictly Liability
-    const [apAcc]: any = await db.query(
-      'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Trade Payable%") AND type = "Liability" AND isTaxAccount = 0 ORDER BY (code = "2000") DESC LIMIT 1'
-    );
-    const apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+    // Accounts Payable: User setting or fallback to standard Liability
+    const [apSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_ap_account_id' LIMIT 1");
+    let apAccId = apSetting.length && apSetting[0].val ? apSetting[0].val : null;
+    if (!apAccId) {
+      const [apAcc]: any = await db.query(
+        'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Trade Payable%") AND type = "Liability" AND isTaxAccount = 0 ORDER BY (code = "2000") DESC LIMIT 1'
+      );
+      apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+    }
 
-    // VAT Input Tax (Receivable): Asset
-    const [vatAcc]: any = await db.query(
-      'SELECT id FROM chart_of_accounts WHERE (code = "1690" OR code = "1300" OR (name LIKE "%VAT%" AND (name LIKE "%Input%" OR name LIKE "%Recoverable%" OR name LIKE "%Receivable%"))) AND type = "Asset" ORDER BY (code = "1690") DESC LIMIT 1'
-    );
-    const inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1690';
+    // VAT Input Tax (Receivable): User setting or fallback to Asset
+    const [vatSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_vat_input_account_id' LIMIT 1");
+    let inputVatAccId = vatSetting.length && vatSetting[0].val ? vatSetting[0].val : null;
+    if (!inputVatAccId) {
+      const [vatAcc]: any = await db.query(
+        'SELECT id FROM chart_of_accounts WHERE (code = "1690" OR code = "1300" OR (name LIKE "%VAT%" AND (name LIKE "%Input%" OR name LIKE "%Recoverable%" OR name LIKE "%Receivable%"))) AND type = "Asset" ORDER BY (code = "1690") DESC LIMIT 1'
+      );
+      inputVatAccId = vatAcc.length ? vatAcc[0].id : 'acc_1690';
+    }
 
-    // SSCL Expense: Expense
-    const [ssclAcc]: any = await db.query(
-      'SELECT id FROM chart_of_accounts WHERE (code = "5010" OR name LIKE "%SSCL Expense%" OR name LIKE "%SSCL%") AND type = "Expense" ORDER BY (code = "5010") DESC LIMIT 1'
-    );
-    const ssclExpenseAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_5010';
+    // SSCL Expense: User setting or fallback to Expense
+    const [ssclSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_sscl_expense_account_id' LIMIT 1");
+    let ssclExpenseAccId = ssclSetting.length && ssclSetting[0].val ? ssclSetting[0].val : null;
+    if (!ssclExpenseAccId) {
+      const [ssclAcc]: any = await db.query(
+        'SELECT id FROM chart_of_accounts WHERE (code = "5010" OR name LIKE "%SSCL Expense%" OR name LIKE "%SSCL%") AND type = "Expense" ORDER BY (code = "5010") DESC LIMIT 1'
+      );
+      ssclExpenseAccId = ssclAcc.length ? ssclAcc[0].id : 'acc_5010';
+    }
 
     // Supplier Info
     const [suppRows]: any = await db.query('SELECT name, company FROM suppliers WHERE id = ?', [billData.supplierId]);
@@ -10069,12 +10103,37 @@ app.post('/api/invoices', async (req, res) => {
     
     // Auto GL: Accrual Basis - Record Receivable & Sales
     try {
-      const [salesAcc] = await db.query(
-        'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Sales%" OR name LIKE "%Revenue%") AND type = "Revenue" LIMIT 1'
-      ) as any;
-      let [arAcc] = await db.query(
-        'SELECT id FROM chart_of_accounts WHERE (id = "ACC-002" OR code = "1200" OR name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" ORDER BY CASE WHEN id = "ACC-002" THEN 1 WHEN code = "1200" THEN 2 ELSE 3 END LIMIT 1'
-      ) as any;
+      const [invMapRows]: any = await db.query(
+        "SELECT id, val FROM settings WHERE id IN ('default_sales_account_id', 'default_ar_account_id', 'default_vat_output_account_id', 'default_sscl_payable_account_id', 'default_customer_advance_account_id', 'default_opening_equity_account_id')"
+      );
+      const invAccMap: Record<string, string> = {};
+      (invMapRows || []).forEach((r: any) => { if (r.val) invAccMap[r.id] = r.val; });
+
+      let salesAccId = invAccMap.default_sales_account_id || null;
+      let salesAcc: any[] = [];
+      if (salesAccId) {
+        const [rows]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ? LIMIT 1', [salesAccId]);
+        if (rows.length) salesAcc = rows;
+      }
+      if (salesAcc.length === 0) {
+        salesAcc = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Sales%" OR name LIKE "%Revenue%") AND type = "Revenue" LIMIT 1'
+        ) as any;
+        if (Array.isArray(salesAcc) && Array.isArray(salesAcc[0])) salesAcc = salesAcc[0];
+      }
+
+      let arAccId = invAccMap.default_ar_account_id || null;
+      let arAcc: any[] = [];
+      if (arAccId) {
+        const [rows]: any = await db.query('SELECT id FROM chart_of_accounts WHERE id = ? LIMIT 1', [arAccId]);
+        if (rows.length) arAcc = rows;
+      }
+      if (arAcc.length === 0) {
+        const [queried]: any = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (id = "ACC-002" OR code = "1200" OR name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" ORDER BY CASE WHEN id = "ACC-002" THEN 1 WHEN code = "1200" THEN 2 ELSE 3 END LIMIT 1'
+        );
+        arAcc = queried || [];
+      }
 
       if (arAcc.length === 0) {
         const arId = 'acc_1500';
@@ -10093,10 +10152,13 @@ app.post('/api/invoices', async (req, res) => {
         const jeId = 'JE-OPN-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100);
         const invTotal = Number(data.total) || Number(data.amount) || 0;
 
-        let [equityAcc]: any = await db.query(
-          'SELECT id FROM chart_of_accounts WHERE (id = "acc_3900" OR code = "3900" OR type = "Equity") LIMIT 1'
-        );
-        const equityId = equityAcc.length > 0 ? equityAcc[0].id : 'acc_3900';
+        let equityId = invAccMap.default_opening_equity_account_id || null;
+        if (!equityId) {
+          let [equityAcc]: any = await db.query(
+            'SELECT id FROM chart_of_accounts WHERE (id = "acc_3900" OR code = "3900" OR type = "Equity") LIMIT 1'
+          );
+          equityId = equityAcc.length > 0 ? equityAcc[0].id : 'acc_3900';
+        }
 
         await db.query('INSERT INTO journal_entries SET ?', {
           id: jeId,
@@ -10232,27 +10294,32 @@ app.post('/api/invoices', async (req, res) => {
         ];
         
         let getOrCreateTaxAcc = async () => {
+          if (invAccMap.default_vat_output_account_id) return invAccMap.default_vat_output_account_id;
           const [defTax] = await db.query('SELECT id FROM chart_of_accounts WHERE id IN ("acc_2200", "acc_2210") OR code = "2200" OR name LIKE "%Tax Payable%" LIMIT 1') as any;
           if (defTax[0]) return defTax[0].id;
           return 'acc_2200';
         };
 
-        // Post Output SSCL Payable (Liability Account 2220)
+        // Post Output SSCL Payable (Liability Account 2220 or setting)
         if (tax1Amt > 0) {
-          let tax1AccId = 'acc_2220';
-          const [exists1]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2220" OR name LIKE "%SSCL Payable%" LIMIT 1');
-          if (exists1.length > 0) tax1AccId = exists1[0].id;
-          else tax1AccId = await getOrCreateTaxAcc();
+          let tax1AccId = invAccMap.default_sscl_payable_account_id || null;
+          if (!tax1AccId) {
+            const [exists1]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2220" OR name LIKE "%SSCL Payable%" LIMIT 1');
+            if (exists1.length > 0) tax1AccId = exists1[0].id;
+            else tax1AccId = await getOrCreateTaxAcc();
+          }
           lines.push(['JL-' + Date.now().toString().slice(-5) + '3', jeId, tax1AccId, 0, tax1Amt, null, null]);
           await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax1Amt, tax1AccId]);
         }
 
-        // Post Output VAT Payable (Liability Account 2210)
+        // Post Output VAT Payable (Liability Account 2210 or setting)
         if (tax2Amt > 0) {
-          let tax2AccId = 'acc_2210';
-          const [exists2]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2210" OR name LIKE "%Output VAT%" OR name LIKE "%VAT Payable%" LIMIT 1');
-          if (exists2.length > 0) tax2AccId = exists2[0].id;
-          else tax2AccId = await getOrCreateTaxAcc();
+          let tax2AccId = invAccMap.default_vat_output_account_id || null;
+          if (!tax2AccId) {
+            const [exists2]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2210" OR name LIKE "%Output VAT%" OR name LIKE "%VAT Payable%" LIMIT 1');
+            if (exists2.length > 0) tax2AccId = exists2[0].id;
+            else tax2AccId = await getOrCreateTaxAcc();
+          }
           lines.push(['JL-' + Date.now().toString().slice(-5) + '4', jeId, tax2AccId, 0, tax2Amt, null, null]);
           await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [tax2Amt, tax2AccId]);
         }
@@ -10269,12 +10336,16 @@ app.post('/api/invoices', async (req, res) => {
         const advDeducted = Number(data.advanceDeducted) || 0;
         let netReceivable = invTotal;
         if (advDeducted > 0) {
-          let [advAcc]: any = await db.query(
-            'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Customer Advance%" OR code = "2150") AND type = "Liability" LIMIT 1'
-          );
-          if (advAcc && advAcc.length > 0) {
-            lines.push(['JL-' + Date.now().toString().slice(-5) + '6', jeId, advAcc[0].id, advDeducted, 0, data.customerId, 'Customer']);
-            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [advDeducted, advAcc[0].id]);
+          let advAccId = invAccMap.default_customer_advance_account_id || null;
+          if (!advAccId) {
+            let [advAcc]: any = await db.query(
+              'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Customer Advance%" OR code = "2150") AND type = "Liability" LIMIT 1'
+            );
+            if (advAcc && advAcc.length > 0) advAccId = advAcc[0].id;
+          }
+          if (advAccId) {
+            lines.push(['JL-' + Date.now().toString().slice(-5) + '6', jeId, advAccId, advDeducted, 0, data.customerId, 'Customer']);
+            await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [advDeducted, advAccId]);
             netReceivable = Math.max(0, invTotal - advDeducted);
             lines[0][3] = netReceivable;
           }
@@ -10919,26 +10990,42 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
     }
     if (!finalDepositAccountId) {
       const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
-      const searchSubtype = isBank ? 'Bank' : 'Cash';
-      const [found]: any = await conn.query(
-        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
-        [searchSubtype, `%${searchSubtype}%`]
-      );
-      if (found.length > 0) {
-        finalDepositAccountId = found[0].id;
-        finalDepositAccountName = found[0].name;
-      } else {
-        finalDepositAccountId = isBank ? 'acc_1000' : 'acc_1100';
-        finalDepositAccountName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+      const settingKey = isBank ? 'default_bank_account_id' : 'default_cash_account_id';
+      const [defAccSetting]: any = await conn.query('SELECT val FROM settings WHERE id = ? LIMIT 1', [settingKey]);
+      if (defAccSetting.length > 0 && defAccSetting[0].val) {
+        const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [defAccSetting[0].val]);
+        if (accRows.length > 0) {
+          finalDepositAccountId = accRows[0].id;
+          finalDepositAccountName = accRows[0].name;
+        }
+      }
+      if (!finalDepositAccountId) {
+        const searchSubtype = isBank ? 'Bank' : 'Cash';
+        const [found]: any = await conn.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
+          [searchSubtype, `%${searchSubtype}%`]
+        );
+        if (found.length > 0) {
+          finalDepositAccountId = found[0].id;
+          finalDepositAccountName = found[0].name;
+        } else {
+          finalDepositAccountId = isBank ? 'acc_1000' : 'acc_1100';
+          finalDepositAccountName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+        }
       }
     }
 
     let arAccountId = 'acc_1500';
-    const [arRows]: any = await conn.query(
-      'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR subtype = "Current Asset") AND type = "Asset" ORDER BY CASE WHEN name LIKE "%Trade%" THEN 1 ELSE 2 END LIMIT 1'
-    );
-    if (arRows.length > 0) {
-      arAccountId = arRows[0].id;
+    const [arSetting]: any = await conn.query("SELECT val FROM settings WHERE id = 'default_ar_account_id' LIMIT 1");
+    if (arSetting.length > 0 && arSetting[0].val) {
+      arAccountId = arSetting[0].val;
+    } else {
+      const [arRows]: any = await conn.query(
+        'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR subtype = "Current Asset") AND type = "Asset" ORDER BY CASE WHEN name LIKE "%Trade%" THEN 1 ELSE 2 END LIMIT 1'
+      );
+      if (arRows.length > 0) {
+        arAccountId = arRows[0].id;
+      }
     }
 
     const settledInvoiceNumbers: string[] = [];
@@ -11164,17 +11251,28 @@ app.post('/api/finance/payables/settle', async (req, res) => {
     }
     if (!finalCreditAccId) {
       const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
-      const searchSubtype = isBank ? 'Bank' : 'Cash';
-      const [found]: any = await conn.query(
-        'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
-        [searchSubtype, `%${searchSubtype}%`]
-      );
-      if (found.length > 0) {
-        finalCreditAccId = found[0].id;
-        finalCreditAccName = found[0].name;
-      } else {
-        finalCreditAccId = isBank ? 'acc_1000' : 'acc_1100';
-        finalCreditAccName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+      const settingKey = isBank ? 'default_bank_account_id' : 'default_cash_account_id';
+      const [defAccSetting]: any = await conn.query('SELECT val FROM settings WHERE id = ? LIMIT 1', [settingKey]);
+      if (defAccSetting.length > 0 && defAccSetting[0].val) {
+        const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [defAccSetting[0].val]);
+        if (accRows.length > 0) {
+          finalCreditAccId = accRows[0].id;
+          finalCreditAccName = accRows[0].name;
+        }
+      }
+      if (!finalCreditAccId) {
+        const searchSubtype = isBank ? 'Bank' : 'Cash';
+        const [found]: any = await conn.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
+          [searchSubtype, `%${searchSubtype}%`]
+        );
+        if (found.length > 0) {
+          finalCreditAccId = found[0].id;
+          finalCreditAccName = found[0].name;
+        } else {
+          finalCreditAccId = isBank ? 'acc_1000' : 'acc_1100';
+          finalCreditAccName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+        }
       }
     }
 
@@ -11189,14 +11287,24 @@ app.post('/api/finance/payables/settle', async (req, res) => {
       }
     }
     if (!finalDebitAccId) {
-      const [apRows]: any = await conn.query(
-        'SELECT id, name FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
-      );
-      if (apRows.length > 0) {
-        finalDebitAccId = apRows[0].id;
-        finalDebitAccName = apRows[0].name;
-      } else {
-        finalDebitAccId = 'acc_2000';
+      const [apSetting]: any = await conn.query("SELECT val FROM settings WHERE id = 'default_ap_account_id' LIMIT 1");
+      if (apSetting.length > 0 && apSetting[0].val) {
+        const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [apSetting[0].val]);
+        if (accRows.length > 0) {
+          finalDebitAccId = accRows[0].id;
+          finalDebitAccName = accRows[0].name;
+        }
+      }
+      if (!finalDebitAccId) {
+        const [apRows]: any = await conn.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Payable%") AND type = "Liability" AND isTaxAccount = 0 LIMIT 1'
+        );
+        if (apRows.length > 0) {
+          finalDebitAccId = apRows[0].id;
+          finalDebitAccName = apRows[0].name;
+        } else {
+          finalDebitAccId = 'acc_2000';
+        }
       }
     }
 
