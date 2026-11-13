@@ -7946,7 +7946,7 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       existingDispatches = [];
     }
 
-    const dnId = 'DN-' + nextNum.toString().padStart(4, '0');
+    const dnId = 'DN-' + gpId.replace(/^GP-/, '');
     const newDispatchRecord = {
       id: dnId,
       dispatchNo: dnId,
