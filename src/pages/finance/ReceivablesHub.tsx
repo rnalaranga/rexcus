@@ -1874,12 +1874,24 @@ export const ReceivablesHub: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
-                    Payment Method
+                    Payment Method / Settlement Mode
                   </label>
                   <select
                     value={paymentForm.method}
-                    onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })}
-                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                    onChange={e => {
+                      const method = e.target.value;
+                      const isOffset = method === 'Set-off (Prior Advance / Opening)';
+                      let targetAccId = paymentForm.accountId;
+                      if (isOffset && settings?.default_customer_advance_account_id) {
+                        targetAccId = settings.default_customer_advance_account_id;
+                      }
+                      setPaymentForm({ 
+                        ...paymentForm, 
+                        method, 
+                        accountId: isOffset ? targetAccId : paymentForm.accountId 
+                      });
+                    }}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2.5 text-sm text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer font-medium"
                   >
                     {isUSD ? (
                       <>
@@ -1887,6 +1899,7 @@ export const ReceivablesHub: React.FC = () => {
                         <option value="Bank Transfer">Bank Transfer</option>
                         <option value="Credit Card">Credit Card</option>
                         <option value="Cash">Cash (Foreign Currency)</option>
+                        <option value="Set-off (Prior Advance / Opening)">Set-off (Prior Advance / Pre-system Payment)</option>
                       </>
                     ) : (
                       <>
@@ -1894,6 +1907,7 @@ export const ReceivablesHub: React.FC = () => {
                         <option value="Cash">Cash in Hand</option>
                         <option value="Cheque">Cheque</option>
                         <option value="Credit Card">Credit / Debit Card</option>
+                        <option value="Set-off (Prior Advance / Opening)">Set-off (Prior Advance / Pre-system Payment)</option>
                         <option value="Advance">Advance Settlement</option>
                       </>
                     )}
@@ -1902,16 +1916,26 @@ export const ReceivablesHub: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
-                    Deposit Account ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash'})
+                    {paymentForm.method === 'Set-off (Prior Advance / Opening)'
+                      ? 'Offset GL Account (Customer Advance / Clearing Account) *'
+                      : `Deposit Account (${isUSD ? 'Foreign USD Bank' : 'Bank / Cash'})`}
                   </label>
                   <AccountAutocomplete
                     value={paymentForm.accountId}
                     onChange={(accId) => setPaymentForm({ ...paymentForm, accountId: accId })}
-                    accounts={eligibleAccounts}
-                    placeholder="Search deposit account (Bank / Cash)..."
-                    typeFilter="Asset"
+                    placeholder={
+                      paymentForm.method === 'Set-off (Prior Advance / Opening)'
+                        ? 'Search & Select Offset GL Account (e.g. 2150 Customer Advances)...'
+                        : 'Search deposit account (Bank / Cash)...'
+                    }
+                    typeFilter={paymentForm.method === 'Set-off (Prior Advance / Opening)' ? undefined : 'Asset'}
                     className="text-xs"
                   />
+                  {paymentForm.method === 'Set-off (Prior Advance / Opening)' && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                      ★ Set-off Mode: Clears the invoice balance and links the offset directly to the selected GL Account.
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -1605,11 +1605,23 @@ export const Invoices: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Payment Method</label>
+                <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">Payment Method / Settlement Mode</label>
                 <select 
                   value={paymentData.method}
-                  onChange={e => setPaymentData({ ...paymentData, method: e.target.value })}
-                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer"
+                  onChange={e => {
+                    const method = e.target.value;
+                    const isOffset = method === 'Set-off (Prior Advance / Opening)';
+                    let targetAccId = paymentData.accountId;
+                    if (isOffset && settings?.default_customer_advance_account_id) {
+                      targetAccId = settings.default_customer_advance_account_id;
+                    }
+                    setPaymentData({ 
+                      ...paymentData, 
+                      method, 
+                      accountId: isOffset ? targetAccId : paymentData.accountId 
+                    });
+                  }}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-primary focus:border-rex-500 focus:ring-1 focus:ring-rex-500 outline-none transition-all cursor-pointer font-medium"
                 >
                   {isUSD ? (
                     <>
@@ -1617,13 +1629,15 @@ export const Invoices: React.FC = () => {
                       <option value="Bank Transfer">Bank Transfer</option>
                       <option value="Card">Card</option>
                       <option value="Cash">Cash (Foreign Currency)</option>
+                      <option value="Set-off (Prior Advance / Opening)">Set-off (Prior Advance / Pre-system Payment)</option>
                     </>
                   ) : (
                     <>
-                      <option>Cash</option>
-                      <option>Bank Transfer</option>
-                      <option>Cheque</option>
-                      <option>Card</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="Card">Card</option>
+                      <option value="Set-off (Prior Advance / Opening)">Set-off (Prior Advance / Pre-system Payment)</option>
                     </>
                   )}
                 </select>
@@ -1631,15 +1645,26 @@ export const Invoices: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-secondary mb-1 uppercase tracking-wider">
-                  Deposit To ({isUSD ? 'Foreign USD Bank' : 'Bank / Cash Account'})
+                  {paymentData.method === 'Set-off (Prior Advance / Opening)'
+                    ? 'Offset GL Account (Customer Advance / Clearing Account) *'
+                    : `Deposit To (${isUSD ? 'Foreign USD Bank' : 'Bank / Cash Account'})`}
                 </label>
                 <AccountAutocomplete
                   value={paymentData.accountId}
                   onChange={(accId) => setPaymentData({ ...paymentData, accountId: accId })}
-                  placeholder={isUSD ? 'Search USD Bank Account (acc_1010)...' : 'Search Deposit Account (Bank / Cash)...'}
-                  typeFilter="Asset"
+                  placeholder={
+                    paymentData.method === 'Set-off (Prior Advance / Opening)'
+                      ? 'Search & Select Offset GL Account (e.g. 2150 Customer Advances / Clearing)...'
+                      : (isUSD ? 'Search USD Bank Account (acc_1010)...' : 'Search Deposit Account (Bank / Cash)...')
+                  }
+                  typeFilter={paymentData.method === 'Set-off (Prior Advance / Opening)' ? undefined : 'Asset'}
                   className="text-xs"
                 />
+                {paymentData.method === 'Set-off (Prior Advance / Opening)' && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                    ★ Set-off Mode: Clears the invoice balance and links the offset directly to the selected GL Account (e.g. Customer Advance Liability or Opening Balance).
+                  </p>
+                )}
               </div>
 
               <div>

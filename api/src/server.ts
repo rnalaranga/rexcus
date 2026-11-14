@@ -10785,6 +10785,28 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         }
       }
       if (!depositAccountId) {
+        const isOffset = (payment.method || '').toLowerCase().includes('setoff') || (payment.method || '').toLowerCase().includes('set off') || (payment.method || '').toLowerCase().includes('advance offset') || (payment.method || '').toLowerCase().includes('prior advance');
+        if (isOffset) {
+          const [advSetting]: any = await db.query('SELECT val FROM settings WHERE id = "default_customer_advance_account_id" LIMIT 1');
+          if (advSetting && advSetting.length > 0 && advSetting[0].val) {
+            const [foundAdv]: any = await db.query('SELECT id, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [advSetting[0].val]);
+            if (foundAdv && foundAdv.length > 0) {
+              depositAccountId = foundAdv[0].id;
+              depositAccountName = foundAdv[0].name;
+            }
+          }
+          if (!depositAccountId) {
+            const [foundAdv]: any = await db.query(
+              'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Unearned%" OR code = "2150") AND type = "Liability" LIMIT 1'
+            );
+            if (foundAdv && foundAdv.length > 0) {
+              depositAccountId = foundAdv[0].id;
+              depositAccountName = foundAdv[0].name;
+            }
+          }
+        }
+      }
+      if (!depositAccountId) {
         const isBank = (payment.method || '').toLowerCase().includes('bank') || (payment.method || '').toLowerCase().includes('cheque') || (payment.method || '').toLowerCase().includes('card') || (payment.method || '').toLowerCase().includes('wire');
         const searchSubtype = isBank ? 'Bank' : 'Cash';
         const [found]: any = await db.query(
@@ -10891,27 +10913,40 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         }
       }
 
-      // Record Payment: Debit Bank/Cash Account, Credit Accounts Receivable
+      // Record Payment: Debit Bank/Cash Account or Offset Account (Customer Advances/Liability), Credit Accounts Receivable
       if (depositAccountId && arAcc && arAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
-        
+        const isOffset = (payment.method || '').toLowerCase().includes('setoff') || (payment.method || '').toLowerCase().includes('set off') || (payment.method || '').toLowerCase().includes('advance offset') || (payment.method || '').toLowerCase().includes('prior advance');
+        const jeDesc = isOffset
+          ? `Auto GL: Customer Prior Advance Set-off against Invoice (${invoice.invoiceNo || invoice.id}) -> Offset Account: ${depositAccountName || 'Customer Advances'}`
+          : `Auto GL: Invoice Payment Received (${invoice.invoiceNo || invoice.id}) -> ${depositAccountName || 'Bank/Cash'}`;
+
         await db.query('INSERT INTO journal_entries SET ?', {
           id: jeId,
           date: pDate,
           reference: newPayment.id,
-          description: `Auto GL: Invoice Payment Received (${invoice.invoiceNo || invoice.id}) -> ${depositAccountName || 'Bank/Cash'}`,
+          description: jeDesc,
           totalAmount: paymentAmount
         });
         
         const customerPartyId = invoice.customerId || invoice.leadId || null;
         const lines = [
-          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, depositAccountId, paymentAmount, 0, null, null],
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, depositAccountId, paymentAmount, 0, customerPartyId, 'Customer'],
           ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, paymentAmount, customerPartyId, 'Customer']
         ];
         
         await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [lines]);
         
-        await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [paymentAmount, depositAccountId]);
+        // For Debit line:
+        // If depositAccountId is a Liability account (e.g. Customer Advances 2150), Debit decreases the liability (balance - paymentAmount).
+        // If it's an Asset account (e.g. Bank / Cash), Debit increases asset (balance + paymentAmount).
+        const [accTypeRow]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [depositAccountId]);
+        const accType = accTypeRow && accTypeRow.length > 0 ? accTypeRow[0].type : 'Asset';
+        if (accType === 'Liability' || accType === 'Equity' || accType === 'Revenue') {
+          await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [paymentAmount, depositAccountId]);
+        } else {
+          await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [paymentAmount, depositAccountId]);
+        }
         await db.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [paymentAmount, arAcc[0].id]);
       }
     } catch (e) {
@@ -11156,18 +11191,24 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
       createdAt: nowIso
     });
 
-    // Debit Line: Cash / Bank Account
+    // Debit Line: Cash / Bank Account or Offset Account (Customer Advances)
     await conn.query('INSERT INTO journal_lines SET ?', {
       id: `JL-${journalId}-1`,
       entryId: journalId,
       accountId: finalDepositAccountId,
       debit: numTotal,
       credit: 0,
-      description: `Payment received for Invoices: ${settledInvoicesText}`,
+      description: `Payment / Offset received for Invoices: ${settledInvoicesText}`,
       partyType: 'Customer',
       partyId: customerId || null
     });
-    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numTotal, finalDepositAccountId]);
+    const [accTypeRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalDepositAccountId]);
+    const accType = accTypeRow && accTypeRow.length > 0 ? accTypeRow[0].type : 'Asset';
+    if (accType === 'Liability' || accType === 'Equity' || accType === 'Revenue') {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalDepositAccountId]);
+    } else {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numTotal, finalDepositAccountId]);
+    }
 
     // Credit Line: Accounts Receivable
     await conn.query('INSERT INTO journal_lines SET ?', {

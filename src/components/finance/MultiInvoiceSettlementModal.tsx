@@ -364,7 +364,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             {/* Payment Method */}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">
-                Payment Method *
+                Settlement / Payment Mode *
               </label>
               <select
                 required
@@ -376,20 +376,20 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
                 <option value="Cheque">Cheque (Company / Cash)</option>
                 <option value="Cash">Cash in Hand</option>
                 <option value="Online / Card">Credit Card / Online</option>
-                <option value="Advance Offset">Customer Advance Offset</option>
+                <option value="Advance Offset">Customer Advance Offset (Prior Advance Set-off)</option>
               </select>
             </div>
 
-            {/* Deposit Account */}
+            {/* Deposit / Offset Account */}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">
-                Deposit Into (Account) *
+                {paymentMethod === 'Advance Offset' ? 'Offset GL Account (Advance Liability / Clearing) *' : 'Deposit Into (Account) *'}
               </label>
               <AccountAutocomplete
                 value={depositAccountId}
                 onChange={setDepositAccountId}
-                placeholder="Search deposit account (Bank / Cash)..."
-                typeFilter="Asset"
+                placeholder={paymentMethod === 'Advance Offset' ? 'Search & Select Offset GL Account (e.g. 2150 Customer Advances)...' : 'Search deposit account (Bank / Cash)...'}
+                typeFilter={paymentMethod === 'Advance Offset' ? undefined : 'Asset'}
                 required
                 className="text-xs"
               />
