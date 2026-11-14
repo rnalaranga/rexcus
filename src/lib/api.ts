@@ -1922,6 +1922,17 @@ export const realizeChequeToGL = async (id: string, payload: { realizedDate?: st
   return res.json();
 };
 
+export const deleteChequeRecord = async (id: string) => {
+  const res = await fetch(`${API_URL}/finance/cheques/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete cheque');
+  }
+  return res.json();
+};
+
 // ==========================================
 // SERVICE & INSPECTION JOBS API
 // ==========================================

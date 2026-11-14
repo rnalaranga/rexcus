@@ -11,6 +11,7 @@ import { formatCurrency, numberToWords } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
 export interface CreateChequeModalProps {
   isOpen: boolean;
@@ -195,104 +196,100 @@ export const CreateChequeModal: React.FC<CreateChequeModalProps> = ({
             </div>
           </div>
 
-          {/* Payee / Drawer Name & Party Category with Auto-complete */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-bold text-primary uppercase tracking-wider">
-                {partyType === 'customer' 
-                  ? 'Select Customer (Auto-complete) *' 
-                  : partyType === 'supplier'
-                  ? 'Select Vendor / Supplier (Auto-complete) *'
-                  : 'Payee / Drawer Name *'}
-              </label>
-
-              {partyType === 'customer' ? (
-                <CustomerAutocomplete
-                  value={partyId || payeeName}
-                  placeholder="Type to search customer by name, company..."
-                  onChange={(cId, cust) => {
-                    setPartyId(cId || '');
-                    if (cust) {
-                      setPayeeName(cust.company || cust.name || '');
-                    } else {
-                      setPayeeName('');
-                    }
-                  }}
-                  onSelectCustomer={(cust) => {
-                    if (cust) {
-                      setPartyId(cust.id);
-                      setPayeeName(cust.company || cust.name || '');
-                    }
-                  }}
-                />
-              ) : partyType === 'supplier' ? (
-                <SupplierAutocomplete
-                  value={partyId || payeeName}
-                  placeholder="Type to search supplier by name, company..."
-                  onChange={(sId, supp) => {
-                    setPartyId(sId || '');
-                    if (supp) {
-                      setPayeeName(supp.company || supp.name || '');
-                    } else {
-                      setPayeeName('');
-                    }
-                  }}
-                  onSelectSupplier={(supp) => {
-                    if (supp) {
-                      setPartyId(supp.id);
-                      setPayeeName(supp.company || supp.name || '');
-                    }
-                  }}
-                />
-              ) : (
-                <input
-                  type="text"
-                  required
-                  value={payeeName}
+          {/* Party Selection & Payee Name */}
+          <div className="space-y-3 bg-surface2/40 border border-theme-subtle p-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-primary uppercase tracking-wider">Party Category</label>
+                <select
+                  value={partyType}
                   onChange={e => {
-                    setPayeeName(e.target.value);
+                    const val = e.target.value as any;
+                    setPartyType(val);
                     setPartyId('');
                   }}
-                  placeholder="e.g. Employee Name or External Entity"
                   className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
-                />
-              )}
+                >
+                  <option value="customer">Customer (පාරිභෝගිකයා)</option>
+                  <option value="supplier">Supplier / Vendor (සැපයුම්කරු)</option>
+                  <option value="employee">Employee / Staff (සේවකයා)</option>
+                  <option value="other">Other Entity (වෙනත්)</option>
+                </select>
+              </div>
 
-              {/* Show selected or custom name edit fallback */}
-              {(partyType === 'customer' || partyType === 'supplier') && payeeName && (
-                <div className="text-[11px] text-muted flex items-center justify-between pt-0.5 px-0.5">
-                  <span>Selected: <strong className="text-primary">{payeeName}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPartyId('');
-                      setPayeeName('');
+              <div className="sm:col-span-2 space-y-1">
+                <label className="text-xs font-bold text-primary uppercase tracking-wider">
+                  {partyType === 'customer' 
+                    ? 'Search & Select Customer (Auto-complete)' 
+                    : partyType === 'supplier'
+                    ? 'Search & Select Supplier (Auto-complete)'
+                    : 'Reference Contact / Entity'}
+                </label>
+
+                {partyType === 'customer' ? (
+                  <CustomerAutocomplete
+                    value={partyId}
+                    placeholder="Type to search customer by name, company..."
+                    onChange={(cId, cust) => {
+                      setPartyId(cId || '');
+                      if (cust) {
+                        setPayeeName(cust.company || cust.name || '');
+                      }
                     }}
-                    className="text-[10px] text-red-500 hover:underline cursor-pointer"
-                  >
-                    Clear selection
-                  </button>
-                </div>
-              )}
+                    onSelectCustomer={(cust) => {
+                      if (cust) {
+                        setPartyId(cust.id);
+                        setPayeeName(cust.company || cust.name || '');
+                      }
+                    }}
+                  />
+                ) : partyType === 'supplier' ? (
+                  <SupplierAutocomplete
+                    value={partyId}
+                    placeholder="Type to search supplier by name, company..."
+                    onChange={(sId, supp) => {
+                      setPartyId(sId || '');
+                      if (supp) {
+                        setPayeeName(supp.company || supp.name || '');
+                      }
+                    }}
+                    onSelectSupplier={(supp) => {
+                      if (supp) {
+                        setPartyId(supp.id);
+                        setPayeeName(supp.company || supp.name || '');
+                      }
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={partyId}
+                    onChange={e => setPartyId(e.target.value)}
+                    placeholder="Contact person / reference ID"
+                    className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                  />
+                )}
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-primary uppercase tracking-wider">Party Category</label>
-              <select
-                value={partyType}
-                onChange={e => {
-                  const val = e.target.value as any;
-                  setPartyType(val);
-                  setPartyId('');
-                  setPayeeName('');
-                }}
-                className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
-              >
-                <option value="customer">Customer</option>
-                <option value="supplier">Supplier / Vendor</option>
-                <option value="employee">Employee / Staff</option>
-                <option value="other">Other Entity</option>
-              </select>
+            {/* Custom Payee / Drawer Name (Editable with auto-fill fallback) */}
+            <div className="space-y-1 pt-1 border-t border-theme-subtle">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-primary uppercase tracking-wider">
+                  {direction === 'IN' ? 'Drawer Name (චෙක්පත ලියූ පාර්ශ්වය) *' : 'Payee Name on Cheque (චෙක්පත ලියවෙන නම) *'}
+                </label>
+                <span className="text-[10px] text-muted italic">
+                  Auto-filled from party selection, but can be customized freely
+                </span>
+              </div>
+              <input
+                type="text"
+                required
+                value={payeeName}
+                onChange={e => setPayeeName(e.target.value)}
+                placeholder={direction === 'IN' ? 'e.g. Colombo Dockyard PLC' : 'e.g. Lanka Steel Industries (Pvt) Ltd'}
+                className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-bold text-primary outline-none focus:border-emerald-500"
+              />
             </div>
           </div>
 
@@ -351,25 +348,20 @@ export const CreateChequeModal: React.FC<CreateChequeModalProps> = ({
             )}
           </div>
 
-          {/* GL Account Selection (The core user requirement) */}
-          <div className="space-y-1 bg-amber-500/5 border border-amber-500/25 p-3.5">
+          {/* GL Account Selection (The core user requirement) with Auto-complete */}
+          <div className="space-y-1.5 bg-amber-500/5 border border-amber-500/25 p-3.5">
             <label className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 uppercase tracking-wider">
               <Building2 size={14} className="text-amber-500" />
               Linked GL Account (General Ledger ගිණුම) *
             </label>
-            <select
-              required
+            <AccountAutocomplete
               value={targetAccountId}
-              onChange={e => setTargetAccountId(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-amber-500"
-            >
-              <option value="">-- Select GL Account to Link this Cheque --</option>
-              {eligibleAccounts.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.code ? `${a.code} - ` : ''}{a.name} ({a.type} • {a.subtype || 'General'})
-                </option>
-              ))}
-            </select>
+              placeholder="Search & select GL Account (type code or account name)..."
+              onChange={(accId) => setTargetAccountId(accId)}
+              onSelectAccount={(acc) => setTargetAccountId(acc?.id || '')}
+              accounts={eligibleAccounts}
+              required
+            />
             <p className="text-[11px] text-muted mt-1">
               Funds will reflect in this GL account when realized, preserving cash flow accuracy.
             </p>

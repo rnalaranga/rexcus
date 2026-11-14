@@ -4,7 +4,8 @@ import {
   Calendar, Search, Filter, Printer, Plus, CheckCircle2,
   Clock, AlertCircle, FileText, Check, X, RefreshCw,
   Building2, Landmark, CreditCard, ChevronRight, User,
-  Eye, Download, MoreHorizontal, ArrowUpDown, Upload, Paperclip, ExternalLink, Image as ImageIcon
+  Eye, Download, MoreHorizontal, ArrowUpDown, Upload, Paperclip, ExternalLink, Image as ImageIcon,
+  Trash2
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +17,7 @@ import { useAccounts } from '@/hooks/useFinance';
 import { useSuppliers } from '@/hooks/useData';
 import { 
   getDailyCashFlow, getPaymentVouchers, createPaymentVoucher, 
-  updateChequeStatus, uploadFileToStorage, realizeChequeToGL 
+  updateChequeStatus, uploadFileToStorage, realizeChequeToGL, deleteChequeRecord 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -365,6 +366,23 @@ export const DailyCashFlowHub: React.FC = () => {
     } catch (err: any) {
       showError(err.message || 'Failed to realize cheque into General Ledger', 'Realization Error');
       throw err;
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
+  // Handle Delete Cheque
+  const handleDeleteCheque = async (cheque: any) => {
+    const isConfirmed = window.confirm(`Are you sure you want to delete Cheque #${cheque.chequeNo} (Rs. ${formatCurrency(cheque.amount)})? This action cannot be undone.`);
+    if (!isConfirmed) return;
+
+    setStatusUpdatingId(cheque.id);
+    try {
+      await deleteChequeRecord(cheque.id);
+      toast(`Cheque #${cheque.chequeNo} deleted successfully`, 'success');
+      await Promise.all([loadCashFlow(), loadVouchers()]);
+    } catch (err: any) {
+      showError(err.message || 'Failed to delete cheque', 'Delete Error');
     } finally {
       setStatusUpdatingId(null);
     }
@@ -1082,6 +1100,17 @@ export const DailyCashFlowHub: React.FC = () => {
                                   Reset
                                 </Button>
                               )}
+
+                              {/* Delete Cheque Button */}
+                              <button
+                                type="button"
+                                disabled={statusUpdatingId === ch.id}
+                                onClick={() => handleDeleteCheque(ch)}
+                                className="p-1 text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                                title="Delete this cheque record"
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </div>
                           </td>
                         </tr>

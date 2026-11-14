@@ -14327,6 +14327,50 @@ app.put('/api/finance/cheques/:id/status', async (req, res) => {
   }
 });
 
+// 5. DELETE /api/finance/cheques/:id
+app.delete('/api/finance/cheques/:id', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+
+    // Check if cheque exists in cheques_register
+    const [rows]: any = await conn.query('SELECT * FROM cheques_register WHERE id = ? OR chequeNo = ? LIMIT 1', [id, id]);
+    if (!rows || rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Cheque record not found' });
+    }
+
+    const cheque = rows[0];
+
+    // If cheque was realized into GL (has a realized journal entry), revert journal entry and account balances
+    if (cheque.realizedJournalEntryId) {
+      const [jeLines]: any = await conn.query(
+        'SELECT accountId, debit, credit FROM journal_entry_lines WHERE journalEntryId = ?',
+        [cheque.realizedJournalEntryId]
+      );
+      for (const line of (jeLines || [])) {
+        const netDelta = Number(line.debit || 0) - Number(line.credit || 0);
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [netDelta, line.accountId]);
+      }
+      await conn.query('DELETE FROM journal_entry_lines WHERE journalEntryId = ?', [cheque.realizedJournalEntryId]);
+      await conn.query('DELETE FROM journal_entries WHERE id = ?', [cheque.realizedJournalEntryId]);
+    }
+
+    // Delete record from cheques_register
+    await conn.query('DELETE FROM cheques_register WHERE id = ?', [cheque.id]);
+
+    await conn.commit();
+    res.json({ success: true, message: `Cheque #${cheque.chequeNo} deleted successfully` });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Error deleting cheque:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete cheque' });
+  } finally {
+    conn.release();
+  }
+});
+
 
 
 // ==========================================
