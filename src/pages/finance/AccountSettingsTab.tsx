@@ -196,6 +196,14 @@ const MAPPING_SECTIONS: MappingSection[] = [
         typeFilter: 'Asset',
         defaultCode: '1010',
         defaultName: 'USD Foreign Currency Bank Account'
+      },
+      {
+        key: 'default_cheque_clearing_account_id',
+        label: 'Cheque In-Transit & Realization Clearing Account (Asset/Liability)',
+        description: 'Account holding uncleared cheques until the realization date before final credit to bank.',
+        typeFilter: ['Asset', 'Liability'],
+        defaultCode: '1050',
+        defaultName: 'Cheques In-Transit / Clearing Account'
       }
     ]
   },

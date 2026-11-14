@@ -2083,7 +2083,53 @@ async function runDatabaseSync() {
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_order', 'Purchase Orders', 'PO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_grn', 'Purchase GRN', 'PGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('material_request', 'Material Requests', 'MR-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
-    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('gate_pass', 'Gate Passes / Delivery', 'GP-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)"
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('gate_pass', 'Gate Passes / Delivery', 'GP-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    `CREATE TABLE IF NOT EXISTS cheques_register (
+      id VARCHAR(50) PRIMARY KEY,
+      chequeNo VARCHAR(100) NOT NULL,
+      direction ENUM('IN', 'OUT') NOT NULL,
+      chequeDate DATE NOT NULL,
+      realizedDate DATE DEFAULT NULL,
+      bankName VARCHAR(150) DEFAULT NULL,
+      branchName VARCHAR(150) DEFAULT NULL,
+      payeeName VARCHAR(255) NOT NULL,
+      partyType ENUM('customer', 'supplier', 'employee', 'other') DEFAULT 'customer',
+      partyId VARCHAR(50) DEFAULT NULL,
+      amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      currency VARCHAR(10) DEFAULT 'LKR',
+      exchangeRate DECIMAL(15,4) DEFAULT 1.0000,
+      status VARCHAR(50) DEFAULT 'Pending',
+      clearingAccountId VARCHAR(50) DEFAULT NULL,
+      realizedAccountId VARCHAR(50) DEFAULT NULL,
+      targetAccountId VARCHAR(50) DEFAULT NULL,
+      sourceTable VARCHAR(50) DEFAULT 'manual',
+      sourceId VARCHAR(100) DEFAULT NULL,
+      sourceRef VARCHAR(100) DEFAULT NULL,
+      voucherNo VARCHAR(100) DEFAULT NULL,
+      receiptNo VARCHAR(100) DEFAULT NULL,
+      invoiceNo VARCHAR(100) DEFAULT NULL,
+      description TEXT DEFAULT NULL,
+      isAccountPayee BOOLEAN DEFAULT TRUE,
+      isCrossed BOOLEAN DEFAULT TRUE,
+      depositSlip LONGTEXT DEFAULT NULL,
+      journalEntryId VARCHAR(50) DEFAULT NULL,
+      realizedJournalEntryId VARCHAR(50) DEFAULT NULL,
+      createdByName VARCHAR(100) DEFAULT 'Accounts Officer',
+      notes TEXT DEFAULT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_cr_chequeNo (chequeNo),
+      INDEX idx_cr_date (chequeDate),
+      INDEX idx_cr_direction (direction),
+      INDEX idx_cr_status (status),
+      INDEX idx_cr_payee (payeeName)
+    )`,
+    "ALTER TABLE payment_receipts ADD COLUMN realizedDate DATE DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN realizedAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_receipts ADD COLUMN clearingAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN realizedDate DATE DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN realizedAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN clearingAccountId VARCHAR(50) DEFAULT NULL"
   ];
   for (const seed of defaultSeeds) {
     try {
@@ -13259,13 +13305,57 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         AND (sl.voucherNo IS NULL OR sl.voucherNo NOT IN (SELECT voucherNo FROM payment_vouchers))
     `, [start, end]);
 
+    // E. Manual Cheques from cheques_register (if not already captured from receipts or vouchers)
+    let manualCheques: any[] = [];
+    try {
+      const [regRows]: any = await db.query(`
+        SELECT 
+          cr.id,
+          DATE_FORMAT(cr.chequeDate, '%Y-%m-%d') as date,
+          '12:00' as time,
+          cr.direction as flowType,
+          CASE WHEN cr.direction = 'IN' THEN 'Inward Cheque' ELSE 'Outward Cheque' END as category,
+          COALESCE(cr.sourceRef, cr.voucherNo, cr.receiptNo, cr.chequeNo) as refNo,
+          cr.payeeName as partyName,
+          COALESCE(cr.description, CONCAT(CASE WHEN cr.direction = 'IN' THEN 'Inward Cheque #' ELSE 'Outward Cheque #' END, cr.chequeNo)) as description,
+          'Cheque' as paymentMethod,
+          CAST(cr.amount AS DECIMAL(15,2)) as amount,
+          COALESCE(cr.currency, 'LKR') as currency,
+          cr.chequeNo,
+          DATE_FORMAT(cr.chequeDate, '%Y-%m-%d') as chequeDate,
+          cr.bankName,
+          COALESCE(cr.status, 'Pending') as chequeStatus,
+          NULL as transactionRef,
+          COALESCE(targetAcc.name, 'Cheque Clearing') as accountName,
+          cr.createdByName as handledBy,
+          cr.depositSlip,
+          'cheques_register' as sourceTable
+        FROM cheques_register cr
+        LEFT JOIN chart_of_accounts targetAcc ON (cr.targetAccountId = targetAcc.id OR cr.realizedAccountId = targetAcc.id)
+        WHERE cr.chequeDate BETWEEN ? AND ?
+      `, [start, end]);
+      
+      const existingChqKeys = new Set();
+      [...receipts, ...vouchers, ...supplierPayments, ...cashbook].forEach((t: any) => {
+        if (t.chequeNo) existingChqKeys.add(`${t.flowType}_${String(t.chequeNo).trim().toLowerCase()}`);
+      });
+      
+      manualCheques = (regRows || []).filter((r: any) => {
+        const key = `${r.flowType}_${String(r.chequeNo).trim().toLowerCase()}`;
+        return !existingChqKeys.has(key);
+      });
+    } catch (regErr) {
+      console.warn('cheques_register query error:', regErr);
+    }
+
     // Merge and standardize all transactions
     let allTransactions = [
       ...receipts,
       ...directInvoicePayments,
       ...cashbook,
       ...vouchers,
-      ...supplierPayments
+      ...supplierPayments,
+      ...manualCheques
     ];
 
     // Search filter
@@ -13770,26 +13860,465 @@ app.post('/api/finance/credit-debit-notes', async (req, res) => {
   }
 });
 
+// 4. CHEQUE MANAGEMENT & REALIZATION ENGINE
+// ==========================================
+
+// GET /api/finance/cheques-register
+app.get('/api/finance/cheques-register', async (req, res) => {
+  try {
+    const { direction, status, startDate, endDate, search } = req.query;
+    let query = 'SELECT cr.*, coa.name as targetAccountName, rcoa.name as realizedAccountName FROM cheques_register cr LEFT JOIN chart_of_accounts coa ON cr.targetAccountId = coa.id LEFT JOIN chart_of_accounts rcoa ON cr.realizedAccountId = rcoa.id WHERE 1=1';
+    const params: any[] = [];
+
+    if (direction && direction !== 'ALL') {
+      query += ' AND cr.direction = ?';
+      params.push(direction);
+    }
+    if (status && status !== 'ALL') {
+      query += ' AND cr.status = ?';
+      params.push(status);
+    }
+    if (startDate) {
+      query += ' AND cr.chequeDate >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND cr.chequeDate <= ?';
+      params.push(endDate);
+    }
+    if (search) {
+      const q = `%${search}%`;
+      query += ' AND (cr.chequeNo LIKE ? OR cr.payeeName LIKE ? OR cr.bankName LIKE ? OR cr.sourceRef LIKE ? OR cr.invoiceNo LIKE ?)';
+      params.push(q, q, q, q, q);
+    }
+
+    query += ' ORDER BY cr.chequeDate DESC, cr.createdAt DESC';
+    const [rows]: any = await db.query(query, params);
+    res.json(rows || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/cheques-register (Manual Cheque entry with GL Account Selection)
+app.post('/api/finance/cheques-register', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const data = { ...req.body };
+
+    const numAmount = Number(data.amount) || 0;
+    if (numAmount <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid cheque amount greater than zero' });
+    }
+    if (!data.chequeNo || !String(data.chequeNo).trim()) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Cheque number is required' });
+    }
+    if (!data.payeeName || !String(data.payeeName).trim()) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Payee / Drawer Name is required' });
+    }
+    if (!data.targetAccountId) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please select a GL Account for this cheque (e.g. Bank Account or Debtor/Creditor Account)' });
+    }
+
+    const docId = data.id || `CHQ-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const chequeDirection = data.direction === 'OUT' ? 'OUT' : 'IN';
+    const chequeStatus = data.status || 'Pending';
+
+    // Verify chosen target GL Account
+    const [targetAccRows]: any = await conn.query('SELECT id, name, type, subtype FROM chart_of_accounts WHERE id = ? LIMIT 1', [data.targetAccountId]);
+    if (!targetAccRows || targetAccRows.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Selected GL Account does not exist in Chart of Accounts' });
+    }
+    const targetAcc = targetAccRows[0];
+
+    const chequePayload = {
+      id: docId,
+      chequeNo: String(data.chequeNo).trim(),
+      direction: chequeDirection,
+      chequeDate: data.chequeDate || new Date().toISOString().slice(0, 10),
+      realizedDate: data.realizedDate || null,
+      bankName: data.bankName ? String(data.bankName).trim() : null,
+      branchName: data.branchName ? String(data.branchName).trim() : null,
+      payeeName: String(data.payeeName).trim(),
+      partyType: data.partyType || (chequeDirection === 'IN' ? 'customer' : 'supplier'),
+      partyId: data.partyId || null,
+      amount: numAmount,
+      currency: data.currency || 'LKR',
+      exchangeRate: Number(data.exchangeRate || 1),
+      status: chequeStatus,
+      targetAccountId: targetAcc.id,
+      clearingAccountId: data.clearingAccountId || null,
+      realizedAccountId: data.realizedAccountId || null,
+      sourceTable: data.sourceTable || 'cheques_register',
+      sourceId: data.sourceId || docId,
+      sourceRef: data.sourceRef || data.referenceNo || null,
+      voucherNo: data.voucherNo || null,
+      receiptNo: data.receiptNo || null,
+      invoiceNo: data.invoiceNo || null,
+      description: data.description || (chequeDirection === 'IN' ? `Inward Cheque #${data.chequeNo} from ${data.payeeName}` : `Outward Cheque #${data.chequeNo} to ${data.payeeName}`),
+      isAccountPayee: data.isAccountPayee !== undefined ? Boolean(data.isAccountPayee) : true,
+      isCrossed: data.isCrossed !== undefined ? Boolean(data.isCrossed) : true,
+      depositSlip: data.depositSlip || null,
+      createdByName: data.createdByName || 'Accounts Officer',
+      notes: data.notes || null
+    };
+
+    await conn.query('INSERT INTO cheques_register SET ?', chequePayload);
+
+    // If cheque is saved directly as 'Cleared' / 'Realized', execute GL Posting immediately
+    if (chequeStatus === 'Cleared' || chequeStatus === 'Realized') {
+      const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const jeId = `JE-REAL-${docId.replace(/[^A-Za-z0-9_-]/g, '')}`;
+      const realizedDate = data.realizedDate || data.chequeDate || new Date().toISOString().slice(0, 10);
+      const realizedAccId = data.realizedAccountId || data.targetAccountId;
+
+      const jeData = {
+        id: jeId,
+        date: realizedDate,
+        reference: `CHQ-${data.chequeNo}`,
+        description: `Cheque Realization: #${data.chequeNo} (${chequeDirection === 'IN' ? 'Inward' : 'Outward'}) - ${data.payeeName}`,
+        totalAmount: numAmount,
+        createdBy: data.createdByName || 'Accounts Officer',
+        status: 'posted',
+        createdAt: nowIso
+      };
+      await conn.query('INSERT INTO journal_entries SET ?', jeData);
+
+      if (chequeDirection === 'IN') {
+        // Debit: Realized Bank Account
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-1`,
+          entryId: jeId,
+          accountId: realizedAccId,
+          partyType: 'Customer',
+          partyId: data.partyId || null,
+          description: `Cheque #${data.chequeNo} Realized in Bank`,
+          debit: numAmount,
+          credit: 0
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, realizedAccId]);
+
+        // Credit: Accounts Receivable / Customer Advance / Clearing Account
+        let offsetAccountId = data.clearingAccountId;
+        if (!offsetAccountId) {
+          const [arAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR name LIKE "%Customer Advance%") LIMIT 1');
+          offsetAccountId = arAcc && arAcc.length > 0 ? arAcc[0].id : 'acc_1500';
+        }
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-2`,
+          entryId: jeId,
+          accountId: offsetAccountId,
+          partyType: 'Customer',
+          partyId: data.partyId || null,
+          description: `Realization offset for Cheque #${data.chequeNo}`,
+          debit: 0,
+          credit: numAmount
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, offsetAccountId]);
+      } else {
+        // Outward Cheque Realization
+        let debitAccountId = data.clearingAccountId;
+        if (!debitAccountId) {
+          const [apAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Payable%" OR name LIKE "%Creditor%") LIMIT 1');
+          debitAccountId = apAcc && apAcc.length > 0 ? apAcc[0].id : 'acc_2000';
+        }
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-1`,
+          entryId: jeId,
+          accountId: debitAccountId,
+          partyType: 'Supplier',
+          partyId: data.partyId || null,
+          description: `Settlement offset for Outward Cheque #${data.chequeNo}`,
+          debit: numAmount,
+          credit: 0
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, debitAccountId]);
+
+        // Credit: Bank Account
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-2`,
+          entryId: jeId,
+          accountId: realizedAccId,
+          partyType: 'Supplier',
+          partyId: data.partyId || null,
+          description: `Outward Cheque #${data.chequeNo} Cleared from Bank`,
+          debit: 0,
+          credit: numAmount
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, realizedAccId]);
+      }
+
+      await conn.query('UPDATE cheques_register SET realizedJournalEntryId = ?, realizedDate = ? WHERE id = ?', [jeId, realizedDate, docId]);
+    }
+
+    await conn.commit();
+    res.json({ success: true, id: docId, cheque: chequePayload });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Error creating manual cheque:', err);
+    res.status(500).json({ error: err.message || 'Failed to save cheque' });
+  } finally {
+    conn.release();
+  }
+});
+
+// PUT /api/finance/cheques/:id/realize (Realize / Clear Cheque & execute GL entries on Realization Date)
+app.put('/api/finance/cheques/:id/realize', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    const { realizedDate, realizedAccountId, notes } = req.body;
+
+    const actualRealizedDate = realizedDate ? String(realizedDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // 1. Check if record exists in cheques_register
+    let [chqRows]: any = await conn.query('SELECT * FROM cheques_register WHERE id = ? OR chequeNo = ? LIMIT 1', [id, id]);
+    let chq = chqRows && chqRows.length > 0 ? chqRows[0] : null;
+
+    // If not in cheques_register, look up from payment_receipts or payment_vouchers
+    if (!chq) {
+      const [prRows]: any = await conn.query('SELECT * FROM payment_receipts WHERE id = ? OR receiptNo = ? OR chequeNo = ? LIMIT 1', [id, id, id]);
+      if (prRows && prRows.length > 0) {
+        const pr = prRows[0];
+        chq = {
+          id: pr.id,
+          chequeNo: pr.chequeNo || pr.receiptNo,
+          direction: 'IN',
+          chequeDate: pr.chequeDate || String(pr.date).slice(0, 10),
+          bankName: pr.bankName,
+          payeeName: pr.customerCompany || pr.customerName || 'Customer',
+          partyType: 'customer',
+          partyId: pr.customerId,
+          amount: Number(pr.amount || 0),
+          targetAccountId: pr.accountId,
+          sourceTable: 'payment_receipts',
+          sourceRef: pr.receiptNo,
+          invoiceNo: pr.invoiceNo,
+          voucherNo: null
+        };
+      } else {
+        const [pvRows]: any = await conn.query('SELECT * FROM payment_vouchers WHERE id = ? OR voucherNo = ? OR chequeNo = ? LIMIT 1', [id, id, id]);
+        if (pvRows && pvRows.length > 0) {
+          const pv = pvRows[0];
+          chq = {
+            id: pv.id,
+            chequeNo: pv.chequeNo || pv.voucherNo,
+            direction: 'OUT',
+            chequeDate: pv.chequeDate || String(pv.date).slice(0, 10),
+            bankName: pv.bankName,
+            payeeName: pv.payeeName,
+            partyType: pv.payeeType || 'supplier',
+            partyId: pv.payeeId,
+            amount: Number(pv.amount || 0),
+            targetAccountId: pv.bankAccountId || pv.accountId,
+            sourceTable: 'payment_vouchers',
+            sourceRef: pv.voucherNo,
+            invoiceNo: pv.relatedBillNo,
+            voucherNo: pv.voucherNo
+          };
+        } else {
+          // Check supplier_ledger
+          const [slRows]: any = await conn.query('SELECT sl.*, s.name as supplierName, s.company as supplierCompany FROM supplier_ledger sl LEFT JOIN suppliers s ON sl.supplierId = s.id WHERE sl.id = ? OR sl.referenceNo = ? OR sl.chequeNo = ? LIMIT 1', [id, id, id]);
+          if (slRows && slRows.length > 0) {
+            const sl = slRows[0];
+            chq = {
+              id: sl.id,
+              chequeNo: sl.chequeNo || sl.referenceNo,
+              direction: 'OUT',
+              chequeDate: sl.chequeDate || String(sl.date).slice(0, 10),
+              bankName: sl.bankName,
+              payeeName: sl.supplierCompany || sl.supplierName || 'Supplier',
+              partyType: 'supplier',
+              partyId: sl.supplierId,
+              amount: Number(sl.credit || sl.amount || 0),
+              targetAccountId: null,
+              sourceTable: 'supplier_ledger',
+              sourceRef: sl.referenceNo,
+              invoiceNo: null,
+              voucherNo: sl.voucherNo
+            };
+          }
+        }
+      }
+    }
+
+    if (!chq) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Cheque record not found' });
+    }
+
+    const numAmount = Number(chq.amount || 0);
+    const direction = chq.direction === 'OUT' ? 'OUT' : 'IN';
+
+    // Resolve Bank GL Account to debit/credit
+    let finalRealizedAccId = realizedAccountId || chq.realizedAccountId || chq.targetAccountId;
+    if (!finalRealizedAccId) {
+      const [bankSetting]: any = await conn.query('SELECT val FROM settings WHERE id = "default_bank_account_id" LIMIT 1');
+      if (bankSetting && bankSetting.length > 0 && bankSetting[0].val) {
+        finalRealizedAccId = bankSetting[0].val;
+      } else {
+        const [defBank]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (subtype = "Bank" OR type = "Asset") AND name LIKE "%Bank%" LIMIT 1');
+        finalRealizedAccId = defBank && defBank.length > 0 ? defBank[0].id : 'acc_1000';
+      }
+    }
+
+    // Create Official Journal Entry for Realization
+    const jeId = `JE-REAL-${chq.id.replace(/[^A-Za-z0-9_-]/g, '')}`;
+    const jeData = {
+      id: jeId,
+      date: actualRealizedDate,
+      reference: `CHQ-${chq.chequeNo}`,
+      description: `Cheque Realization (${actualRealizedDate}): #${chq.chequeNo} (${direction === 'IN' ? 'Inward' : 'Outward'}) - ${chq.payeeName}`,
+      totalAmount: numAmount,
+      createdBy: 'Accounts Realization',
+      status: 'posted',
+      createdAt: nowIso
+    };
+
+    // Remove any previous realization journal entry if reverting/re-clearing
+    try {
+      await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [jeId]);
+      await conn.query('DELETE FROM journal_entries WHERE id = ?', [jeId]);
+    } catch (e) {}
+
+    await conn.query('INSERT INTO journal_entries SET ?', jeData);
+
+    if (direction === 'IN') {
+      // Inward Cheque Realization:
+      // Debit: Bank Account (Funds entered bank on realization date)
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${jeId}-1`,
+        entryId: jeId,
+        accountId: finalRealizedAccId,
+        partyType: 'Customer',
+        partyId: chq.partyId || null,
+        description: `Inward Cheque #${chq.chequeNo} Realized in Bank`,
+        debit: numAmount,
+        credit: 0
+      });
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, finalRealizedAccId]);
+
+      // Credit: Customer Receivable / Advance / Cheque Clearing Account
+      let creditAccId = chq.clearingAccountId;
+      if (!creditAccId) {
+        const [arAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR name LIKE "%Customer Advance%") LIMIT 1');
+        creditAccId = arAcc && arAcc.length > 0 ? arAcc[0].id : 'acc_1500';
+      }
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${jeId}-2`,
+        entryId: jeId,
+        accountId: creditAccId,
+        partyType: 'Customer',
+        partyId: chq.partyId || null,
+        description: `Customer AR Credit for Realized Cheque #${chq.chequeNo}`,
+        debit: 0,
+        credit: numAmount
+      });
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, creditAccId]);
+    } else {
+      // Outward Cheque Realization:
+      // Debit: Vendor Accounts Payable / Clearing Account
+      let debitAccId = chq.clearingAccountId;
+      if (!debitAccId) {
+        const [apAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Payable%" OR name LIKE "%Creditor%") LIMIT 1');
+        debitAccId = apAcc && apAcc.length > 0 ? apAcc[0].id : 'acc_2000';
+      }
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${jeId}-1`,
+        entryId: jeId,
+        accountId: debitAccId,
+        partyType: 'Supplier',
+        partyId: chq.partyId || null,
+        description: `AP Settlement on Realization for Cheque #${chq.chequeNo}`,
+        debit: numAmount,
+        credit: 0
+      });
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, debitAccId]);
+
+      // Credit: Bank Account (Funds leave bank on realization date)
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${jeId}-2`,
+        entryId: jeId,
+        accountId: finalRealizedAccId,
+        partyType: 'Supplier',
+        partyId: chq.partyId || null,
+        description: `Outward Cheque #${chq.chequeNo} Cleared from Bank`,
+        debit: 0,
+        credit: numAmount
+      });
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, finalRealizedAccId]);
+    }
+
+    // Update statuses across all related tables
+    await conn.query(
+      'UPDATE cheques_register SET status = "Cleared", realizedDate = ?, realizedAccountId = ?, realizedJournalEntryId = ?, notes = COALESCE(?, notes) WHERE id = ? OR chequeNo = ?',
+      [actualRealizedDate, finalRealizedAccId, jeId, notes || null, id, chq.chequeNo]
+    );
+    await conn.query(
+      'UPDATE payment_receipts SET chequeStatus = "Cleared", realizedDate = ?, realizedAccountId = ? WHERE id = ? OR receiptNo = ? OR chequeNo = ?',
+      [actualRealizedDate, finalRealizedAccId, id, id, chq.chequeNo]
+    );
+    await conn.query(
+      'UPDATE payment_vouchers SET chequeStatus = "Cleared", realizedDate = ?, realizedAccountId = ? WHERE id = ? OR voucherNo = ? OR chequeNo = ?',
+      [actualRealizedDate, finalRealizedAccId, id, id, chq.chequeNo]
+    );
+    await conn.query(
+      'UPDATE supplier_ledger SET chequeStatus = "Cleared" WHERE id = ? OR referenceNo = ? OR chequeNo = ?',
+      [id, id, chq.chequeNo]
+    );
+    await conn.query(
+      'UPDATE cashbook_entries SET chequeStatus = "Cleared" WHERE id = ? OR chequeNo = ?',
+      [id, chq.chequeNo]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      message: `Cheque #${chq.chequeNo} successfully realized into GL Account on ${actualRealizedDate}`,
+      realizedDate: actualRealizedDate,
+      realizedAccountId: finalRealizedAccId,
+      journalEntryId: jeId
+    });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error('Error realizing cheque:', err);
+    res.status(500).json({ error: err.message || 'Failed to realize cheque' });
+  } finally {
+    conn.release();
+  }
+});
+
 // 4. PUT /api/finance/cheques/:id/status
 app.put('/api/finance/cheques/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, sourceTable } = req.body;
+    const { status, sourceTable, realizedDate, realizedAccountId } = req.body;
     if (!status) return res.status(400).json({ error: 'Status is required' });
 
     if (sourceTable === 'payment_vouchers') {
-      await db.query('UPDATE payment_vouchers SET chequeStatus = ? WHERE id = ? OR voucherNo = ?', [status, id, id]);
+      await db.query('UPDATE payment_vouchers SET chequeStatus = ?, realizedDate = COALESCE(?, realizedDate) WHERE id = ? OR voucherNo = ?', [status, realizedDate || null, id, id]);
     } else if (sourceTable === 'payment_receipts') {
-      await db.query('UPDATE payment_receipts SET chequeStatus = ? WHERE id = ? OR receiptNo = ?', [status, id, id]);
+      await db.query('UPDATE payment_receipts SET chequeStatus = ?, realizedDate = COALESCE(?, realizedDate) WHERE id = ? OR receiptNo = ?', [status, realizedDate || null, id, id]);
     } else if (sourceTable === 'supplier_ledger') {
       await db.query('UPDATE supplier_ledger SET chequeStatus = ? WHERE id = ? OR referenceNo = ?', [status, id, id]);
     } else if (sourceTable === 'cashbook_entries') {
       await db.query('UPDATE cashbook_entries SET chequeStatus = ? WHERE id = ?', [status, id]);
+    } else if (sourceTable === 'cheques_register') {
+      await db.query('UPDATE cheques_register SET status = ?, realizedDate = COALESCE(?, realizedDate) WHERE id = ? OR chequeNo = ?', [status, realizedDate || null, id, id]);
     } else {
       await db.query('UPDATE payment_vouchers SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
       await db.query('UPDATE payment_receipts SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
       await db.query('UPDATE supplier_ledger SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
       await db.query('UPDATE cashbook_entries SET chequeStatus = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
+      await db.query('UPDATE cheques_register SET status = ? WHERE id = ? OR chequeNo = ?', [status, id, id]);
     }
 
     res.json({ success: true, id, status });
@@ -14065,6 +14594,42 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
     }
 
     await conn.query('INSERT INTO payment_receipts SET ?', cleanPayload);
+
+    // If receipt payment method is Cheque or chequeNo is present, automatically mirror to cheques_register
+    if (data.paymentMethod === 'Cheque' || data.chequeNo) {
+      try {
+        const chqRegisterId = `CR-${docId}`;
+        const chqEntry = {
+          id: chqRegisterId,
+          chequeNo: String(data.chequeNo || data.reference || receiptNum).trim(),
+          direction: 'IN',
+          chequeDate: data.chequeDate || receiptDate.slice(0, 10),
+          realizedDate: data.chequeStatus === 'Cleared' ? receiptDate.slice(0, 10) : null,
+          bankName: data.bankName || null,
+          payeeName: data.customerCompany || data.customerName || 'Customer',
+          partyType: 'customer',
+          partyId: data.customerId || null,
+          amount: amountVal,
+          currency: receiptCurrency,
+          exchangeRate: receiptExchangeRate,
+          status: data.chequeStatus || 'Pending',
+          targetAccountId: depositAccountId,
+          clearingAccountId: depositAccountId,
+          realizedAccountId: data.chequeStatus === 'Cleared' ? depositAccountId : null,
+          sourceTable: 'payment_receipts',
+          sourceId: docId,
+          sourceRef: receiptNum,
+          receiptNo: receiptNum,
+          invoiceNo: data.invoiceNo || null,
+          description: `Customer Cheque received for ${data.orderNo ? `Order ${data.orderNo}` : (data.quotationNo ? `Quote ${data.quotationNo}` : 'Advance')}`,
+          depositSlip: data.depositSlip || data.slipUrl || null,
+          createdByName: data.receivedBy || 'Accounts Officer'
+        };
+        await conn.query('INSERT INTO cheques_register SET ? ON DUPLICATE KEY UPDATE amount=VALUES(amount), status=VALUES(status)', chqEntry);
+      } catch (crErr) {
+        console.warn('Auto register cheque error on payment receipt:', crErr);
+      }
+    }
 
     await conn.commit();
     res.json({

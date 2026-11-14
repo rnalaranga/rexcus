@@ -1865,15 +1865,59 @@ export const createPaymentVoucher = async (data: any) => {
   return res.json();
 };
 
-export const updateChequeStatus = async (id: string, status: string, sourceTable?: string) => {
+export const updateChequeStatus = async (id: string, status: string, sourceTable?: string, realizedDate?: string, realizedAccountId?: string) => {
   const res = await fetch(`${API_URL}/finance/cheques/${encodeURIComponent(id)}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status, sourceTable })
+    body: JSON.stringify({ status, sourceTable, realizedDate, realizedAccountId })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to update cheque status');
+  }
+  return res.json();
+};
+
+export const fetchChequesRegister = async (params?: Record<string, any>) => {
+  let url = `${API_URL}/finance/cheques-register`;
+  if (params && Object.keys(params).length > 0) {
+    const cleanParams: Record<string, string> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') cleanParams[k] = String(v);
+    }
+    const qs = new URLSearchParams(cleanParams).toString();
+    if (qs) url += `?${qs}`;
+  }
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch cheques register');
+  }
+  return res.json();
+};
+
+export const createChequeRecord = async (data: any) => {
+  const res = await fetch(`${API_URL}/finance/cheques-register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to save cheque record');
+  }
+  return res.json();
+};
+
+export const realizeChequeToGL = async (id: string, payload: { realizedDate?: string; realizedAccountId?: string; notes?: string }) => {
+  const res = await fetch(`${API_URL}/finance/cheques/${encodeURIComponent(id)}/realize`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to realize cheque into General Ledger');
   }
   return res.json();
 };

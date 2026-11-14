@@ -16,13 +16,16 @@ import { useAccounts } from '@/hooks/useFinance';
 import { useSuppliers } from '@/hooks/useData';
 import { 
   getDailyCashFlow, getPaymentVouchers, createPaymentVoucher, 
-  updateChequeStatus, uploadFileToStorage 
+  updateChequeStatus, uploadFileToStorage, realizeChequeToGL 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
+import { ChequePrintModal } from '@/components/finance/ChequePrintModal';
+import { ChequeRealizationModal } from '@/components/finance/ChequeRealizationModal';
+import { CreateChequeModal } from '@/components/finance/CreateChequeModal';
 
 // Helper to convert number to English words for payment vouchers
 function numberToWords(num: number): string {
@@ -84,6 +87,9 @@ export const DailyCashFlowHub: React.FC = () => {
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [isSubmittingVoucher, setIsSubmittingVoucher] = useState(false);
   const [activeVoucherForPrint, setActiveVoucherForPrint] = useState<any | null>(null);
+  const [activeChequeForPrint, setActiveChequeForPrint] = useState<any | null>(null);
+  const [activeChequeForRealize, setActiveChequeForRealize] = useState<any | null>(null);
+  const [isCreateChequeModalOpen, setIsCreateChequeModalOpen] = useState(false);
   const [isPrintReportModalOpen, setIsPrintReportModalOpen] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [viewingSlip, setViewingSlip] = useState<{ url: string; title: string; tx?: any } | null>(null);
@@ -347,6 +353,23 @@ export const DailyCashFlowHub: React.FC = () => {
     }
   };
 
+  // Handle Realize Cheque to GL on realization date
+  const handleRealizeCheque = async (payload: { realizedDate: string; realizedAccountId: string; notes?: string }) => {
+    if (!activeChequeForRealize) return;
+    setStatusUpdatingId(activeChequeForRealize.id);
+    try {
+      const res = await realizeChequeToGL(activeChequeForRealize.id, payload);
+      toast(res.message || `Cheque #${activeChequeForRealize.chequeNo} realized into GL on ${payload.realizedDate}!`, 'success');
+      setActiveChequeForRealize(null);
+      await Promise.all([loadCashFlow(), loadVouchers()]);
+    } catch (err: any) {
+      showError(err.message || 'Failed to realize cheque into General Ledger', 'Realization Error');
+      throw err;
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   // Handle Submit Payment Voucher
   const handleCreateVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -431,6 +454,16 @@ export const DailyCashFlowHub: React.FC = () => {
           >
             <Printer size={14} />
             <span>Print Flow Report</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreateChequeModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
+          >
+            <Plus size={14} />
+            <span>+ Manual Cheque (In/Out)</span>
           </Button>
 
           <Button
@@ -916,7 +949,7 @@ export const DailyCashFlowHub: React.FC = () => {
                     <th className="py-2.5 px-3">Linked Ref / PV</th>
                     <th className="py-2.5 px-3 text-right">Amount (LKR)</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
+                    <th className="py-2.5 px-3 text-right">Action / Printing</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme">
@@ -928,7 +961,7 @@ export const DailyCashFlowHub: React.FC = () => {
                     </tr>
                   ) : (
                     filteredCheques.map((ch: any, idx: number) => {
-                      const isInward = ch.direction === 'IN';
+                      const isInward = ch.direction === 'IN' || String(ch.direction || '').toLowerCase().includes('inward');
                       const isPending = (ch.status || 'Pending').toLowerCase() === 'pending';
                       const isDeposited = (ch.status || '').toLowerCase() === 'deposited';
                       const isCleared = (ch.status || '').toLowerCase() === 'cleared';
@@ -937,13 +970,28 @@ export const DailyCashFlowHub: React.FC = () => {
                       return (
                         <tr key={ch.id || idx} className="hover:bg-surface2/40 transition-colors">
                           <td className="py-2.5 px-3 font-mono font-bold text-primary">
-                            {ch.chequeNo}
+                            <div className="flex items-center gap-1.5">
+                              <span>{ch.chequeNo}</span>
+                              <button
+                                onClick={() => setActiveChequeForPrint(ch)}
+                                className="p-1 hover:bg-emerald-500/10 text-muted hover:text-emerald-600 rounded transition-colors"
+                                title="Print CTS Standard Cheque & Voucher"
+                              >
+                                <Printer size={12} />
+                              </button>
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 font-mono text-secondary whitespace-nowrap">
-                            {ch.chequeDate ? ch.chequeDate.slice(0, 10) : '-'}
+                            <div>{ch.chequeDate ? ch.chequeDate.slice(0, 10) : '-'}</div>
+                            {ch.realizedDate && (
+                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                Realized: {ch.realizedDate.slice(0, 10)}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 font-medium text-secondary">
-                            {ch.bankName || 'General Bank'}
+                            <div>{ch.bankName || 'General Bank'}</div>
+                            {ch.branchName && <div className="text-[10px] text-muted">{ch.branchName}</div>}
                           </td>
                           <td className="py-2.5 px-3">
                             <Badge variant={isInward ? 'success' : 'info'}>
@@ -954,7 +1002,7 @@ export const DailyCashFlowHub: React.FC = () => {
                             {ch.partyName || '-'}
                           </td>
                           <td className="py-2.5 px-3 font-mono text-[11px] text-muted">
-                            {ch.reference || ch.voucherNo || '-'}
+                            {ch.reference || ch.voucherNo || ch.refNo || '-'}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-primary whitespace-nowrap">
                             {formatCurrency(ch.amount)}
@@ -970,6 +1018,33 @@ export const DailyCashFlowHub: React.FC = () => {
                           </td>
                           <td className="py-2.5 px-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
+                              {/* Print Cheque Button */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setActiveChequeForPrint(ch)}
+                                className="h-7 px-2 text-[10px] text-secondary hover:text-primary hover:bg-surface2"
+                                title="Print Cheque Leaf & Voucher"
+                              >
+                                <Printer size={12} className="mr-1" />
+                                Print
+                              </Button>
+
+                              {/* Realize Cheque into GL on Realization Date */}
+                              {!isCleared && (
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  disabled={statusUpdatingId === ch.id}
+                                  onClick={() => setActiveChequeForRealize(ch)}
+                                  className="h-7 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                  title="Mark Realized on specific date & post to General Ledger"
+                                >
+                                  <Check size={11} className="mr-1" />
+                                  Realize to GL
+                                </Button>
+                              )}
+
                               {isInward && isPending && (
                                 <Button
                                   variant="ghost"
@@ -978,21 +1053,10 @@ export const DailyCashFlowHub: React.FC = () => {
                                   onClick={() => handleUpdateChequeStatus(ch, 'Deposited')}
                                   className="h-7 px-2 text-[10px] text-blue-400 hover:bg-blue-500/10"
                                 >
-                                  Mark Deposited
+                                  Deposited
                                 </Button>
                               )}
-                              {!isCleared && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={statusUpdatingId === ch.id}
-                                  onClick={() => handleUpdateChequeStatus(ch, 'Cleared')}
-                                  className="h-7 px-2 text-[10px] text-emerald-400 hover:bg-emerald-500/10 font-medium"
-                                >
-                                  <Check size={11} className="mr-1" />
-                                  Clear
-                                </Button>
-                              )}
+
                               {!isReturned && (
                                 <Button
                                   variant="ghost"
@@ -1002,9 +1066,10 @@ export const DailyCashFlowHub: React.FC = () => {
                                   className="h-7 px-2 text-[10px] text-rose-400 hover:bg-rose-500/10"
                                 >
                                   <X size={11} className="mr-1" />
-                                  Dishonor / Return
+                                  Return
                                 </Button>
                               )}
+
                               {(isCleared || isReturned || isDeposited) && (
                                 <Button
                                   variant="ghost"
@@ -1926,6 +1991,35 @@ export const DailyCashFlowHub: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Cheque Management Modals */}
+      {isCreateChequeModalOpen && (
+        <CreateChequeModal
+          isOpen={isCreateChequeModalOpen}
+          onClose={() => setIsCreateChequeModalOpen(false)}
+          onSuccess={() => {
+            loadCashFlow();
+            loadVouchers();
+          }}
+        />
+      )}
+
+      {activeChequeForRealize && (
+        <ChequeRealizationModal
+          isOpen={!!activeChequeForRealize}
+          onClose={() => setActiveChequeForRealize(null)}
+          cheque={activeChequeForRealize}
+          onConfirmRealize={handleRealizeCheque}
+        />
+      )}
+
+      {activeChequeForPrint && (
+        <ChequePrintModal
+          isOpen={!!activeChequeForPrint}
+          onClose={() => setActiveChequeForPrint(null)}
+          cheque={activeChequeForPrint}
+        />
       )}
     </div>
   );
