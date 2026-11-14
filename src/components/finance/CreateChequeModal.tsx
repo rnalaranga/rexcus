@@ -9,6 +9,8 @@ import { useAccounts } from '@/hooks/useFinance';
 import { createChequeRecord } from '@/lib/api';
 import { formatCurrency, numberToWords } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
+import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 
 export interface CreateChequeModalProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ export const CreateChequeModal: React.FC<CreateChequeModalProps> = ({
   const [chequeDate, setChequeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payeeName, setPayeeName] = useState('');
   const [partyType, setPartyType] = useState<'customer' | 'supplier' | 'employee' | 'other'>('customer');
+  const [partyId, setPartyId] = useState('');
   const [bankName, setBankName] = useState('Commercial Bank');
   const [branchName, setBranchName] = useState('');
   const [amount, setAmount] = useState<string | number>('');
@@ -77,6 +80,7 @@ export const CreateChequeModal: React.FC<CreateChequeModalProps> = ({
         chequeDate,
         payeeName: payeeName.trim(),
         partyType,
+        partyId: partyId || undefined,
         bankName: bankName.trim() || 'General Bank',
         branchName: branchName.trim() || undefined,
         amount: numAmount,
@@ -191,27 +195,97 @@ export const CreateChequeModal: React.FC<CreateChequeModalProps> = ({
             </div>
           </div>
 
-          {/* Payee / Drawer Name & Party Category */}
+          {/* Payee / Drawer Name & Party Category with Auto-complete */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2 space-y-1">
               <label className="text-xs font-bold text-primary uppercase tracking-wider">
-                {direction === 'IN' ? 'Drawer / Customer Name *' : 'Payee / Vendor Name *'}
+                {partyType === 'customer' 
+                  ? 'Select Customer (Auto-complete) *' 
+                  : partyType === 'supplier'
+                  ? 'Select Vendor / Supplier (Auto-complete) *'
+                  : 'Payee / Drawer Name *'}
               </label>
-              <input
-                type="text"
-                required
-                value={payeeName}
-                onChange={e => setPayeeName(e.target.value)}
-                placeholder={direction === 'IN' ? 'e.g. Colombo Dockyard PLC' : 'e.g. Lanka Steel Industries'}
-                className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
-              />
+
+              {partyType === 'customer' ? (
+                <CustomerAutocomplete
+                  value={partyId || payeeName}
+                  placeholder="Type to search customer by name, company..."
+                  onChange={(cId, cust) => {
+                    setPartyId(cId || '');
+                    if (cust) {
+                      setPayeeName(cust.company || cust.name || '');
+                    } else {
+                      setPayeeName('');
+                    }
+                  }}
+                  onSelectCustomer={(cust) => {
+                    if (cust) {
+                      setPartyId(cust.id);
+                      setPayeeName(cust.company || cust.name || '');
+                    }
+                  }}
+                />
+              ) : partyType === 'supplier' ? (
+                <SupplierAutocomplete
+                  value={partyId || payeeName}
+                  placeholder="Type to search supplier by name, company..."
+                  onChange={(sId, supp) => {
+                    setPartyId(sId || '');
+                    if (supp) {
+                      setPayeeName(supp.company || supp.name || '');
+                    } else {
+                      setPayeeName('');
+                    }
+                  }}
+                  onSelectSupplier={(supp) => {
+                    if (supp) {
+                      setPartyId(supp.id);
+                      setPayeeName(supp.company || supp.name || '');
+                    }
+                  }}
+                />
+              ) : (
+                <input
+                  type="text"
+                  required
+                  value={payeeName}
+                  onChange={e => {
+                    setPayeeName(e.target.value);
+                    setPartyId('');
+                  }}
+                  placeholder="e.g. Employee Name or External Entity"
+                  className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
+                />
+              )}
+
+              {/* Show selected or custom name edit fallback */}
+              {(partyType === 'customer' || partyType === 'supplier') && payeeName && (
+                <div className="text-[11px] text-muted flex items-center justify-between pt-0.5 px-0.5">
+                  <span>Selected: <strong className="text-primary">{payeeName}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartyId('');
+                      setPayeeName('');
+                    }}
+                    className="text-[10px] text-red-500 hover:underline cursor-pointer"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
               <label className="text-xs font-bold text-primary uppercase tracking-wider">Party Category</label>
               <select
                 value={partyType}
-                onChange={e => setPartyType(e.target.value as any)}
+                onChange={e => {
+                  const val = e.target.value as any;
+                  setPartyType(val);
+                  setPartyId('');
+                  setPayeeName('');
+                }}
                 className="w-full px-3 py-2 bg-background border border-theme-subtle text-xs font-semibold text-primary outline-none focus:border-emerald-500"
               >
                 <option value="customer">Customer</option>
