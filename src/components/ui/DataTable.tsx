@@ -23,6 +23,8 @@ interface DataTableProps<T> {
   itemsPerPage?: number
   pageSizeOptions?: number[]
   itemLabel?: string
+  defaultSortKey?: string
+  defaultSortDir?: 'asc' | 'desc'
 }
 
 export function DataTable<T>({
@@ -30,10 +32,12 @@ export function DataTable<T>({
   emptyMessage = 'No data found', keyExtractor,
   pagination = false, itemsPerPage = 25,
   pageSizeOptions = [15, 25, 50, 100],
-  itemLabel = 'items'
+  itemLabel = 'items',
+  defaultSortKey = null as any,
+  defaultSortDir = 'asc'
 }: DataTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortKey, setSortKey] = useState<string | null>(defaultSortKey || null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultSortDir || 'asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(itemsPerPage || 25)
 
@@ -53,6 +57,33 @@ export function DataTable<T>({
     if (!sortKey) return 0
     let av = (a as Record<string, unknown>)[sortKey]
     let bv = (b as Record<string, unknown>)[sortKey]
+
+    // Special awareness: if sorting by 'id' or 'invoiceNo' and row contains invoiceNo, compare by invoice sequence
+    if ((sortKey === 'id' || sortKey === 'invoiceNo') && (typeof av === 'string' || typeof bv === 'string')) {
+      const aRaw = String((a as any).invoiceNo || av || '').trim().toUpperCase();
+      const bRaw = String((b as any).invoiceNo || bv || '').trim().toUpperCase();
+
+      const parseInvoiceRank = (s: string) => {
+        const monthMap: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+        const m = s.match(/^(\d{2})([A-Z]{3})[_-](?:[A-Z]+[_-])?(\d+)$/);
+        if (m) {
+          const yr = 2000 + parseInt(m[1], 10);
+          const mo = monthMap[m[2]] || 0;
+          const num = parseInt(m[3], 10);
+          return yr * 100000000 + mo * 1000000 + num;
+        }
+        const m2 = s.match(/[_-](\d+)$/);
+        if (m2) return parseInt(m2[1], 10);
+        return null;
+      };
+
+      const rankA = parseInvoiceRank(aRaw);
+      const rankB = parseInvoiceRank(bRaw);
+      if (rankA !== null && rankB !== null) {
+        return sortDir === 'asc' ? rankA - rankB : rankB - rankA;
+      }
+    }
+
     if (av === bv) return 0
     if (av === null || av === undefined) return 1
     if (bv === null || bv === undefined) return -1

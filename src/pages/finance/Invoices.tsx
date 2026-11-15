@@ -624,6 +624,32 @@ export const Invoices: React.FC = () => {
     }
 
     return searchMatch && statusMatch && customerMatch && dateMatch;
+  }).sort((a, b) => {
+    // Default initial order: newest invoice sequence number first (descending numerical order)
+    const monthMap: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+    const parseInvoiceRank = (s: string) => {
+      const clean = String(s || '').trim().toUpperCase();
+      const m = clean.match(/^(\d{2})([A-Z]{3})[_-](?:[A-Z]+[_-])?(\d+)$/);
+      if (m) {
+        const yr = 2000 + parseInt(m[1], 10);
+        const mo = monthMap[m[2]] || 0;
+        const num = parseInt(m[3], 10);
+        return yr * 100000000 + mo * 1000000 + num;
+      }
+      const m2 = clean.match(/[_-](\d+)$/);
+      if (m2) return parseInt(m2[1], 10);
+      return null;
+    };
+
+    const rankA = parseInvoiceRank(a.invoiceNo || a.id);
+    const rankB = parseInvoiceRank(b.invoiceNo || b.id);
+    if (rankA !== null && rankB !== null && rankA !== rankB) {
+      return rankB - rankA;
+    }
+
+    const dateA = new Date(a.date || 0).getTime();
+    const dateB = new Date(b.date || 0).getTime();
+    return dateB - dateA;
   });
 
   const getStatusBadge = (status: string) => {
@@ -1124,7 +1150,16 @@ export const Invoices: React.FC = () => {
         {loading ? (
           <div className="p-8 text-center text-muted">Loading invoices...</div>
         ) : (
-          <DataTable columns={columns} data={filteredInvoices} keyExtractor={item => item.id} pagination itemsPerPage={25} itemLabel="invoices" />
+          <DataTable
+            columns={columns}
+            data={filteredInvoices}
+            keyExtractor={item => item.id}
+            pagination
+            itemsPerPage={25}
+            itemLabel="invoices"
+            defaultSortKey="id"
+            defaultSortDir="desc"
+          />
         )}
       </GlassCard>
 

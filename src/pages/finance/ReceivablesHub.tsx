@@ -574,6 +574,27 @@ export const ReceivablesHub: React.FC = () => {
       if (invSortField === 'invoiceNo') {
         aVal = a.invoiceNo || a.id || '';
         bVal = b.invoiceNo || b.id || '';
+
+        const monthMap: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+        const parseInvoiceRank = (s: string) => {
+          const clean = String(s || '').trim().toUpperCase();
+          const m = clean.match(/^(\d{2})([A-Z]{3})[_-](?:[A-Z]+[_-])?(\d+)$/);
+          if (m) {
+            const yr = 2000 + parseInt(m[1], 10);
+            const mo = monthMap[m[2]] || 0;
+            const num = parseInt(m[3], 10);
+            return yr * 100000000 + mo * 1000000 + num;
+          }
+          const m2 = clean.match(/[_-](\d+)$/);
+          if (m2) return parseInt(m2[1], 10);
+          return null;
+        };
+
+        const rankA = parseInvoiceRank(aVal);
+        const rankB = parseInvoiceRank(bVal);
+        if (rankA !== null && rankB !== null && rankA !== rankB) {
+          return invSortDir === 'asc' ? rankA - rankB : rankB - rankA;
+        }
       } else if (invSortField === 'customer') {
         aVal = a.customerName || a.customerId || '';
         bVal = b.customerName || b.customerId || '';
