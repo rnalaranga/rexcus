@@ -1521,30 +1521,6 @@ export const Quotations: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    handleGenerateAdvanceProforma(group, latestMain);
-                    setOpenActionId(null);
-                  }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left"
-                >
-                  <FileSpreadsheet size={14} className="shrink-0 text-amber-500" />
-                  <span>Generate Advance Proforma</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleOpenReceiptModal(group, latestMain);
-                    setOpenActionId(null);
-                  }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left"
-                >
-                  <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>Issue Advance Receipt</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
                     handlePaymentRequest(group, latestMain);
                     setOpenActionId(null);
                   }}

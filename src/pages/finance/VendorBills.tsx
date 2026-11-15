@@ -15,6 +15,7 @@ import { useSuppliers } from '@/hooks/useData';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
 import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
+import { ViewVendorBillModal } from '@/components/purchasing/ViewVendorBillModal';
 import { deleteBill } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
@@ -56,6 +57,26 @@ export const VendorBills: React.FC = () => {
   const [endDate, setEndDate] = useState('');
 
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
+  const [viewingBill, setViewingBill] = useState<any | null>(null);
+  const [isSyncingGL, setIsSyncingGL] = useState<boolean>(false);
+
+  const handleSyncGL = async () => {
+    try {
+      setIsSyncingGL(true);
+      const res = await fetch('/api/finance/bills/sync-gl', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast(`Sync Complete! ${data.syncedBills} bills synced, ${data.glEntriesCreated} GL entries updated, Input VAT: Rs. ${Number(data.vatReceivableTotal || 0).toLocaleString()}`, 'success');
+        refetch();
+      } else {
+        toast(data.error || 'Failed to sync bills to GL', 'error');
+      }
+    } catch (err: any) {
+      toast(err.message || 'Error syncing bills to GL', 'error');
+    } finally {
+      setIsSyncingGL(false);
+    }
+  };
   const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
   const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
 
@@ -295,12 +316,21 @@ export const VendorBills: React.FC = () => {
               </Button>
             )}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               icon={Eye}
+              onClick={() => setViewingBill(row)}
+              className="h-7 text-xs px-2 text-primary hover:bg-surface2"
+              title="Quick View Bill"
+            >
+              View
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => navigate(`/purchasing/bill-builder?id=${row.id}`)}
               className="h-7 text-xs px-2 text-zinc-600 hover:bg-surface2"
-              title="View / Edit Bill"
+              title="Edit in Bill Builder"
             >
               Edit
             </Button>
@@ -348,6 +378,19 @@ export const VendorBills: React.FC = () => {
           >
             Refresh
           </Button>
+          {canManageBills && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={RefreshCw}
+              onClick={handleSyncGL}
+              loading={isSyncingGL}
+              className="border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 text-xs font-semibold"
+              title="Post/Sync vendor bill VAT & expenses to GL (VAT Receivables)"
+            >
+              Sync Bills to VAT / GL
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -563,6 +606,16 @@ export const VendorBills: React.FC = () => {
             refetch();
             toast?.('Vendor bills settled successfully!', 'success');
           }}
+        />
+      )}
+
+      {/* Quick View Vendor Bill Modal */}
+      {viewingBill && (
+        <ViewVendorBillModal
+          isOpen={Boolean(viewingBill)}
+          onClose={() => setViewingBill(null)}
+          bill={viewingBill}
+          onPayBill={(b) => setPaymentBill(b)}
         />
       )}
     </div>

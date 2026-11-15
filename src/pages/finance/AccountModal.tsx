@@ -26,6 +26,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
 
   useEffect(() => {
     if (initialData && isOpen) {
+      const isBSIncluded = initialData.includeInBalanceSheet !== undefined && initialData.includeInBalanceSheet !== null
+        ? (initialData.includeInBalanceSheet === 1 || initialData.includeInBalanceSheet === true || initialData.includeInBalanceSheet === '1')
+        : true;
+
       setFormData({
         code: initialData.code || '',
         name: initialData.name || '',
@@ -33,7 +37,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
         subtype: initialData.subtype || '',
         accountNumber: initialData.accountNumber || '',
         balance: Number(initialData.balance) || 0,
-        includeInBalanceSheet: initialData.includeInBalanceSheet !== undefined ? Boolean(initialData.includeInBalanceSheet) : true
+        includeInBalanceSheet: isBSIncluded
       });
     } else if (isOpen && !initialData) {
       setFormData({ code: '', name: '', type: 'Asset', subtype: '', accountNumber: '', balance: 0, includeInBalanceSheet: true });

@@ -189,11 +189,11 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
               #receipt-print-section .flex { display: flex !important; }
               #receipt-print-section .bg-slate-50 { background-color: #f8fafc !important; }
               @media print {
-                @page { size: A4 portrait; margin: 6mm 8mm; }
+                @page { size: A5 landscape; margin: 4mm 6mm; }
                 html, body { background: #fff !important; color: #000 !important; }
               }
             `}</style>
-            {/* EXACT A4 SHEET: 210mm x 297mm */}
+            {/* COMPACT A4 HALF / A5 LANDSCAPE SHEET */}
             <div
               id="receipt-print-section"
               ref={printSectionRef}
@@ -201,83 +201,79 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
               style={{
                 width: "100%",
                 maxWidth: "794px",
-                minHeight: "1050px",
-                padding: "14mm 16mm",
+                padding: "6mm 10mm",
                 fontFamily: "Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                fontSize: "11px",
-                lineHeight: "1.35",
+                fontSize: "10px",
+                lineHeight: "1.25",
                 boxSizing: "border-box",
                 color: "#0f172a",
                 backgroundColor: "#ffffff"
               }}
             >
               {/* UPPER HALF: Header, Meta, Customer & Particulars */}
-              <div className="space-y-4">
+              <div className="space-y-2.5">
                 {/* 1. Corporate Header */}
-                <div className="flex items-start justify-between border-b-2 border-slate-800 pb-3">
-                  <div className="flex items-center gap-4">
+                <div className="flex items-start justify-between border-b-2 border-slate-800 pb-2">
+                  <div className="flex items-center gap-3">
                     <img
                       src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'}
                       alt="Logo"
-                      className="max-h-16 max-w-[120px] object-contain"
+                      className="max-h-12 max-w-[100px] object-contain"
                       crossOrigin="anonymous"
                     />
                     <div>
-                      <h1 className="text-base font-black tracking-tight text-slate-900 uppercase">
+                      <h1 className="text-sm font-black tracking-tight text-slate-900 uppercase">
                         {companyName}
                       </h1>
-                      <p className="text-[10px] text-slate-600 leading-tight mt-0.5">
+                      <p className="text-[9px] text-slate-600 leading-tight">
                         {companyAddress}
                       </p>
-                      <p className="text-[10px] text-slate-600 leading-tight">
-                        Tel: {companyPhone} | Email: {companyEmail}
-                      </p>
-                      <p className="text-[10px] font-semibold text-slate-800 mt-0.5">
-                        VAT / TIN: {companyVat} | Web: {companyWeb}
+                      <p className="text-[9px] text-slate-600 leading-tight">
+                        Tel: {companyPhone} | Email: {companyEmail} | VAT / TIN: {companyVat}
                       </p>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <div className="inline-block border-2 border-slate-800 bg-slate-900 text-white px-3 py-1 font-black text-xs uppercase tracking-wider">
+                    <div className="inline-block border-2 border-slate-800 bg-slate-900 text-white px-2.5 py-0.5 font-black text-[11px] uppercase tracking-wider">
                       RECEIPT VOUCHER
                     </div>
-                    <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                    <div className="text-[8.5px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
                       Official Receipt • Original
                     </div>
                   </div>
                 </div>
 
                 {/* 2. Voucher & Customer Metadata Grid */}
-                <div className="grid grid-cols-2 gap-4 border border-slate-300 p-3 bg-slate-50/50 rounded-sm">
+                <div className="grid grid-cols-2 gap-3 border border-slate-300 p-2 bg-slate-50/50 rounded-sm">
                   {/* Left Column: Customer Details */}
-                  <div className="space-y-1">
-                    <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500">
+                  <div className="space-y-0.5">
+                    <div className="text-[8.5px] font-bold uppercase tracking-wider text-slate-500">
                       Received With Thanks From:
                     </div>
-                    <div className="font-bold text-sm text-slate-900 uppercase leading-snug">
+                    <div className="font-bold text-xs text-slate-900 uppercase leading-snug">
                       {customerName}
                     </div>
                     {attentionPerson && (
-                      <div className="text-xs text-slate-700">
+                      <div className="text-[10px] text-slate-700">
                         <span className="text-slate-500 font-normal">Attn:</span>{" "}
                         <span className="font-semibold">{attentionPerson}</span>
                       </div>
                     )}
                     {receipt.customerAddress && (
-                      <div className="text-[10px] text-slate-600 leading-tight">
+                      <div className="text-[9px] text-slate-600 leading-tight truncate max-w-[340px]">
                         {receipt.customerAddress}
                       </div>
                     )}
                     {receipt.customerPhone && (
-                      <div className="text-[10px] text-slate-600">
+                      <div className="text-[9px] text-slate-600">
                         Tel: {receipt.customerPhone}
                       </div>
                     )}
                   </div>
 
                   {/* Right Column: Voucher Reference Details */}
-                  <div className="space-y-1 text-xs border-l border-slate-200 pl-4">
+                  <div className="space-y-0.5 text-[10px] border-l border-slate-200 pl-3">
                     <div className="flex justify-between py-0.5 border-b border-slate-200/80">
                       <span className="text-slate-500 font-medium">Receipt No:</span>
                       <span className="font-mono font-bold text-slate-900">{receipt.receiptNo}</span>
@@ -312,19 +308,19 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                 </div>
 
                 {/* 3. Financial Particulars & Summary Table */}
-                <table className="w-full border-collapse border border-slate-800 text-xs">
+                <table className="w-full border-collapse border border-slate-800 text-[10px]">
                   <thead>
-                    <tr className="bg-slate-900 text-white font-bold text-[10.5px] uppercase">
-                      <th className="p-2 border-r border-slate-700 w-12 text-center">#</th>
-                      <th className="p-2 border-r border-slate-700 text-left">Description / Particulars</th>
-                      <th className="p-2 text-right w-48">Amount ({receiptCurrency})</th>
+                    <tr className="bg-slate-900 text-white font-bold text-[9.5px] uppercase">
+                      <th className="p-1.5 border-r border-slate-700 w-10 text-center">#</th>
+                      <th className="p-1.5 border-r border-slate-700 text-left">Description / Particulars</th>
+                      <th className="p-1.5 text-right w-44">Amount ({receiptCurrency})</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-b border-slate-300">
-                      <td className="p-2.5 text-center font-bold border-r border-slate-300 align-top">01</td>
-                      <td className="p-2.5 border-r border-slate-300 align-top">
-                        <div className="font-bold text-slate-900 text-xs">
+                      <td className="p-1.5 text-center font-bold border-r border-slate-300 align-top">01</td>
+                      <td className="p-1.5 border-r border-slate-300 align-top">
+                        <div className="font-bold text-slate-900 text-[10.5px]">
                           {receipt.notes ||
                             (receipt.invoiceNo
                               ? `Payment received against Commercial / Tax Invoice ${receipt.invoiceNo}`
@@ -334,48 +330,48 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                               ? `Advance consideration received against Quotation ${receipt.quotationNo}`
                               : "Payment received on account")}
                         </div>
-                        <div className="text-[10.5px] text-slate-600 mt-1 leading-normal">
+                        <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">
                           {receipt.invoiceNo
                             ? "Official payment acknowledgement for settlement of commercial tax invoice."
-                            : "Official acknowledgement of advance consideration deposited prior to manufacturing / dispatch. Credited in full against final tax invoice."}
+                            : "Official acknowledgement of advance consideration deposited prior to manufacturing / dispatch. Credited against final tax invoice."}
                         </div>
                       </td>
-                      <td className="p-2.5 text-right font-black text-sm align-top text-slate-900">
+                      <td className="p-1.5 text-right font-black text-xs align-top text-slate-900">
                         {formatCurrency(amount, false, receiptCurrency)}
                       </td>
                     </tr>
 
                     {/* Breakdown Rows if quotation/order total exists */}
                     {totalQuoted > 0 && (
-                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px]">
-                        <td className="p-1.5 border-r border-slate-300"></td>
-                        <td className="p-1.5 border-r border-slate-300 text-slate-600 font-medium">
+                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[9.5px]">
+                        <td className="p-1 border-r border-slate-300"></td>
+                        <td className="p-1 border-r border-slate-300 text-slate-600 font-medium">
                           Total Confirmed Order / Quotation Consideration:
                         </td>
-                        <td className="p-1.5 text-right font-semibold text-slate-800 font-mono">
+                        <td className="p-1 text-right font-semibold text-slate-800 font-mono">
                           {formatCurrency(totalQuoted, false, receiptCurrency)}
                         </td>
                       </tr>
                     )}
 
                     {balanceRemaining !== null && balanceRemaining > 0 && (
-                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px]">
-                        <td className="p-1.5 border-r border-slate-300"></td>
-                        <td className="p-1.5 border-r border-slate-300 text-slate-600 font-medium">
+                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[9.5px]">
+                        <td className="p-1 border-r border-slate-300"></td>
+                        <td className="p-1 border-r border-slate-300 text-slate-600 font-medium">
                           Balance Due to be Invoiced on Delivery:
                         </td>
-                        <td className="p-1.5 text-right font-semibold text-slate-800 font-mono">
+                        <td className="p-1 text-right font-semibold text-slate-800 font-mono">
                           {formatCurrency(balanceRemaining, false, receiptCurrency)}
                         </td>
                       </tr>
                     )}
 
                     {/* Total Amount Received Row */}
-                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-800 text-xs">
-                      <td colSpan={2} className="p-2.5 text-right border-r border-slate-300 uppercase tracking-wider font-black text-slate-900">
+                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-800 text-[10.5px]">
+                      <td colSpan={2} className="p-1.5 text-right border-r border-slate-300 uppercase tracking-wider font-black text-slate-900">
                         Total Amount Received:
                       </td>
-                      <td className="p-2.5 text-right font-black text-base text-slate-950 font-mono">
+                      <td className="p-1.5 text-right font-black text-xs text-slate-950 font-mono">
                         {formatCurrency(amount, false, receiptCurrency)}
                       </td>
                     </tr>
@@ -383,27 +379,27 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
                 </table>
 
                 {/* 4. Amount in Words Callout */}
-                <div className="border border-slate-300 bg-slate-50/80 p-2.5 rounded-sm">
-                  <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                <div className="border border-slate-300 bg-slate-50/80 p-1.5 rounded-sm flex items-center gap-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 shrink-0">
                     Amount in Words:
                   </div>
-                  <div className="text-xs font-bold text-slate-900 italic capitalize leading-snug">
+                  <div className="text-[10px] font-bold text-slate-900 italic capitalize leading-snug">
                     {words} Rupees Only.
                   </div>
                 </div>
 
                 {/* 5. Settlement & Audit Trail (Deposited Account & Reference) */}
-                <div className="grid grid-cols-3 gap-2 border border-slate-300 p-2.5 text-[10.5px] bg-white rounded-sm">
+                <div className="grid grid-cols-3 gap-2 border border-slate-300 p-1.5 text-[9.5px] bg-white rounded-sm">
                   <div>
-                    <span className="text-slate-500 font-medium block text-[9.5px]">Payment Method:</span>
+                    <span className="text-slate-500 font-medium block text-[8.5px]">Payment Method:</span>
                     <span className="font-bold text-slate-900 uppercase">{receipt.paymentMethod || "Cash"}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 font-medium block text-[9.5px]">Reference / Slip No:</span>
+                    <span className="text-slate-500 font-medium block text-[8.5px]">Reference / Slip No:</span>
                     <span className="font-mono font-semibold text-slate-900">{receipt.reference || "Direct / Bank"}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 font-medium block text-[9.5px]">Deposited Account:</span>
+                    <span className="text-slate-500 font-medium block text-[8.5px]">Deposited Account:</span>
                     <span className="font-semibold text-slate-900 truncate block">
                       {receipt.depositAccountName || "Bank & Cash Account"}
                     </span>
@@ -412,39 +408,39 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
               </div>
 
               {/* LOWER HALF: Statutory Notice & Signatures */}
-              <div className="space-y-4 pt-4">
+              <div className="space-y-2.5 pt-2">
                 {/* 6. Statutory Sri Lanka Inland Revenue Notice */}
-                <div className="border border-slate-300 bg-slate-50 p-2 text-[9.5px] text-slate-600 leading-snug rounded-sm flex items-start gap-2">
-                  <ShieldCheck size={14} className="text-slate-700 shrink-0 mt-0.5" />
+                <div className="border border-slate-300 bg-slate-50 p-1.5 text-[8.5px] text-slate-600 leading-snug rounded-sm flex items-start gap-1.5">
+                  <ShieldCheck size={12} className="text-slate-700 shrink-0 mt-0.5" />
                   <div>
                     <strong className="text-slate-900">Statutory Notice: </strong>
-                    This official voucher acknowledges receipt of customer advance consideration. In accordance with the Sri Lanka Inland Revenue Department regulatory framework (Gazette Extraordinary No. 2481/22), the final Tax Invoice will be issued upon delivery/dispatch of goods, crediting this advance payment against the total payable value.
+                    Official voucher acknowledging receipt of customer advance consideration in compliance with the Sri Lanka Inland Revenue Department (Gazette Extraordinary No. 2481/22). Final Tax Invoice will be issued upon delivery/dispatch of goods, crediting this payment against the total payable value.
                   </div>
                 </div>
 
                 {/* 7. Official Three-Signature Block */}
-                <div className="pt-6 border-t-2 border-slate-800 grid grid-cols-3 gap-6 text-center text-[10px]">
+                <div className="pt-3 border-t-2 border-slate-800 grid grid-cols-3 gap-6 text-center text-[9.5px]">
                   <div>
-                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <div className="border-b border-slate-400 pb-5 mb-1"></div>
                     <div className="font-bold text-slate-900">{receipt.receivedBy || "Accounts Officer"}</div>
-                    <div className="text-[9px] text-slate-500 uppercase tracking-wider">Prepared / Received By</div>
+                    <div className="text-[8.5px] text-slate-500 uppercase tracking-wider">Prepared / Received By</div>
                   </div>
 
                   <div>
-                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <div className="border-b border-slate-400 pb-5 mb-1"></div>
                     <div className="font-bold text-slate-900">Finance Manager</div>
-                    <div className="text-[9px] text-slate-500 uppercase tracking-wider">Rex Industries (Pvt) Ltd</div>
+                    <div className="text-[8.5px] text-slate-500 uppercase tracking-wider">Rex Industries (Pvt) Ltd</div>
                   </div>
 
                   <div>
-                    <div className="border-b border-slate-400 pb-8 mb-1"></div>
+                    <div className="border-b border-slate-400 pb-5 mb-1"></div>
                     <div className="font-bold text-slate-900">Customer Acknowledgment</div>
-                    <div className="text-[9px] text-slate-500 uppercase tracking-wider">Signature & Company Seal</div>
+                    <div className="text-[8.5px] text-slate-500 uppercase tracking-wider">Signature & Company Seal</div>
                   </div>
                 </div>
 
                 {/* Footer copyright and generator timestamp */}
-                <div className="flex items-center justify-between text-[8.5px] text-slate-400 pt-1 border-t border-slate-100">
+                <div className="flex items-center justify-between text-[8px] text-slate-400 pt-0.5 border-t border-slate-100">
                   <span>Rex Industries ERP • System Generated Official Document</span>
                   <span>Doc Ref: {receipt.receiptNo} • {new Date().toLocaleDateString()}</span>
                 </div>

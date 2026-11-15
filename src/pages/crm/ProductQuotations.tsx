@@ -1019,24 +1019,6 @@ export const ProductQuotations: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => { handleGenerateAdvanceProforma(group, latest); setOpenActionId(null); setActionCoords(null); }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
-                >
-                  <FileSpreadsheet size={14} className="shrink-0 text-amber-500" />
-                  <span>Generate Advance Proforma</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { handleOpenReceiptModal(group, latest); setOpenActionId(null); setActionCoords(null); }}
-                  className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
-                >
-                  <Receipt size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>Issue Advance Receipt</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => { handleCreateInvoice(group, latest); setOpenActionId(null); setActionCoords(null); }}
                   className="w-full px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
                 >

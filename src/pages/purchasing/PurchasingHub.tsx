@@ -26,6 +26,7 @@ import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
+import { ViewVendorBillModal } from '@/components/purchasing/ViewVendorBillModal';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill' | 'gate_pass';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'partially_ordered' | 'ordered' | 'partially_received' | 'rejected' | 'sent' | 'received' | 'unpaid' | 'paid';
@@ -44,6 +45,7 @@ export const PurchasingHub: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
+  const [viewingBill, setViewingBill] = useState<any | null>(null);
   const navigate = useNavigate();
 
   const { user } = useAuth();
@@ -729,11 +731,21 @@ export const PurchasingHub: React.FC = () => {
                 <button
                   type="button"
                   data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); setViewingBill(row); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-primary hover:bg-surface2 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <Eye size={13} className="text-primary" />
+                  <span>View Bill Details (Preview)</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/bill-builder?id=${row.id}`); }}
                   className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                 >
-                  <Eye size={13} className="text-blue-500" />
-                  <span>View / Edit Bill Details</span>
+                  <FileText size={13} className="text-blue-500" />
+                  <span>Edit in Bill Builder</span>
                 </button>
 
                 {row.billAttachment && (
@@ -1850,6 +1862,16 @@ export const PurchasingHub: React.FC = () => {
           onSuccess={() => {
             refetchBills();
           }}
+        />
+      )}
+
+      {/* Quick View Vendor Bill Modal */}
+      {viewingBill && (
+        <ViewVendorBillModal
+          isOpen={Boolean(viewingBill)}
+          onClose={() => setViewingBill(null)}
+          bill={viewingBill}
+          onPayBill={(b) => setPaymentBill(b)}
         />
       )}
     </div>

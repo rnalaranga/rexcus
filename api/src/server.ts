@@ -12044,6 +12044,17 @@ app.post('/api/finance/recalculate-balances', async (req, res) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+
+    // 0. Ensure all existing supplier bills with tax have their GL journal entries synced
+    try {
+      const [allBills]: any = await conn.query('SELECT * FROM supplier_bills WHERE amount > 0');
+      for (const bill of (allBills || [])) {
+        await syncBillGLEntry(bill, bill.date ? String(bill.date).slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' '));
+      }
+    } catch (syncErr) {
+      console.warn('Notice: supplier_bills GL auto-sync error:', syncErr);
+    }
+
     // 1. Reset all chart of accounts balances to 0.00
     await conn.query('UPDATE chart_of_accounts SET balance = 0.00');
     // 2. Recalculate accurately from all posted journal lines
@@ -12069,6 +12080,40 @@ app.post('/api/finance/recalculate-balances', async (req, res) => {
     res.status(500).json({ error: error.message });
   } finally {
     conn.release();
+  }
+});
+
+// Explicit endpoint to batch sync all Vendor Bills into General Ledger (Input VAT & Expense)
+app.post('/api/finance/bills/sync-gl', async (req, res) => {
+  try {
+    const [allBills]: any = await db.query('SELECT * FROM supplier_bills WHERE amount > 0');
+    let syncedCount = 0;
+    for (const bill of (allBills || [])) {
+      const bDate = bill.date ? String(bill.date).slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+      await syncBillGLEntry(bill, bDate);
+      syncedCount++;
+    }
+
+    // Recalculate COA balances
+    await db.query('UPDATE chart_of_accounts SET balance = 0.00');
+    await db.query(`
+      UPDATE chart_of_accounts coa
+      JOIN (
+        SELECT accountId, 
+               COALESCE(SUM(debit), 0) as sumDebit, 
+               COALESCE(SUM(credit), 0) as sumCredit 
+        FROM journal_lines 
+        GROUP BY accountId
+      ) jl ON coa.id = jl.accountId
+      SET coa.balance = CASE 
+        WHEN coa.type IN ('Asset', 'Expense') THEN (jl.sumDebit - jl.sumCredit)
+        ELSE (jl.sumCredit - jl.sumDebit)
+      END
+    `);
+
+    res.json({ success: true, count: syncedCount, message: `Successfully synchronized ${syncedCount} vendor bills to General Ledger and Input VAT!` });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

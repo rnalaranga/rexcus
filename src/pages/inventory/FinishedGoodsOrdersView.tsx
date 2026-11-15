@@ -2685,6 +2685,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <span className="text-secondary">{order.status || 'Active'}</span>
             </div>
 
+            {/* Direct Advance Payment Receipt (Without PI) */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null);
+                handleOpenReceiptModal(order);
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-emerald-600 dark:text-emerald-400 font-semibold"
+              title="Issue Advance Payment Receipt directly for this Sales Order without generating a Proforma Invoice"
+            >
+              <span className="flex items-center gap-2">
+                <Receipt size={13} className="text-emerald-500" /> Pay Advance (Direct Receipt)
+              </span>
+              <span className="text-[10px] font-mono px-1 py-0.2 bg-emerald-500/10 border border-emerald-500/20">Receipt</span>
+            </button>
+
             {/* 1. Advance Proforma Invoice */}
             {linkedProforma ? (
               <div className="flex items-center justify-between hover:bg-surface2 transition-colors border-b border-theme-subtle/30">
