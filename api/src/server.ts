@@ -2003,6 +2003,8 @@ async function runDatabaseSync() {
     "ALTER TABLE cashbook_entries ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills MODIFY COLUMN date VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_bills MODIFY COLUMN dueDate VARCHAR(100) DEFAULT NULL",
     `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
       id VARCHAR(50) PRIMARY KEY,
       jobNo VARCHAR(50) NOT NULL UNIQUE,
@@ -9698,13 +9700,14 @@ app.post('/api/purchasing/bills', async (req, res) => {
     const normalizeDateTime = (val: any) => {
       if (!val) return null;
       try {
-        const str = String(val).trim();
+        let str = String(val).trim();
         if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
           return `${str} 00:00:00`;
         }
         if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
           return str.slice(0, 19).replace('T', ' ');
         }
+        str = str.replace(/GM\s*([+-])/i, 'GMT$1');
         const d = new Date(str);
         if (!isNaN(d.getTime())) {
           return d.toISOString().slice(0, 19).replace('T', ' ');
@@ -9801,13 +9804,14 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
     const normalizeDateTime = (val: any) => {
       if (!val) return null;
       try {
-        const str = String(val).trim();
+        let str = String(val).trim();
         if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
           return `${str} 00:00:00`;
         }
         if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
           return str.slice(0, 19).replace('T', ' ');
         }
+        str = str.replace(/GM\s*([+-])/i, 'GMT$1');
         const d = new Date(str);
         if (!isNaN(d.getTime())) {
           return d.toISOString().slice(0, 19).replace('T', ' ');
@@ -12088,14 +12092,22 @@ app.post('/api/finance/recalculate-balances', async (req, res) => {
 });
 
 // Explicit endpoint to batch sync all Vendor Bills into General Ledger (Input VAT & Expense)
-app.post('/api/finance/bills/sync-gl', async (req, res) => {
+app.all(['/api/finance/bills/sync-gl', '/api/purchasing/bills/sync-gl'], async (req, res) => {
   try {
     const [allBills]: any = await db.query('SELECT * FROM supplier_bills WHERE amount > 0');
     let syncedCount = 0;
+    const errors: string[] = [];
     for (const bill of (allBills || [])) {
-      const bDate = bill.date ? String(bill.date).slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
-      await syncBillGLEntry(bill, bDate);
-      syncedCount++;
+      try {
+        let bDate = bill.date ? String(bill.date).trim() : '';
+        bDate = bDate.replace(/GM\s*([+-])/i, 'GMT$1');
+        const parsedD = new Date(bDate);
+        const finalDate = !isNaN(parsedD.getTime()) ? parsedD.toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await syncBillGLEntry(bill, finalDate);
+        syncedCount++;
+      } catch (bErr: any) {
+        errors.push(`Bill ${bill.id}: ${bErr.message}`);
+      }
     }
 
     // Recalculate COA balances
@@ -12130,9 +12142,11 @@ app.post('/api/finance/bills/sync-gl', async (req, res) => {
       success: true,
       count: syncedCount,
       syncedBills: syncedCount,
+      totalBillsFound: allBills.length,
       glEntriesCreated: glCount,
       vatReceivableTotal: vatBalance,
-      message: `Successfully synchronized ${syncedCount} vendor bills to General Ledger and Input VAT!`
+      errors: errors.length ? errors : undefined,
+      message: `Successfully synchronized ${syncedCount} of ${allBills.length} vendor bills to General Ledger and Input VAT!`
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
