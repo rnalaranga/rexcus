@@ -401,28 +401,6 @@ export const AccountingHub: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {/* Balance Sheet Inclusion Toggle */}
-                                    <div className="flex items-center gap-1.5 flex-shrink-0" title={acc.includeInBalanceSheet === 0 || acc.includeInBalanceSheet === false ? "Excluded from Balance Sheet (Click to include)" : "Included in Balance Sheet (Click to exclude)"}>
-                                      <label className="flex items-center gap-1 text-[11px] font-medium text-secondary cursor-pointer select-none px-2 py-1 rounded bg-surface border border-theme-subtle hover:bg-surface2">
-                                        <input
-                                          type="checkbox"
-                                          checked={acc.includeInBalanceSheet !== 0 && acc.includeInBalanceSheet !== false}
-                                          onChange={async (e) => {
-                                            const newVal = e.target.checked ? 1 : 0;
-                                            try {
-                                              await updateAccount(acc.id, { ...acc, includeInBalanceSheet: newVal });
-                                              toast(`"${acc.name}" ${newVal ? 'included in' : 'excluded from'} Balance Sheet.`, 'success');
-                                              refetchCOA();
-                                            } catch (err: any) {
-                                              showError(err.message || 'Failed to update account setting');
-                                            }
-                                          }}
-                                          className="rounded border-theme text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
-                                        />
-                                        <span className="hidden sm:inline text-[10px] uppercase font-bold text-muted">BS</span>
-                                      </label>
-                                    </div>
-
                                     {/* Balance */}
                                     <div className="text-right flex-shrink-0">
                                       <p className="text-sm font-bold font-mono text-primary">{formatCurrency(Number(acc.balance || 0))}</p>
