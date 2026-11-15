@@ -9705,11 +9705,13 @@ app.post('/api/purchasing/bills', async (req, res) => {
         if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
           return str.slice(0, 19).replace('T', ' ');
         }
-        const d = new Date(val);
-        if (isNaN(d.getTime())) return null;
-        return d.toISOString().slice(0, 19).replace('T', ' ');
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().slice(0, 19).replace('T', ' ');
+        }
+        return new Date().toISOString().slice(0, 19).replace('T', ' ');
       } catch {
-        return null;
+        return new Date().toISOString().slice(0, 19).replace('T', ' ');
       }
     };
 
@@ -9806,11 +9808,13 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
         if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
           return str.slice(0, 19).replace('T', ' ');
         }
-        const d = new Date(val);
-        if (isNaN(d.getTime())) return null;
-        return d.toISOString().slice(0, 19).replace('T', ' ');
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().slice(0, 19).replace('T', ' ');
+        }
+        return new Date().toISOString().slice(0, 19).replace('T', ' ');
       } catch {
-        return null;
+        return new Date().toISOString().slice(0, 19).replace('T', ' ');
       }
     };
 
