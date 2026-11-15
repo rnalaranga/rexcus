@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Search, Filter, Receipt, FileText, CheckCircle2, Clock, 
   AlertCircle, CreditCard, Building2, Download, Paperclip, Eye, 
-  ArrowUpRight, ArrowDownRight, RefreshCw, Calendar, Trash2
+  ArrowUpRight, ArrowDownRight, RefreshCw, Calendar, Trash2,
+  ChevronDown, ExternalLink, Edit
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -79,6 +81,36 @@ export const VendorBills: React.FC = () => {
   };
   const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
   const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
+
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionCoords, setActionCoords] = useState<{
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.bill-action-menu-dropdown') && !target.closest('.bill-action-trigger-btn')) {
+        setOpenActionId(null);
+        setActionCoords(null);
+      }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    const handleScroll = () => {
+      setOpenActionId(null);
+      setActionCoords(null);
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, []);
 
   const getSupplierName = (id: string) => {
     const s = suppliers.find((sp: any) => sp.id === id);
@@ -289,6 +321,42 @@ export const VendorBills: React.FC = () => {
         const total = Number(row.amount || row.totalAmount || 0);
         const paid = Number(row.paidAmount || 0);
         const due = Math.max(0, total - paid);
+        const isOpen = openActionId === row.id;
+
+        let menuStyle: React.CSSProperties = {};
+        if (isOpen && actionCoords) {
+          const PADDING = 8;
+          const MENU_WIDTH = 210;
+
+          let left = actionCoords.right - MENU_WIDTH;
+          if (left < PADDING) left = PADDING;
+          if (left + MENU_WIDTH > window.innerWidth - PADDING) {
+            left = window.innerWidth - MENU_WIDTH - PADDING;
+          }
+
+          const spaceBelow = window.innerHeight - actionCoords.bottom - PADDING;
+          const spaceAbove = actionCoords.top - PADDING;
+          const openUpwards = spaceBelow < 260 && spaceAbove > spaceBelow;
+          const maxHeight = Math.min(380, Math.max(180, (openUpwards ? spaceAbove : spaceBelow) - 10));
+
+          menuStyle = {
+            position: 'fixed',
+            left: `${left}px`,
+            width: `${MENU_WIDTH}px`,
+            maxHeight: `${maxHeight}px`,
+            zIndex: 99999,
+            ...(openUpwards 
+              ? { bottom: `${window.innerHeight - actionCoords.top + 4}px` } 
+              : { top: `${actionCoords.bottom + 4}px` }
+            )
+          };
+        }
+
+        const closeDropdown = () => {
+          setOpenActionId(null);
+          setActionCoords(null);
+        };
+
         return (
           <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
             {due > 0 && (
@@ -303,47 +371,137 @@ export const VendorBills: React.FC = () => {
                 Pay Bill
               </Button>
             )}
-            {row.billAttachment && (
-              <Button
-                variant="outline"
-                size="sm"
-                icon={Paperclip}
-                onClick={() => openDataUriOrUrl(row.billAttachment, `Vendor Bill - ${row.invoiceNo || row.id}`)}
-                className="h-7 text-xs px-2 text-blue-600 hover:bg-blue-500/10"
-                title="View Vendor Document"
+
+            <div className="relative inline-block text-left" data-no-row-click="true">
+              <button
+                type="button"
+                data-no-row-click="true"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (openActionId === row.id) {
+                    closeDropdown();
+                  } else {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setOpenActionId(row.id);
+                    setActionCoords({
+                      top: rect.top,
+                      bottom: rect.bottom,
+                      left: rect.left,
+                      right: rect.right,
+                      width: rect.width,
+                      height: rect.height
+                    });
+                  }
+                }}
+                className={`bill-action-trigger-btn relative h-7 px-2.5 text-xs font-semibold border flex items-center gap-1 transition-colors rounded-none cursor-pointer ${
+                  isOpen
+                    ? 'bg-amber-600 text-white border-amber-600'
+                    : 'bg-surface hover:bg-surface2 text-primary border-theme-subtle'
+                }`}
+                title="Bill Actions"
               >
-                Doc
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              icon={Eye}
-              onClick={() => setViewingBill(row)}
-              className="h-7 text-xs px-2 text-primary hover:bg-surface2"
-              title="Quick View Bill"
-            >
-              View
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/purchasing/bill-builder?id=${row.id}`)}
-              className="h-7 text-xs px-2 text-zinc-600 hover:bg-surface2"
-              title="Edit in Bill Builder"
-            >
-              Edit
-            </Button>
-            {isAdmin && (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={Trash2}
-                onClick={() => handleDeleteBill(row.id)}
-                className="h-7 text-xs px-2 text-rose-500 hover:bg-rose-500/10"
-                title="Delete Bill"
-              />
-            )}
+                <span>Actions</span>
+                <ChevronDown size={11} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isOpen && actionCoords && typeof document !== 'undefined' && createPortal(
+                <div
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  style={menuStyle}
+                  className="bill-action-menu-dropdown bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl py-1.5 text-left rounded-none animate-in fade-in zoom-in-95 duration-100 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar"
+                >
+                  <div className="px-3.5 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider font-mono border-b border-theme-subtle/50 mb-1">
+                    Bill Actions (#{row.invoiceNo || row.id})
+                  </div>
+
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeDropdown();
+                      setViewingBill(row);
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Eye size={13} className="text-zinc-400" />
+                    <span>View Bill Details</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeDropdown();
+                      navigate(`/purchasing/bill-builder?id=${row.id}`);
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <Edit size={13} className="text-zinc-400" />
+                    <span>Edit in Bill Builder</span>
+                  </button>
+
+                  {row.billAttachment && (
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        openDataUriOrUrl(row.billAttachment, `Vendor Bill - ${row.invoiceNo || row.id}`);
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Paperclip size={13} className="text-blue-500" />
+                      <span>View Attached Document</span>
+                    </button>
+                  )}
+
+                  {due > 0 && (
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        setPaymentBill(row);
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <CreditCard size={13} className="text-emerald-500" />
+                      <span>Record Payment</span>
+                    </button>
+                  )}
+
+                  {isAdmin && (
+                    <div className="border-t border-theme-subtle/50 mt-1 pt-1">
+                      <button
+                        type="button"
+                        data-no-row-click="true"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          closeDropdown();
+                          handleDeleteBill(row.id);
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                      >
+                        <Trash2 size={13} className="text-rose-500" />
+                        <span>Delete Bill</span>
+                      </button>
+                    </div>
+                  )}
+                </div>,
+                document.body
+              )}
+            </div>
           </div>
         );
       }

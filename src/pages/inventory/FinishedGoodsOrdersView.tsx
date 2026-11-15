@@ -50,6 +50,7 @@ import {
   createWorkOrder,
   fetchWorkOrders,
   fetchPaymentReceipts,
+  deletePaymentReceipt,
   deleteInvoice,
   fetchAllCustomerGRNs,
   fetchNextDocumentNumber,
@@ -415,6 +416,29 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     setSelectedOrderForReceipt(order)
     setReceiptModalOpen(true)
   }
+
+  const handleDeleteReceipt = async (receipt: any) => {
+    if (!receipt) return;
+    const recNo = receipt.receiptNo || receipt.id;
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete Advance Payment Receipt "${recNo}" for ${formatCurrency(Number(receipt.amount || 0))}? This action will reverse any deposit entries and update this order.`,
+      'Delete Payment Receipt'
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await deletePaymentReceipt(receipt.id);
+      if (res && res.error) {
+        throw new Error(res.error);
+      }
+      toast(`Payment receipt ${recNo} deleted successfully`, 'success');
+      loadPaymentReceipts();
+      refetch();
+    } catch (err: any) {
+      console.error('Failed to delete payment receipt:', err);
+      toast(err.message || 'Failed to delete payment receipt', 'error');
+    }
+  };
 
   const handleInvoiceClick = (order: any, specificDispatchNo?: string, bypassProformaCheck: boolean = false) => {
     // Check if there is an active linked Proforma Invoice that has NOT received payment yet
@@ -2700,6 +2724,54 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               </span>
               <span className="text-[10px] font-mono px-1 py-0.2 bg-emerald-500/10 border border-emerald-500/20">Receipt</span>
             </button>
+
+            {/* List Linked Advance Payment Receipts */}
+            {(() => {
+              const orderReceipts = getOrderReceipts(order);
+              if (orderReceipts.length === 0) return null;
+              return (
+                <div className="border-t border-b border-theme-subtle/50 my-1 py-1 bg-emerald-500/5">
+                  <div className="px-3 py-1 text-[9.5px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Advance Receipts ({orderReceipts.length})</span>
+                    <span>Rs. {orderReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0).toLocaleString()}</span>
+                  </div>
+                  {orderReceipts.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between px-3 py-1 hover:bg-emerald-500/10 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenActionOrderId(null);
+                          setActivePrintReceipt({
+                            ...r,
+                            orderNo: order.orderNo,
+                            totalQuoted: Number(order.totalPrice || 0)
+                          });
+                          setPrintReceiptModalOpen(true);
+                        }}
+                        className="flex-1 text-left flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-mono text-[11px] truncate"
+                        title="Click to View / Print Receipt"
+                      >
+                        <Receipt size={11} className="text-emerald-500 shrink-0" />
+                        <span className="font-bold">{r.receiptNo || r.id}</span>
+                        <span className="text-muted text-[10px]">({formatCurrency(Number(r.amount || 0), false, r.currency || order.currency || 'LKR')})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenActionOrderId(null);
+                          handleDeleteReceipt(r);
+                        }}
+                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 transition-colors ml-1"
+                        title="Delete this Advance Receipt"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* 1. Advance Proforma Invoice */}
             {linkedProforma ? (
