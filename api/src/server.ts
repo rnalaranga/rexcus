@@ -12115,7 +12115,25 @@ app.post('/api/finance/bills/sync-gl', async (req, res) => {
       END
     `);
 
-    res.json({ success: true, count: syncedCount, message: `Successfully synchronized ${syncedCount} vendor bills to General Ledger and Input VAT!` });
+    // Fetch total Input VAT balance
+    const [vatRows]: any = await db.query(`
+      SELECT balance FROM chart_of_accounts 
+      WHERE (code = "1690" OR code = "1300" OR (name LIKE "%VAT%" AND (name LIKE "%Input%" OR name LIKE "%Receivable%" OR name LIKE "%Recoverable%"))) AND type = "Asset"
+      ORDER BY (code = "1300" OR code = "1690") DESC LIMIT 1
+    `);
+    const vatBalance = vatRows.length ? Number(vatRows[0].balance || 0) : 0;
+
+    const [glCountRows]: any = await db.query('SELECT COUNT(*) as cnt FROM journal_lines');
+    const glCount = glCountRows.length ? Number(glCountRows[0].cnt || 0) : 0;
+
+    res.json({
+      success: true,
+      count: syncedCount,
+      syncedBills: syncedCount,
+      glEntriesCreated: glCount,
+      vatReceivableTotal: vatBalance,
+      message: `Successfully synchronized ${syncedCount} vendor bills to General Ledger and Input VAT!`
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
