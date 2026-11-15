@@ -2124,6 +2124,23 @@ export const ProductQuotations: React.FC = () => {
                                 });
                               }
 
+                              // Gate Pass / Dispatch Note Traceability
+                              const seenGps = new Set<string>();
+                              quoteOrders.forEach((so: any) => {
+                                const gpNum = so.gatePassNo || so.gatePassId || so.dispatchNo;
+                                if (gpNum && gpNum.trim() && !seenGps.has(gpNum.toLowerCase())) {
+                                  seenGps.add(gpNum.toLowerCase());
+                                  traces.push({
+                                    type: 'gate_pass',
+                                    title: quoteOrders.length > 1 ? `Gate Pass (${so.orderNo})` : 'Security Gate Pass',
+                                    reference: gpNum,
+                                    subtitle: so.isDispatched ? 'Dispatched Goods' : 'Gate Pass Issued',
+                                    statusBadge: { label: so.isDispatched ? 'Dispatched' : 'Gate Pass', variant: 'success' },
+                                    navigateUrl: `/inventory/gate-passes?search=${encodeURIComponent(gpNum)}`
+                                  });
+                                }
+                              });
+
                               if (linkedInvoice) {
                                 traces.push({
                                   type: 'invoice',

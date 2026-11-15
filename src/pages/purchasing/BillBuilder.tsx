@@ -21,7 +21,7 @@ import { useTaxProfiles, useAccounts } from '@/hooks/useFinance';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { POAutocomplete } from '@/components/purchasing/POAutocomplete';
-import { createBill, updateBill, uploadFileToStorage } from '@/lib/api';
+import { createBill, updateBill, uploadFileToStorage, fetchNextDocumentNumber } from '@/lib/api';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
 
 export const BillBuilder: React.FC = () => {
@@ -41,10 +41,26 @@ export const BillBuilder: React.FC = () => {
 
   const [previewPo, setPreviewPo] = useState<any | null>(null);
 
-  const [docNo, setDocNo] = useState(idParam || ('BILL-' + Date.now().toString().slice(-4)));
+  const [docNo, setDocNo] = useState(idParam || '');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
+  
+  // Fetch next sequential document number for new bills
+  useEffect(() => {
+    if (!idParam) {
+      fetchNextDocumentNumber('supplier_bill', { reserve: false }).then(res => {
+        if (res?.formattedNumber) {
+          setDocNo(res.formattedNumber);
+        } else {
+          setDocNo('BILL-' + Date.now().toString().slice(-4));
+        }
+      }).catch(err => {
+        console.error('Failed to fetch next bill document number:', err);
+        setDocNo('BILL-' + Date.now().toString().slice(-4));
+      });
+    }
+  }, [idParam]);
   
   const [supplierId, setSupplierId] = useState('');
   const [billCategory, setBillCategory] = useState<string>('Raw Material / Inventory');
@@ -80,6 +96,21 @@ export const BillBuilder: React.FC = () => {
   const getSupplierName = (id: string) => {
     const s = suppliers.find((sp: any) => sp.id === id);
     return s?.company || s?.name || id || 'Unknown Vendor';
+  };
+
+  // Helper: Format Date string safely to YYYY-MM-DD
+  const formatYMD = (val: any) => {
+    if (!val) return '';
+    try {
+      if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+        return val.trim();
+      }
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
   };
 
   // If opened with ?id=, load existing bill data
@@ -132,14 +163,31 @@ export const BillBuilder: React.FC = () => {
             }
           } catch (e) {}
         }
-        if (existing.date) setDate(existing.date.split('T')[0]);
-        if (existing.dueDate) setDueDate(existing.dueDate.split('T')[0]);
+        if (existing.date) setDate(formatYMD(existing.date) || new Date().toISOString().split('T')[0]);
+        if (existing.dueDate) setDueDate(formatYMD(existing.dueDate));
         setNotes(existing.notes || '');
         setBillAttachment(existing.billAttachment || '');
         setBillAttachmentName(existing.billAttachmentName || '');
         if (existing.taxProfileId) {
           setTaxProfileId(existing.taxProfileId);
           setTaxEnabled(true);
+        } else if (Number(existing.taxAmount || 0) > 0 || existing.taxBreakdown) {
+          // If tax amount or breakdown was recorded previously, enable tax mode and detect profile
+          setTaxEnabled(true);
+          if (existing.taxBreakdown) {
+            try {
+              const tb = typeof existing.taxBreakdown === 'string' ? JSON.parse(existing.taxBreakdown) : existing.taxBreakdown;
+              if (Number(tb.tax1Rate || 0) > 0 && Number(tb.tax2Rate || 0) > 0) {
+                setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep');
+              } else if (Number(tb.tax2Rate || 0) > 0) {
+                setTaxProfileId('tp_vat18');
+              }
+            } catch (e) {
+              setTaxProfileId('tp_vat18');
+            }
+          } else {
+            setTaxProfileId('tp_vat18');
+          }
         }
         if (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null) {
           setIsTaxInclusive(Boolean(Number(existing.isTaxInclusive) === 1));
@@ -610,8 +658,8 @@ export const BillBuilder: React.FC = () => {
         poIds: poIdsPayload,
         grnId: grnId || null, 
         invoiceNo: invoiceNo.trim(), 
-        date, 
-        dueDate: dueDate || null, 
+        date: formatYMD(date) || new Date().toISOString().split('T')[0], 
+        dueDate: formatYMD(dueDate) || null, 
         amount: grandTotalBillValue, 
         subtotal: netSubtotal,
         items: lineItems.length > 0 ? JSON.stringify(lineItems) : null,

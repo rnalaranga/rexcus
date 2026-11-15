@@ -364,6 +364,12 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                       const rawRef = (trace.reference || '').replace(/\(.*\)/g, '').trim()
 
                       // Normalize any direct detail or builder URL into the module's list URL filtered by this record reference
+                      if (trace.type === 'gate_pass' || url === '/inventory' || url.startsWith('/inventory?')) {
+                        // Gate pass / dispatch note must strictly navigate to gate-passes hub
+                        if (trace.type === 'gate_pass' || url.includes('gate-pass') || trace.title?.toLowerCase().includes('gate pass') || trace.title?.toLowerCase().includes('dispatch')) {
+                          url = `/inventory/gate-passes?search=${encodeURIComponent(rawRef)}`
+                        }
+                      }
                       if (url.startsWith('/production/work-orders/') && !url.includes('?')) {
                         url = `/production/work-orders?search=${encodeURIComponent(rawRef)}`
                       } else if (url.startsWith('/crm/customers/') && !url.includes('?')) {

@@ -2925,18 +2925,52 @@ export const Quotations: React.FC = () => {
                                 });
                               }
 
-                              const primaryOrder = quoteOrders[0];
-                              const customerPoNum = (latestMain as any)?.customerPoNumber || (group as any)?.customerPoNumber || primaryOrder?.customerPoNumber || primaryOrder?.customerPoNo;
-                              if (customerPoNum) {
+                              // Multi-PO Traceability: Collect distinct customer POs from all linked Sales Orders & quotation
+                              const seenPos = new Set<string>();
+                              quoteOrders.forEach((so: any) => {
+                                const poNum = so.customerPoNo || so.customerPoNumber;
+                                if (poNum && poNum.trim() && poNum !== 'PO PENDING' && poNum !== 'WITHOUT PO' && !seenPos.has(poNum.toLowerCase())) {
+                                  seenPos.add(poNum.toLowerCase());
+                                  traces.push({
+                                    type: 'po',
+                                    title: quoteOrders.length > 1 ? `Customer PO (${so.orderNo})` : 'Customer PO',
+                                    reference: poNum,
+                                    subtitle: `Client PO for Order #${so.orderNo}`,
+                                    statusBadge: { label: 'PO Received', variant: 'success' },
+                                    navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(so.orderNo || poNum)}`
+                                  });
+                                }
+                              });
+
+                              // If quotation has an assigned PO not yet captured in linked orders
+                              const fallbackQuotePo = (latestMain as any)?.customerPoNumber || (group as any)?.customerPoNumber || latestMain?.customerPoNo;
+                              if (fallbackQuotePo && fallbackQuotePo.trim() && fallbackQuotePo !== 'PO PENDING' && fallbackQuotePo !== 'WITHOUT PO' && !seenPos.has(fallbackQuotePo.toLowerCase())) {
                                 traces.push({
                                   type: 'po',
-                                  title: 'Customer PO',
-                                  reference: customerPoNum,
+                                  title: 'Customer PO (Quotation)',
+                                  reference: fallbackQuotePo,
                                   subtitle: 'Client Purchase Order',
                                   statusBadge: { label: 'PO Received', variant: 'success' },
-                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(primaryOrder?.orderNo || customerPoNum)}`
+                                  navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(fallbackQuotePo)}`
                                 });
                               }
+
+                              // Gate Pass / Dispatch Note Traceability
+                              const seenGps = new Set<string>();
+                              quoteOrders.forEach((so: any) => {
+                                const gpNum = so.gatePassNo || so.gatePassId || so.dispatchNo;
+                                if (gpNum && gpNum.trim() && !seenGps.has(gpNum.toLowerCase())) {
+                                  seenGps.add(gpNum.toLowerCase());
+                                  traces.push({
+                                    type: 'gate_pass',
+                                    title: quoteOrders.length > 1 ? `Gate Pass (${so.orderNo})` : 'Security Gate Pass',
+                                    reference: gpNum,
+                                    subtitle: so.isDispatched ? 'Dispatched Goods' : 'Gate Pass Issued',
+                                    statusBadge: { label: so.isDispatched ? 'Dispatched' : 'Gate Pass', variant: 'success' },
+                                    navigateUrl: `/inventory/gate-passes?search=${encodeURIComponent(gpNum)}`
+                                  });
+                                }
+                              });
 
                               if (linkedInvoice) {
                                 traces.push({

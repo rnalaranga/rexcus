@@ -20,7 +20,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
     type: 'Asset',
     subtype: '',
     accountNumber: '',
-    balance: 0
+    balance: 0,
+    includeInBalanceSheet: true
   });
 
   useEffect(() => {
@@ -31,10 +32,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
         type: initialData.type || 'Asset',
         subtype: initialData.subtype || '',
         accountNumber: initialData.accountNumber || '',
-        balance: Number(initialData.balance) || 0
+        balance: Number(initialData.balance) || 0,
+        includeInBalanceSheet: initialData.includeInBalanceSheet !== undefined ? Boolean(initialData.includeInBalanceSheet) : true
       });
     } else if (isOpen && !initialData) {
-      setFormData({ code: '', name: '', type: 'Asset', subtype: '', accountNumber: '', balance: 0 });
+      setFormData({ code: '', name: '', type: 'Asset', subtype: '', accountNumber: '', balance: 0, includeInBalanceSheet: true });
     }
   }, [initialData, isOpen]);
 
@@ -145,6 +147,26 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose, onS
             className="w-full px-3 py-2 bg-surface border border-theme rounded-md text-sm text-primary"
             placeholder="0.00"
           />
+        </div>
+
+        {/* Balance Sheet Inclusion Checkbox */}
+        <div className="p-3 bg-surface2/50 rounded-lg border border-theme-subtle">
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={formData.includeInBalanceSheet}
+              onChange={e => setFormData(p => ({ ...p, includeInBalanceSheet: e.target.checked }))}
+              className="mt-0.5 rounded border-theme text-blue-600 focus:ring-blue-500 w-4 h-4"
+            />
+            <div className="flex-1">
+              <span className="text-xs font-semibold text-primary block">
+                Include in Balance Sheet (Statement of Financial Position)
+              </span>
+              <span className="text-[11px] text-muted block mt-0.5">
+                Check this to include this account's balances in Balance Sheet asset/liability/equity calculations. Uncheck if you want to exclude it from the Balance Sheet.
+              </span>
+            </div>
+          </label>
         </div>
 
         <div className="flex justify-end gap-2 pt-4">

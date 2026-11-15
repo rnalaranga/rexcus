@@ -931,6 +931,7 @@ async function runDatabaseSync() {
       id VARCHAR(50) PRIMARY KEY,
       supplierId VARCHAR(50),
       poId VARCHAR(50),
+      poIds TEXT DEFAULT NULL,
       grnId VARCHAR(50),
       invoiceNo VARCHAR(100),
       date DATETIME,
@@ -938,6 +939,10 @@ async function runDatabaseSync() {
       amount DECIMAL(15,2),
       subtotal DECIMAL(15,2) DEFAULT 0.00,
       taxAmount DECIMAL(15,2) DEFAULT 0.00,
+      taxProfileId VARCHAR(50) DEFAULT NULL,
+      taxBreakdown TEXT DEFAULT NULL,
+      isTaxInclusive TINYINT(1) DEFAULT 0,
+      hideVatSeparately TINYINT(1) DEFAULT 0,
       items TEXT DEFAULT NULL,
       status VARCHAR(20) DEFAULT 'unpaid',
       notes TEXT,
@@ -945,6 +950,17 @@ async function runDatabaseSync() {
       billAttachmentName VARCHAR(255) DEFAULT NULL,
       createdAt DATETIME,
       updatedAt DATETIME
+    )`,
+    `CREATE TABLE IF NOT EXISTS tax_rates (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      rate DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+      type VARCHAR(50) DEFAULT 'vat',
+      accountId VARCHAR(50) DEFAULT NULL,
+      description VARCHAR(255) DEFAULT NULL,
+      isActive TINYINT(1) DEFAULT 1,
+      createdAt DATETIME DEFAULT NULL,
+      updatedAt DATETIME DEFAULT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS tax_profiles (
       id VARCHAR(50) PRIMARY KEY,
@@ -1598,6 +1614,7 @@ async function runDatabaseSync() {
   const patches = [
     "ALTER TABLE chart_of_accounts ADD COLUMN balance DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE chart_of_accounts ADD COLUMN subtype VARCHAR(50)",
+    "ALTER TABLE chart_of_accounts ADD COLUMN includeInBalanceSheet TINYINT(1) DEFAULT 1",
     "ALTER TABLE tax_rates ADD COLUMN accountId VARCHAR(50)",
     "ALTER TABLE journal_entries ADD COLUMN status VARCHAR(50) DEFAULT 'posted'",
     "ALTER TABLE quotations ADD COLUMN status VARCHAR(50) DEFAULT 'Draft'",
@@ -1743,6 +1760,11 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN taxProfileId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN taxBreakdown TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0",
+    "ALTER TABLE supplier_bills ADD COLUMN hideVatSeparately TINYINT(1) DEFAULT 0",
+    "ALTER TABLE supplier_bills ADD COLUMN poIds TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN billAttachment LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN billAttachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN expenseAccountId VARCHAR(100) DEFAULT NULL",
@@ -2077,11 +2099,12 @@ async function runDatabaseSync() {
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('product_quotation', 'Product Quotations', 'PQ', 2206, 4, 0, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('work_order', 'Work Orders', 'WO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
-    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('invoice', 'Tax Invoices', 'INV-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('invoice', 'Tax Invoices', 'REX_', 1, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('customer_grn', 'Customer Samples (GRN)', 'CGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_order', 'Purchase Orders', 'PO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_grn', 'Purchase GRN', 'PGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('supplier_bill', 'Vendor Bills', 'BILL-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('material_request', 'Material Requests', 'MR-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('gate_pass', 'Gate Passes / Delivery', 'GP-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     `CREATE TABLE IF NOT EXISTS cheques_register (
@@ -2140,6 +2163,16 @@ async function runDatabaseSync() {
   // Ensure quotation next_number is at least 2206 as requested
   try {
     await db.query("UPDATE document_sequences SET next_number = 2206 WHERE id = 'quotation' AND next_number < 2206");
+  } catch (err) {}
+
+  // Auto-migrate invoice sequence configuration to Standard Format (YYMMM_REX_xxxx e.g. 26NOV_REX_0001)
+  try {
+    const [invSeq]: any = await db.query("SELECT prefix, padding, next_number FROM document_sequences WHERE id = 'invoice' LIMIT 1");
+    if (!invSeq || invSeq.length === 0) {
+      await db.query("INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) VALUES ('invoice', 'Tax Invoices', 'REX_', 1, 4, NOW())");
+    } else if (invSeq[0].prefix === 'INV-') {
+      await db.query("UPDATE document_sequences SET prefix = 'REX_', padding = 4, updated_at = NOW() WHERE id = 'invoice'");
+    }
   } catch (err) {}
 
   // Safely auto-sync sales_order sequence with highest existing orderNo without overwriting user's sequence or altering existing VPS records
@@ -3679,6 +3712,8 @@ app.post('/api/sequences/next', async (req, res) => {
       'inv': 'invoice',
       'cgrn': 'customer_grn',
       'pgrn': 'purchase_grn',
+      'bill': 'supplier_bill',
+      'supplier_bill': 'supplier_bill',
     };
     const seqType = typeAliasMap[String(type).toLowerCase()] || type;
     const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [seqType]);
@@ -3752,7 +3787,17 @@ app.post('/api/sequences/next', async (req, res) => {
     }
 
     parts.push(paddedNumber);
-    const formattedNumber = parts.join('-');
+    let formattedNumber = parts.join('-');
+
+    // Special formatting for commercial Tax Invoices: YYMMM_REX_xxxx (e.g. 26NOV_REX_0001)
+    if (seqType === 'invoice') {
+      const nowD = new Date();
+      const yy = String(nowD.getFullYear()).slice(-2);
+      const mmm = nowD.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+      const rawPfx = (seq.prefix || 'REX_').trim();
+      const midPart = rawPfx.replace(/[-_]+$/, '') || 'REX';
+      formattedNumber = `${yy}${mmm}_${midPart}_${paddedNumber}`;
+    }
 
     if (reserve) {
       if (isUserQuotation) {
@@ -5181,7 +5226,7 @@ app.post('/api/quotations/:id/reject-edit', async (req, res) => {
 app.post('/api/quotations/:id/po-received', async (req, res) => {
   try {
     const { id } = req.params;
-    let { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy, poStatus, expectedPoDate, withoutPoReason } = req.body;
+    let { customerPoNo, customerPoDate, customerPoAttachment, notes, receivedBy, poStatus, expectedPoDate, withoutPoReason, orderId, orderNo, updateAllOrders } = req.body;
 
     if (poStatus === 'PO Pending') {
       customerPoNo = customerPoNo?.trim() || 'PO PENDING';
@@ -5229,6 +5274,28 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       qData.description = notes;
     }
 
+    // Keep track of all customer POs attached across multiple sales orders under this quotation
+    if (!Array.isArray(qData.linkedCustomerPos)) {
+      qData.linkedCustomerPos = [];
+    }
+    const existingPoIdx = qData.linkedCustomerPos.findIndex((p: any) => 
+      (orderNo && p.orderNo === orderNo) || (orderId && p.orderId === orderId) || (p.poNo === customerPoNo)
+    );
+    const poHistoryEntry = {
+      poNo: customerPoNo,
+      poStatus,
+      poDate: customerPoDate || new Date().toISOString().slice(0, 10),
+      attachment: customerPoAttachment || null,
+      orderId: orderId || null,
+      orderNo: orderNo || null,
+      recordedAt: new Date().toISOString()
+    };
+    if (existingPoIdx >= 0) {
+      qData.linkedCustomerPos[existingPoIdx] = poHistoryEntry;
+    } else {
+      qData.linkedCustomerPos.push(poHistoryEntry);
+    }
+
     let newStatus = quote.status;
     if (poStatus === 'PO Pending') {
       newStatus = 'PO Pending';
@@ -5258,64 +5325,123 @@ app.post('/api/quotations/:id/po-received', async (req, res) => {
       ]
     );
 
-    // If a sales order or finished goods order exists for this quotation, sync PO
+    // If orderId or orderNo is specified, update ONLY that specific Sales Order to prevent cross-over
+    // If updateAllOrders is explicitly true, or only 1 order exists, update matching orders
     const qNo = quote.quotationNo || quote.docNo || id;
-    if (notes !== undefined && notes !== null && String(notes).trim() !== '') {
-      const orderNoteText = `[PO: ${customerPoNo}] ${notes}`;
-      await db.query(
-        `UPDATE finished_goods_orders SET 
-          customerPoNo = ?, 
-          customerPoDate = ?, 
-          customerPoAttachment = COALESCE(?, customerPoAttachment),
-          notes = CASE 
-            WHEN notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', ?)
-            WHEN notes IS NULL OR notes = '' THEN ?
-            ELSE CONCAT(notes, ' | ', ?)
-          END,
-          updatedAt = NOW() 
-        WHERE quoteId = ? OR quotationNo = ?`,
-        [
-          customerPoNo, 
-          customerPoDate || new Date().toISOString().slice(0, 10), 
-          customerPoAttachment || null,
-          orderNoteText,
-          orderNoteText,
-          orderNoteText,
-          id, 
-          qNo
-        ]
-      ).catch(() => {});
+    const orderNoteText = (notes !== undefined && notes !== null && String(notes).trim() !== '') 
+      ? `[PO: ${customerPoNo}] ${notes}` 
+      : null;
+
+    if (orderId || orderNo) {
+      // Precise target: ONLY update the intended Sales Order
+      if (orderNoteText) {
+        await db.query(
+          `UPDATE finished_goods_orders SET 
+            customerPoNo = ?, 
+            customerPoDate = ?, 
+            customerPoAttachment = COALESCE(?, customerPoAttachment),
+            notes = CASE 
+              WHEN notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', ?)
+              WHEN notes IS NULL OR notes = '' THEN ?
+              ELSE CONCAT(notes, ' | ', ?)
+            END,
+            updatedAt = NOW() 
+          WHERE id = ? OR orderNo = ?`,
+          [
+            customerPoNo, 
+            customerPoDate || new Date().toISOString().slice(0, 10), 
+            customerPoAttachment || null,
+            orderNoteText,
+            orderNoteText,
+            orderNoteText,
+            orderId || 'NON-EXISTENT', 
+            orderNo || 'NON-EXISTENT'
+          ]
+        ).catch(() => {});
+      } else {
+        await db.query(
+          `UPDATE finished_goods_orders SET 
+            customerPoNo = ?, 
+            customerPoDate = ?, 
+            customerPoAttachment = COALESCE(?, customerPoAttachment),
+            notes = CASE 
+              WHEN ? != 'PO Pending' AND notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', CONCAT('[PO: ', ?, ']'))
+              ELSE notes
+            END,
+            updatedAt = NOW() 
+          WHERE id = ? OR orderNo = ?`,
+          [
+            customerPoNo, 
+            customerPoDate || new Date().toISOString().slice(0, 10), 
+            customerPoAttachment || null,
+            poStatus,
+            customerPoNo,
+            orderId || 'NON-EXISTENT', 
+            orderNo || 'NON-EXISTENT'
+          ]
+        ).catch(() => {});
+      }
     } else {
-      await db.query(
-        `UPDATE finished_goods_orders SET 
-          customerPoNo = ?, 
-          customerPoDate = ?, 
-          customerPoAttachment = COALESCE(?, customerPoAttachment),
-          notes = CASE 
-            WHEN ? != 'PO Pending' AND notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', CONCAT('[PO: ', ?, ']'))
-            ELSE notes
-          END,
-          updatedAt = NOW() 
-        WHERE quoteId = ? OR quotationNo = ?`,
-        [
-          customerPoNo, 
-          customerPoDate || new Date().toISOString().slice(0, 10), 
-          customerPoAttachment || null,
-          poStatus,
-          customerPoNo,
-          id, 
-          qNo
-        ]
-      ).catch(() => {});
+      // If neither orderId nor orderNo is provided (e.g. recording PO on Quotation level before creating any SO)
+      // Only update Sales Orders that do NOT yet have an explicit custom customerPoNo already set
+      if (orderNoteText) {
+        await db.query(
+          `UPDATE finished_goods_orders SET 
+            customerPoNo = ?, 
+            customerPoDate = ?, 
+            customerPoAttachment = COALESCE(?, customerPoAttachment),
+            notes = CASE 
+              WHEN notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', ?)
+              WHEN notes IS NULL OR notes = '' THEN ?
+              ELSE CONCAT(notes, ' | ', ?)
+            END,
+            updatedAt = NOW() 
+          WHERE (quoteId = ? OR quotationNo = ?) 
+            AND (customerPoNo IS NULL OR customerPoNo = '' OR customerPoNo = 'PO PENDING' OR customerPoNo = 'WITHOUT PO')`,
+          [
+            customerPoNo, 
+            customerPoDate || new Date().toISOString().slice(0, 10), 
+            customerPoAttachment || null,
+            orderNoteText,
+            orderNoteText,
+            orderNoteText,
+            id, 
+            qNo
+          ]
+        ).catch(() => {});
+      } else {
+        await db.query(
+          `UPDATE finished_goods_orders SET 
+            customerPoNo = ?, 
+            customerPoDate = ?, 
+            customerPoAttachment = COALESCE(?, customerPoAttachment),
+            notes = CASE 
+              WHEN ? != 'PO Pending' AND notes LIKE '%[PO Pending]%' THEN REPLACE(notes, '[PO Pending]', CONCAT('[PO: ', ?, ']'))
+              ELSE notes
+            END,
+            updatedAt = NOW() 
+          WHERE (quoteId = ? OR quotationNo = ?)
+            AND (customerPoNo IS NULL OR customerPoNo = '' OR customerPoNo = 'PO PENDING' OR customerPoNo = 'WITHOUT PO')`,
+          [
+            customerPoNo, 
+            customerPoDate || new Date().toISOString().slice(0, 10), 
+            customerPoAttachment || null,
+            poStatus,
+            customerPoNo,
+            id, 
+            qNo
+          ]
+        ).catch(() => {});
+      }
     }
 
     // Log to approval logs
     try {
-      const recordNo = qNo;
+      const recordNo = orderNo || qNo;
       const entityName = qData.customerCompany || qData.customerName || quote?.leadId || 'Customer';
       const amount = Number(quote?.totalAmount || qData.custTotals?.total || 0);
       const actionName = poStatus === 'PO Pending' ? 'PO Pending' : poStatus === 'Without PO' ? 'Without PO' : 'PO Received';
-      const logNote = notes || (poStatus === 'PO Pending' ? 'Customer PO is Pending' : poStatus === 'Without PO' ? 'Approved Without Customer PO' : `Customer PO #${customerPoNo} recorded`);
+      const logNote = notes || (poStatus === 'PO Pending' ? 'Customer PO is Pending' : poStatus === 'Without PO' ? 'Approved Without Customer PO' : `Customer PO #${customerPoNo} recorded${orderNo ? ` for SO ${orderNo}` : ''}`);
       await db.query(
         `INSERT INTO approval_logs (module, recordId, recordNo, entityName, amount, action, actionBy, actionDate, notes, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, NOW())`,
@@ -9568,12 +9694,54 @@ app.post('/api/purchasing/bills', async (req, res) => {
       }
     }
 
+    // Sanitize datetime fields for MySQL DATETIME column
+    const normalizeDateTime = (val: any) => {
+      if (!val) return null;
+      try {
+        const str = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+          return `${str} 00:00:00`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
+          return str.slice(0, 19).replace('T', ' ');
+        }
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString().slice(0, 19).replace('T', ' ');
+      } catch {
+        return null;
+      }
+    };
+
+    if (data.date !== undefined) {
+      data.date = normalizeDateTime(data.date) || new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+    if (data.dueDate !== undefined) {
+      data.dueDate = normalizeDateTime(data.dueDate);
+    }
+
+    // Guard against duplicate bill ID: ensure unique ID or generate next sequence
+    if (!data.id) {
+      data.id = `BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    } else {
+      const [existing]: any = await db.query('SELECT id FROM supplier_bills WHERE id = ? LIMIT 1', [data.id]);
+      if (existing && existing.length > 0) {
+        // If an existing bill with this ID already exists, generate a fresh non-colliding ID
+        data.id = `BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      }
+    }
+    if (validCols.has('billNo') && !data.billNo) {
+      data.billNo = data.id;
+    }
+
     await db.query('INSERT INTO supplier_bills SET ?', data);
 
     // Also automatically create corresponding ledger entry in supplier_ledger
     if (data.supplierId && data.amount) {
+      // Ensure unique ledger ID so it never collides
+      const ledgerId = `SL-BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const ledgerEntry = {
-        id: `SL-BILL-${Date.now().toString().slice(-6)}`,
+        id: ledgerId,
         supplierId: data.supplierId,
         date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
         type: 'purchase',
@@ -9583,7 +9751,8 @@ app.post('/api/purchasing/bills', async (req, res) => {
         credit: 0,
         amount: Number(data.amount) || 0,
         reference: data.invoiceNo || data.id,
-        notes: data.notes || ''
+        notes: data.notes || '',
+        billId: data.id
       };
       await db.query('INSERT INTO supplier_ledger SET ?', ledgerEntry);
 
@@ -9624,6 +9793,32 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
       if (validCols.has(k) && k !== 'id') {
         data[k] = rawData[k];
       }
+    }
+
+    // Sanitize datetime fields for MySQL DATETIME column
+    const normalizeDateTime = (val: any) => {
+      if (!val) return null;
+      try {
+        const str = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+          return `${str} 00:00:00`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str)) {
+          return str.slice(0, 19).replace('T', ' ');
+        }
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString().slice(0, 19).replace('T', ' ');
+      } catch {
+        return null;
+      }
+    };
+
+    if (data.date !== undefined) {
+      data.date = normalizeDateTime(data.date);
+    }
+    if (data.dueDate !== undefined) {
+      data.dueDate = normalizeDateTime(data.dueDate);
     }
 
     await db.query('UPDATE supplier_bills SET ? WHERE id = ?', [data, req.params.id]);
@@ -9955,26 +10150,36 @@ app.delete('/api/followups/:id', async (req, res) => {
   }
 });
 
+// Helper to generate Invoice Number in Standard Format: YYMMM_REX_xxxx (e.g. 26NOV_REX_0001)
+function formatInvoiceNumber(num: number, padding: number = 4, customPrefix: string = 'REX_'): string {
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mmm = d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+  const cleanPfx = (customPrefix || 'REX_').trim().replace(/[-_]+$/, '') || 'REX';
+  const padded = String(num).padStart(padding, '0');
+  return `${yy}${mmm}_${cleanPfx}_${padded}`;
+}
+
 // -- INVOICES --
 app.get('/api/invoices/next-number', async (req, res) => {
   try {
     const [rows]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'invoice' LIMIT 1");
-    let nextNum = 1001;
-    let prefix = 'INV-';
+    let nextNum = 1;
+    let prefix = 'REX_';
     let pad = 4;
     if (rows && rows.length > 0) {
-      nextNum = Number(rows[0].next_number) || 1001;
-      prefix = rows[0].prefix || 'INV-';
+      nextNum = Number(rows[0].next_number) || 1;
+      prefix = rows[0].prefix || 'REX_';
       pad = Number(rows[0].padding) || 4;
     }
 
     // Verify against existing invoices to guarantee no collision
     const [invRows]: any = await db.query("SELECT invoiceNo, id FROM invoices");
-    const existingSet = new Set((invRows || []).map((r: any) => r.invoiceNo || r.id));
-    let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
-    while (existingSet.has(candidate)) {
+    const existingSet = new Set((invRows || []).map((r: any) => (r.invoiceNo || r.id || '').toUpperCase()));
+    let candidate = formatInvoiceNumber(nextNum, pad, prefix);
+    while (existingSet.has(candidate.toUpperCase())) {
       nextNum++;
-      candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+      candidate = formatInvoiceNumber(nextNum, pad, prefix);
     }
 
     const invoiceNo = candidate;
@@ -10048,32 +10253,32 @@ app.post('/api/invoices', async (req, res) => {
       data.customerId = data.leadId;
     }
     const [seqRows]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'invoice' FOR UPDATE");
-    let nextNum = 1001;
-    let prefix = 'INV-';
+    let nextNum = 1;
+    let prefix = 'REX_';
     let pad = 4;
     if (seqRows && seqRows.length > 0) {
-      nextNum = Number(seqRows[0].next_number) || 1001;
-      prefix = seqRows[0].prefix || 'INV-';
+      nextNum = Number(seqRows[0].next_number) || 1;
+      prefix = seqRows[0].prefix || 'REX_';
       pad = Number(seqRows[0].padding) || 4;
     }
 
     if (data.invoiceNo) {
       data.invoiceNo = data.invoiceNo.trim().replace(/\s+/g, '');
-      const prefixEscaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const numMatch = data.invoiceNo.match(new RegExp(`^${prefixEscaped}(\\d+)$`));
-      if (numMatch) {
-        const parsed = parseInt(numMatch[1], 10);
+      // Match either standard format (e.g. 26NOV_REX_0001) or legacy format (INV-1001)
+      const numMatch = data.invoiceNo.match(/\d+$/);
+      if (numMatch && !String(data.invoiceNo).startsWith('PI-')) {
+        const parsed = parseInt(numMatch[0], 10);
         if (!isNaN(parsed) && parsed >= nextNum) {
           await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'invoice'", [parsed + 1]);
         }
       }
     } else {
       const [invRows]: any = await db.query("SELECT invoiceNo, id FROM invoices");
-      const existingSet = new Set((invRows || []).map((r: any) => r.invoiceNo || r.id));
-      let candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
-      while (existingSet.has(candidate)) {
+      const existingSet = new Set((invRows || []).map((r: any) => (r.invoiceNo || r.id || '').toUpperCase()));
+      let candidate = formatInvoiceNumber(nextNum, pad, prefix);
+      while (existingSet.has(candidate.toUpperCase())) {
         nextNum++;
-        candidate = `${prefix}${String(nextNum).padStart(pad, '0')}`;
+        candidate = formatInvoiceNumber(nextNum, pad, prefix);
       }
       data.invoiceNo = candidate;
       await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'invoice'", [nextNum + 1]);
@@ -11983,9 +12188,45 @@ app.get('/api/finance/party/:id/ledger', async (req, res) => {
 // Taxes
 app.get('/api/finance/taxes', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM tax_rates');
-    res.json(rows);
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    try {
+      const [rows] = await db.query('SELECT * FROM tax_rates');
+      if (Array.isArray(rows) && rows.length > 0) return res.json(rows);
+    } catch (e) {
+      // Table may not exist yet on legacy setups
+    }
+
+    // Resilient fallback: Synthesize tax list from tax_profiles so accounting & tax management never crashes
+    try {
+      const [profiles]: any = await db.query('SELECT * FROM tax_profiles');
+      const synthesized: any[] = [];
+      const seen = new Set<string>();
+      (profiles || []).forEach((p: any) => {
+        if (p.tax1_name && !seen.has(p.tax1_name.toUpperCase())) {
+          seen.add(p.tax1_name.toUpperCase());
+          synthesized.push({
+            id: `tax_${p.tax1_name.toLowerCase()}`,
+            name: p.tax1_name,
+            rate: Number(p.tax1_rate) || 0,
+            type: p.tax1_name.toLowerCase(),
+            accountId: p.tax1_accountId || null
+          });
+        }
+        if (p.tax2_name && !seen.has(p.tax2_name.toUpperCase())) {
+          seen.add(p.tax2_name.toUpperCase());
+          synthesized.push({
+            id: `tax_${p.tax2_name.toLowerCase()}`,
+            name: p.tax2_name,
+            rate: Number(p.tax2_rate) || 0,
+            type: p.tax2_name.toLowerCase(),
+            accountId: p.tax2_accountId || null
+          });
+        }
+      });
+      return res.json(synthesized);
+    } catch (errFallback) {
+      return res.json([]);
+    }
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/finance/tax-profiles', async (req, res) => {
@@ -15007,7 +15248,7 @@ app.get('/api/finance/reports/pnl', async (req, res) => {
 
 app.get('/api/finance/reports/balance-sheet', async (req, res) => {
   try {
-    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") ORDER BY code ASC');
+    const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") AND (includeInBalanceSheet IS NULL OR includeInBalanceSheet = 1) ORDER BY code ASC');
     
     let totalAssets = 0;
     let totalLiabilities = 0;

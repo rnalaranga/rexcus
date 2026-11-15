@@ -1115,14 +1115,17 @@ export const InvoiceBuilder: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  // Fetch next invoice number (sequential INV-xxxx from document sequences)
+  // Fetch next invoice number (sequential format YYMMM_REX_xxxx from document sequences)
   useEffect(() => {
     if (isEditing || isCustomInvoiceNo) return;
     fetch(`${import.meta.env.VITE_API_URL || '/api'}/invoices/next-number`)
       .then(r => r.json())
       .then(d => { if (d.invoiceNo && !isCustomInvoiceNo && !isEditing) setDocNo(d.invoiceNo); })
       .catch(() => {
-        setDocNo(`INV-${Date.now().toString().slice(-4)}`);
+        const d = new Date();
+        const yy = String(d.getFullYear()).slice(-2);
+        const mmm = d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+        setDocNo(`${yy}${mmm}_REX_0001`);
       });
   }, [isEditing, isCustomInvoiceNo]);
 

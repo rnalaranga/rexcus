@@ -898,7 +898,7 @@ export const Invoices: React.FC = () => {
             reference: gpNo,
             subtitle: 'Dispatched Goods',
             statusBadge: { label: 'Dispatched', variant: 'success' },
-            navigateUrl: '/inventory'
+            navigateUrl: `/inventory/gate-passes?search=${encodeURIComponent(gpNo)}`
           });
         }
 

@@ -10,7 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useAccounts, useTaxes, useTaxProfiles, useJournals } from '@/hooks/useFinance';
 import { formatCurrency } from '@/lib/utils';
 import { AccountModal } from './AccountModal';
-import { deleteAccount, fetchAccountLedger } from '@/lib/api';
+import { deleteAccount, fetchAccountLedger, updateAccount } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { TaxManager } from '@/components/TaxManager';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
@@ -391,7 +391,36 @@ export const AccountingHub: React.FC = () => {
 
                                     {/* Name */}
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-primary">{acc.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm font-medium text-primary">{acc.name}</p>
+                                        {acc.includeInBalanceSheet === 0 || acc.includeInBalanceSheet === false ? (
+                                          <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                            Excluded from BS
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+
+                                    {/* Balance Sheet Inclusion Toggle */}
+                                    <div className="flex items-center gap-1.5 flex-shrink-0" title={acc.includeInBalanceSheet === 0 || acc.includeInBalanceSheet === false ? "Excluded from Balance Sheet (Click to include)" : "Included in Balance Sheet (Click to exclude)"}>
+                                      <label className="flex items-center gap-1 text-[11px] font-medium text-secondary cursor-pointer select-none px-2 py-1 rounded bg-surface border border-theme-subtle hover:bg-surface2">
+                                        <input
+                                          type="checkbox"
+                                          checked={acc.includeInBalanceSheet !== 0 && acc.includeInBalanceSheet !== false}
+                                          onChange={async (e) => {
+                                            const newVal = e.target.checked ? 1 : 0;
+                                            try {
+                                              await updateAccount(acc.id, { ...acc, includeInBalanceSheet: newVal });
+                                              toast(`"${acc.name}" ${newVal ? 'included in' : 'excluded from'} Balance Sheet.`, 'success');
+                                              refetchCOA();
+                                            } catch (err: any) {
+                                              showError(err.message || 'Failed to update account setting');
+                                            }
+                                          }}
+                                          className="rounded border-theme text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        <span className="hidden sm:inline text-[10px] uppercase font-bold text-muted">BS</span>
+                                      </label>
                                     </div>
 
                                     {/* Balance */}

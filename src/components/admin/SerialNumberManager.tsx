@@ -169,6 +169,17 @@ export const SerialNumberManager: React.FC = () => {
   };
 
   const getPreview = (seq: SequenceRecord) => {
+    // Special format for Tax Invoices: YYMMM_REX_xxxx (e.g. 26NOV_REX_0001)
+    if (seq.id === 'invoice') {
+      const nowD = new Date();
+      const yy = String(nowD.getFullYear()).slice(-2);
+      const mmm = nowD.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+      const rawPfx = (seq.prefix || 'REX_').trim();
+      const cleanMid = rawPfx.replace(/[-_]+$/, '') || 'REX';
+      const paddedNum = String(seq.next_number || 1).padStart(Number(seq.padding) || 4, '0');
+      return `${yy}${mmm}_${cleanMid}_${paddedNum}`;
+    }
+
     const parts: string[] = [];
     const basePfx = (seq.prefix || '').trim().replace(/[-_]+$/, '');
     if (basePfx) parts.push(basePfx);

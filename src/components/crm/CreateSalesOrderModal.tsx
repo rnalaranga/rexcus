@@ -856,13 +856,15 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       invalidateDataCache('fgo');
       invalidateDataCache('quotations');
 
-      // Sync PO status back to quotation
+      // Sync PO status back to quotation with exact order context so other sales orders under this quote are not overwritten
       if (quotationData?.quotation?.id) {
         try {
           await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${quotationData.quotation.id}/po-received`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              orderId: res.id,
+              orderNo: res.orderNo || cleanOrderNo,
               customerPoNo: finalCustomerPoNo,
               poStatus: poMode === 'pending' ? 'PO Pending' : poMode === 'without_po' ? 'Without PO' : 'PO Received',
               customerPoDate: formData.customerPoDate || null,

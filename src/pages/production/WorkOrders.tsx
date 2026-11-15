@@ -319,7 +319,7 @@ export const WorkOrders: React.FC = () => {
           reference: linkedOrder.gatePassNo,
           subtitle: linkedOrder.isDispatched ? 'Dispatched from Premises' : 'Gate Pass Issued',
           statusBadge: { label: linkedOrder.isDispatched ? 'Dispatched' : 'Gate Pass', variant: 'info' },
-          navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(linkedOrder.orderNo)}`
+          navigateUrl: `/inventory/gate-passes?search=${encodeURIComponent(linkedOrder.gatePassNo)}`
         })
       }
     }
