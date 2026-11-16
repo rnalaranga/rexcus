@@ -301,8 +301,8 @@ export const Quotations: React.FC = () => {
       isForeign: quoteCurrency === 'USD',
       customerId: cust?.id || group?.leadId || null,
       matchedCustomerId: cust?.id || group?.leadId || null,
-      customerName: cust?.name || group?.clientName || latestMain?.leadName || 'Valued Customer',
-      customerCompany: cust?.company || group?.clientName || latestMain?.leadCompany || cust?.name || 'Valued Customer',
+      customerName: cust?.name || group?.leadName || group?.clientName || latestMain?.leadName || 'Valued Customer',
+      customerCompany: cust?.company || group?.leadCompany || group?.clientCompany || cust?.name || 'Valued Customer',
       deliveryAddress: cust?.address || group?.address || latestMain?.address || '',
       customerAddress: cust?.address || group?.address || latestMain?.address || '',
       customerPhone: cust?.phone || group?.phone || latestMain?.phone || '',
@@ -347,7 +347,9 @@ export const Quotations: React.FC = () => {
         ord.notes && ord.notes.includes('Advance Waiver Approved')
       );
 
-      if (!hasAdvancePaid && !hasApprovedOrderWaiver) {
+      const hasReceiptPaid = getQuoteReceipts(group, latestMain).some((r: any) => Number(r.amount || 0) > 0 && r.status !== 'Cancelled');
+
+      if (!hasAdvancePaid && !hasReceiptPaid && !hasApprovedOrderWaiver) {
         toast(`Customer "${cust?.company || cust?.name || group.clientName || 'Client'}" requires advance payment. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval via Sales Orders.`, 'warning');
         handleGenerateAdvanceProforma(group, latestMain);
         return;
@@ -466,15 +468,17 @@ export const Quotations: React.FC = () => {
         });
       }
 
-      // 4. Fallback for Product Quotations or Itemized Quotations with custItems
-      if (bom.length === 0 && Array.isArray(data.custItems)) {
-        data.custItems.forEach((ci: any) => {
-          if (ci.desc || ci.name) {
+      // 4. Fallback for Product Quotations or Itemized Quotations with custItems or items
+      if (bom.length === 0) {
+        const lineItems = Array.isArray(data.custItems) ? data.custItems : (Array.isArray(data.items) ? data.items : []);
+        lineItems.forEach((ci: any) => {
+          const matName = ci.desc || ci.name || ci.description;
+          if (matName) {
             bom.push({
-              material: ci.desc || ci.name,
+              material: matName,
               qty: Number(ci.qty) || 1,
-              unit: ci.unit || 'pcs',
-              unitCost: Number(ci.unitPrice) || 0,
+              unit: ci.unit || ci.uom || 'pcs',
+              unitCost: Number(ci.unitPrice || ci.cost) || 0,
               notes: ci.notes || 'Product line item'
             });
           }
@@ -495,6 +499,7 @@ export const Quotations: React.FC = () => {
       const targetCustomerName = woDialog.group.leadCompany || woDialog.group.leadName || woDialog.group.clientName || 'Customer';
 
       const woData = {
+        woNo: `WO-${woDialog.group.quoNo}`,
         title: `WO: ${woDialog.group.quoNo} - ${targetCustomerName}`,
         customerId: woDialog.group.leadId || null,
         customer: targetCustomerName,
@@ -1799,8 +1804,8 @@ export const Quotations: React.FC = () => {
                   quoNo: group.quoNo,
                   orderNo: linkedOrder?.orderNo || `SO-${group.quoNo}`,
                   orderId: linkedOrder?.id || null,
-                  customerName: group.clientName || group.clientCompany || 'Customer',
-                  customerCompany: group.clientName || group.clientCompany || 'Customer',
+                  customerName: group.clientName || group.leadName || 'Customer',
+                  customerCompany: group.clientCompany || group.leadCompany || group.clientName || 'Customer',
                   attention: parsed.attention || group.clientContact || '',
                   address: group.clientAddress || '',
                   phone: group.clientPhone || '',

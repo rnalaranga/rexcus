@@ -122,6 +122,16 @@ export const deleteLead = async (id: string) => {
   return res.json();
 };
 
+export const convertLeadToCustomer = async (id: string) => {
+  const res = await fetch(`${API_URL}/leads/${id}/convert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to convert lead to customer');
+  return json;
+};
+
 export const fetchDeals = async () => {
   const res = await fetch(`${API_URL}/deals`);
   return res.json();
@@ -1093,6 +1103,7 @@ export const settleCustomerOutstanding = async (data: {
   depositAccountId?: string;
   reference?: string;
   notes?: string;
+  depositSlip?: string;
   totalAmount: number;
   currency?: string;
   exchangeRate?: number;

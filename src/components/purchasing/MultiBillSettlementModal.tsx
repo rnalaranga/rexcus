@@ -36,8 +36,8 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
   const [paymentDate, setPaymentDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
-  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'Online / Card'>('Bank Transfer');
-  const [creditAccountId, setCreditAccountId] = useState<string>(''); // Bank / Cash account
+  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'Online / Card' | 'Advance Offset'>('Bank Transfer');
+  const [creditAccountId, setCreditAccountId] = useState<string>(''); // Bank, Cash, or Offset Account
   const [debitAccountId, setDebitAccountId] = useState<string>('');  // Accounts Payable
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [chequeNo, setChequeNo] = useState<string>('');
@@ -84,13 +84,20 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
   // Set default accounts once COA is loaded
   useEffect(() => {
     if (accounts.length > 0) {
-      // 1. Credit Account (Payment source: Bank or Cash)
+      // 1. Credit Account (Payment source: Bank, Cash, or Supplier Advance Offset)
       if (!creditAccountId) {
-        const isCash = paymentMethod === 'Cash';
-        const defaultPaying = accounts.find((a: any) => 
-          a.type === 'Asset' && (isCash ? (a.subtype === 'Cash' || a.name.toLowerCase().includes('cash')) : (a.subtype === 'Bank' || a.code === '1000' || a.name.toLowerCase().includes('bank')))
-        );
-        if (defaultPaying) setCreditAccountId(defaultPaying.id);
+        if (paymentMethod === 'Advance Offset') {
+          const advAcc = accounts.find((a: any) => 
+            a.id === 'acc_1450' || a.code === '1450' || /advance.*supplier|supplier.*advance|prepayment/i.test(a.name)
+          );
+          if (advAcc) setCreditAccountId(advAcc.id);
+        } else {
+          const isCash = paymentMethod === 'Cash';
+          const defaultPaying = accounts.find((a: any) => 
+            a.type === 'Asset' && (isCash ? (a.subtype === 'Cash' || a.name.toLowerCase().includes('cash')) : (a.subtype === 'Bank' || a.code === '1000' || a.name.toLowerCase().includes('bank')))
+          );
+          if (defaultPaying) setCreditAccountId(defaultPaying.id);
+        }
       }
 
       // 2. Debit Account (Accounts Payable)
@@ -394,13 +401,29 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
               <label className="block text-[10px] font-bold text-muted uppercase mb-1">Payment Method *</label>
               <select
                 value={paymentMethod}
-                onChange={e => setPaymentMethod(e.target.value as any)}
+                onChange={e => {
+                  const newMethod = e.target.value as any;
+                  setPaymentMethod(newMethod);
+                  if (newMethod === 'Advance Offset') {
+                    const advAcc = accounts.find((a: any) => 
+                      a.id === 'acc_1450' || a.code === '1450' || /advance.*supplier|supplier.*advance|prepayment/i.test(a.name)
+                    );
+                    if (advAcc) setCreditAccountId(advAcc.id);
+                  } else {
+                    const isCash = newMethod === 'Cash';
+                    const defaultPaying = accounts.find((a: any) => 
+                      a.type === 'Asset' && (isCash ? (a.subtype === 'Cash' || a.name.toLowerCase().includes('cash')) : (a.subtype === 'Bank' || a.code === '1000' || a.name.toLowerCase().includes('bank')))
+                    );
+                    if (defaultPaying) setCreditAccountId(defaultPaying.id);
+                  }
+                }}
                 className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs font-semibold"
               >
                 <option value="Bank Transfer">Bank Transfer / Online</option>
                 <option value="Cheque">Cheque (PDC / Current)</option>
                 <option value="Cash">Cash in Hand</option>
                 <option value="Online / Card">Corporate Credit / Debit Card</option>
+                <option value="Advance Offset">Supplier Advance Offset (Prior Advance Set-off)</option>
               </select>
             </div>
 
@@ -440,17 +463,25 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
             </div>
           </div>
 
+          {/* Supplier Set-off Mode Indicator */}
+          {paymentMethod === 'Advance Offset' && (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
+              <Sparkles size={14} className="shrink-0" />
+              <span>★ <strong>Supplier Set-off Mode:</strong> Clears the vendor bill balance by setting off directly against the selected Advance / Prepayment GL Account (e.g. 1450 Advance to Suppliers).</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            {/* Paid From Account (Bank / Cash) */}
+            {/* Paid From Account (Bank / Cash) or Offset GL Account */}
             <div>
               <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                Disburse From (Bank / Cash Account) *
+                {paymentMethod === 'Advance Offset' ? 'Offset GL Account (Supplier Advance / Prepayment) *' : 'Disburse From (Bank / Cash Account) *'}
               </label>
               <AccountAutocomplete
                 value={creditAccountId}
                 onChange={setCreditAccountId}
-                placeholder="Search payment source (Bank / Cash)..."
-                typeFilter="Asset"
+                placeholder={paymentMethod === 'Advance Offset' ? 'Search & Select Offset GL Account (e.g. 1450 Advance to Suppliers)...' : 'Search payment source (Bank / Cash)...'}
+                typeFilter={paymentMethod === 'Advance Offset' ? undefined : 'Asset'}
                 required
                 className="text-xs"
               />

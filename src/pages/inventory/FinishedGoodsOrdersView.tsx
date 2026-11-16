@@ -578,6 +578,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
     uom: 'Nos',
     customerId: '',
     customerName: '',
+    customerCompany: '',
     attention: '',
     customerPhone: '',
     customerEmail: '',
@@ -795,6 +796,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       uom: order.uom || 'Nos',
       customerId: order.customerId || '',
       customerName: order.customerName || '',
+      customerCompany: order.customerCompany || '',
       attention: order.attention || '',
       customerPhone: order.customerPhone || '',
       customerEmail: order.customerEmail || '',
@@ -1594,7 +1596,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       setFormData(prev => ({
         ...prev,
         customerId: cust.id,
-        customerName: cust.company || cust.name || '',
+        customerName: cust.name || cust.company || '',
+        customerCompany: cust.company || cust.name || '',
         currency: isForeign ? 'USD' : (cust.currency || prev.currency || 'LKR'),
         exchangeRate: isForeign ? (prev.currency === 'USD' && prev.exchangeRate > 1 ? prev.exchangeRate : 310) : (prev.currency === 'LKR' ? 1 : prev.exchangeRate),
         taxProfileId: isForeign ? 'tp_export_zero_rated' : prev.taxProfileId,
@@ -3132,8 +3135,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         orderId: order.id,
                         quoNo: order.quotationNo,
                         customerName: order.customerName,
-                        customerCompany: order.customerName,
-                        attention: order.attention || order.customerName,
+                        customerCompany: order.customerCompany || order.customerName,
+                        attention: order.attention || (order.customerName !== order.customerCompany ? order.customerName : ''),
                         address: order.deliveryAddress,
                         phone: order.customerPhone,
                         email: order.customerEmail,
@@ -4022,14 +4025,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       </div>
                     </td>
 
-                    {/* Customer */}
+                    {/* Customer & Company */}
                     <td className="px-3 py-1.5 max-w-[200px]">
                       <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-xs text-primary truncate leading-tight" title={order.customerName}>
-                          {order.customerName}
+                        <span className="font-semibold text-xs text-primary truncate leading-tight" title={order.customerCompany || order.customerName}>
+                          {order.customerCompany || order.customerName}
                         </span>
-                        {order.attention && (
-                          <span className="text-[10.5px] text-muted truncate leading-tight">
+                        {order.customerCompany && order.customerName && order.customerCompany !== order.customerName && (
+                          <span className="text-[11px] text-secondary truncate leading-tight font-medium" title={order.customerName}>
+                            {order.customerName}
+                          </span>
+                        )}
+                        {order.attention && order.attention !== order.customerName && order.attention !== order.customerCompany && (
+                          <span className="text-[10px] text-muted truncate leading-tight">
                             Attn: {order.attention}
                           </span>
                         )}
@@ -5050,17 +5058,43 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     Search Customer / Company (Autocomplete) <span className="text-red-500">*</span>
                   </label>
                   <CustomerAutocomplete
-                    value={formData.customerId || formData.customerName}
+                    value={formData.customerId || formData.customerCompany || formData.customerName}
                     onChange={(cId, cust) => {
                       if (cust) {
                         handleCustomerSelect(cust.id, cust);
                       } else {
-                        setFormData(prev => ({ ...prev, customerId: cId, customerName: cId }));
+                        setFormData(prev => ({ ...prev, customerId: cId, customerName: cId, customerCompany: cId }));
                       }
                     }}
                     customers={customers}
                     leads={leads}
                     placeholder="Type customer company name, contact, phone to autocomplete..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">
+                    Company Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.customerCompany}
+                    onChange={e => setFormData({ ...formData, customerCompany: e.target.value })}
+                    placeholder="e.g. Lanka Steel Corp"
+                    className="w-full input-base text-xs font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-secondary mb-1">
+                    Customer / Contact Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.customerName}
+                    onChange={e => setFormData({ ...formData, customerName: e.target.value })}
+                    placeholder="e.g. Malith Senanayake"
+                    className="w-full input-base text-xs font-medium"
                   />
                 </div>
 

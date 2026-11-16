@@ -24,7 +24,7 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
 }) => {
   const [amount, setAmount] = useState<string>('');
   const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'Online / Card'>('Bank Transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'Online / Card' | 'Advance Offset'>('Bank Transfer');
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [chequeNo, setChequeNo] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -72,7 +72,10 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
         if (ap) setDebitAccountId(ap.id);
       }
       if (!creditAccountId) {
-        if (paymentMethod === 'Cash') {
+        if (paymentMethod === 'Advance Offset') {
+          const adv = accounts.find((a: any) => a.id === 'acc_1450' || a.code === '1450' || /advance.*supplier|supplier.*advance|prepayment/i.test(a.name));
+          if (adv) setCreditAccountId(adv.id);
+        } else if (paymentMethod === 'Cash') {
           const cash = accounts.find((a: any) => a.code === '1000' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('cash'));
           if (cash) setCreditAccountId(cash.id);
         } else {
@@ -260,7 +263,10 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
               onChange={e => {
                 const m = e.target.value as any;
                 setPaymentMethod(m);
-                if (m === 'Cash') {
+                if (m === 'Advance Offset') {
+                  const adv = accounts.find((a: any) => a.id === 'acc_1450' || a.code === '1450' || /advance.*supplier|supplier.*advance|prepayment/i.test(a.name));
+                  if (adv) setCreditAccountId(adv.id);
+                } else if (m === 'Cash') {
                   const cash = accounts.find((a: any) => a.code === '1000' || a.subtype === 'Cash' || a.name?.toLowerCase().includes('cash'));
                   if (cash) setCreditAccountId(cash.id);
                 } else {
@@ -274,13 +280,14 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
               <option value="Cheque">Cheque</option>
               <option value="Cash">Cash (Petty Cash)</option>
               <option value="Online / Card">Online / Card</option>
+              <option value="Advance Offset">Supplier Advance Offset (Prior Advance Set-off)</option>
             </select>
           </div>
 
           {/* Reference # */}
           <div>
             <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
-              {paymentMethod === 'Cheque' ? 'Cheque No *' : paymentMethod === 'Bank Transfer' ? 'Transfer / SLIPS Ref #' : 'Payment Ref / Receipt #'}
+              {paymentMethod === 'Cheque' ? 'Cheque No *' : paymentMethod === 'Bank Transfer' ? 'Transfer / SLIPS Ref #' : paymentMethod === 'Advance Offset' ? 'Offset / Voucher Ref #' : 'Payment Ref / Receipt #'}
             </label>
             <input
               type="text"
@@ -290,10 +297,18 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
                 if (paymentMethod === 'Cheque') setChequeNo(val);
                 else setReferenceNo(val);
               }}
-              placeholder={paymentMethod === 'Cheque' ? 'e.g. CHQ-992144' : 'e.g. TRF-77401 / CEFT'}
+              placeholder={paymentMethod === 'Cheque' ? 'e.g. CHQ-992144' : paymentMethod === 'Advance Offset' ? 'e.g. SOFF-88102 / ADV' : 'e.g. TRF-77401 / CEFT'}
               className="w-full input-base text-xs font-mono"
             />
           </div>
+
+          {/* Supplier Set-off Mode Indicator */}
+          {paymentMethod === 'Advance Offset' && (
+            <div className="col-span-2 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
+              <CheckCircle2 size={14} className="shrink-0" />
+              <span>★ <strong>Supplier Set-off Mode:</strong> Offsets this bill's liability directly against the selected supplier advance/clearing account.</span>
+            </div>
+          )}
 
           {/* Cheque Details if Cheque */}
           {paymentMethod === 'Cheque' && (
@@ -340,21 +355,23 @@ export const RecordBillPaymentModal: React.FC<RecordBillPaymentModalProps> = ({
             <p className="text-[9px] text-muted mt-0.5">Supplier liability account being settled (2000 AP)</p>
           </div>
 
-          {/* Credit Account: Paid From */}
+          {/* Credit Account: Paid From or Offset */}
           <div>
             <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
-              <span>Credit Account (Paid From) *</span>
+              <span>{paymentMethod === 'Advance Offset' ? 'Offset GL Account (Supplier Advance) *' : 'Credit Account (Paid From) *'}</span>
               <span className="text-[9px] font-mono text-emerald-500 font-bold bg-surface2 px-1 rounded">CR</span>
             </label>
             <AccountAutocomplete
               value={creditAccountId}
               onChange={setCreditAccountId}
-              placeholder="Search source account (e.g. Bank / Cash)..."
-              typeFilter="Asset"
+              placeholder={paymentMethod === 'Advance Offset' ? 'Search advance account (e.g. 1450 Supplier Advances)...' : 'Search source account (e.g. Bank / Cash)...'}
+              typeFilter={paymentMethod === 'Advance Offset' ? undefined : 'Asset'}
               required
               className="text-xs"
             />
-            <p className="text-[9px] text-muted mt-0.5">Asset account payment is drawn from (Bank / Cash)</p>
+            <p className="text-[9px] text-muted mt-0.5">
+              {paymentMethod === 'Advance Offset' ? 'Advance account being credited/cleared (1450)' : 'Asset account payment is drawn from (Bank / Cash)'}
+            </p>
           </div>
 
           {/* Bank Slip Attachment */}

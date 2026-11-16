@@ -88,6 +88,14 @@ const MAPPING_SECTIONS: MappingSection[] = [
         defaultName: 'Accounts Payable'
       },
       {
+        key: 'default_supplier_advance_account_id',
+        label: 'Supplier Advances / Vendor Prepayments',
+        description: 'Asset account debited when advances are paid to suppliers, and credited upon bill set-off.',
+        typeFilter: 'Asset',
+        defaultCode: '1450',
+        defaultName: 'Advance to Suppliers / Prepayments'
+      },
+      {
         key: 'default_purchase_expense_account_id',
         label: 'Raw Materials / Direct Purchases Expense',
         description: 'Debited for standard inventory item purchases and direct manufacturing materials.',

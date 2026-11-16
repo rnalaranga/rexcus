@@ -1220,7 +1220,10 @@ export const SupplierDetail: React.FC = () => {
                 onChange={e => {
                   const m = e.target.value
                   let creditId = paymentForm.creditAccountId
-                  if (m === 'Cash') {
+                  if (m === 'Advance Offset') {
+                    const adv = accounts.find((a: any) => a.id === 'acc_1450' || a.code === '1450' || /advance.*supplier|supplier.*advance|prepayment/i.test(a.name))
+                    if (adv) creditId = adv.id
+                  } else if (m === 'Cash') {
                     const cash = accounts.find((a: any) => a.code === '1000' || a.name?.toLowerCase().includes('cash'))
                     if (cash) creditId = cash.id
                   } else {
@@ -1235,6 +1238,7 @@ export const SupplierDetail: React.FC = () => {
                 <option value="Cheque">Cheque</option>
                 <option value="Cash">Cash</option>
                 <option value="Online / Card">Online / Card</option>
+                <option value="Advance Offset">Supplier Advance Offset (Prior Advance Set-off)</option>
                 <option value="Direct Debit">Direct Debit</option>
               </select>
             </div>
@@ -1313,10 +1317,10 @@ export const SupplierDetail: React.FC = () => {
               <p className="text-[9px] text-muted mt-0.5">Supplier liability account being settled</p>
             </div>
 
-            {/* Credit Account: Asset (Paid From / Bank / Cash) */}
+            {/* Credit Account: Asset (Paid From / Bank / Cash / Advance Offset) */}
             <div>
               <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center justify-between mb-1">
-                <span>Credit Account (Paid From) *</span>
+                <span>{paymentForm.paymentMethod === 'Advance Offset' ? 'Offset GL Account (Supplier Advance) *' : 'Credit Account (Paid From) *'}</span>
                 <span className="text-[9px] font-mono text-emerald-500 font-bold bg-surface2 px-1 rounded">CR</span>
               </label>
               <select
@@ -1333,13 +1337,15 @@ export const SupplierDetail: React.FC = () => {
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="Other Accounts">
+                <optgroup label="Advance & Other Accounts">
                   {accounts.filter((a: any) => !bankAndCashAccounts.some((b: any) => b.id === a.id)).map((a: any) => (
                     <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>
                   ))}
                 </optgroup>
               </select>
-              <p className="text-[9px] text-muted mt-0.5">Asset account payment is drawn from</p>
+              <p className="text-[9px] text-muted mt-0.5">
+                {paymentForm.paymentMethod === 'Advance Offset' ? 'Advance account being credited/cleared' : 'Asset account payment is drawn from'}
+              </p>
             </div>
 
             <div className="col-span-2">

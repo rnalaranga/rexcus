@@ -5,7 +5,7 @@ import {
   Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
   Building2, Mail, ExternalLink, RefreshCw, Trophy, Zap, SlidersHorizontal, Search,
   Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles, Edit3, MessageSquare, PhoneCall, Camera,
-  FileEdit, Printer
+  FileEdit, Printer, UserPlus, UserCheck, AlertCircle
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -22,7 +22,7 @@ import { exportToPdf } from '@/lib/exportToPdf'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
-import { createLead, updateLead, deleteLead, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN } from '@/lib/api'
+import { createLead, updateLead, deleteLead, convertLeadToCustomer, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
@@ -118,19 +118,18 @@ export const Leads: React.FC = () => {
   };
 
   const handleQuickConvertToCustomer = async (leadId: string) => {
-    if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
+    if (confirm('Are you sure you want to convert this lead to an official Customer? It will be saved into the Customer Database and marked as Won.')) {
       setSubmitting(true);
       try {
-        const res = await fetch('/api/leads/' + leadId + '/convert', { method: 'POST' });
-        const data = await res.json();
+        const data = await convertLeadToCustomer(leadId);
         if (data.success) {
-          alert('Successfully converted to Customer! ID: ' + data.customerId);
-          refetch();
+          alert('Successfully converted & saved to Customer Database! Customer ID: ' + data.customerId);
+          await refetch();
         } else {
           alert('Error: ' + data.error);
         }
-      } catch (e) {
-        alert('Network error');
+      } catch (e: any) {
+        alert('Error: ' + (e.message || 'Network error'));
       } finally {
         setSubmitting(false);
       }
@@ -141,9 +140,10 @@ export const Leads: React.FC = () => {
   const { data: customers } = useCustomers()
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'lead' | 'quotation', id: string | number } | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
+  const [showCustomerSearch, setShowCustomerSearch] = useState<boolean>(false)
 
   const [formData, setFormData] = useState<any>({
-    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '', grnList: [] as any[]
+    name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', saveToCustomerDatabase: true, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', includeGRN: false, grnItems: '', grnReceivedBy: '', grnList: [] as any[]
   })
 
   const [leadQuotations, setLeadQuotations] = React.useState<any[]>([])
@@ -309,8 +309,9 @@ export const Leads: React.FC = () => {
   const openCreateModal = () => {
     setEditId(null)
     setDeletedGrnIds([])
+    setShowCustomerSearch(false)
     setFormData({ 
-      name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', isNewCustomer: false, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', 
+      name: '', company: '', email: '', phone: '', source: 'website', priority: 'medium', value: '', stage: 'new', vat: '', svat: '', description: '', customerId: '', saveToCustomerDatabase: true, address: '', brNumber: '', financeContactName: '', financeContactPhone: '', industry: '', 
       grnList: [] as any[] 
     })
     setIsModalOpen(true)
@@ -319,8 +320,26 @@ export const Leads: React.FC = () => {
   const openEditModal = (lead: any) => {
     setEditId(lead.id)
     setDeletedGrnIds([])
+    setShowCustomerSearch(false)
     setFormData({
-      name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, source: lead.source, vat: lead.vat || '', svat: lead.svat || '', description: lead.description || '', customerId: lead.customerId || '', priority: lead.priority, value: String(lead.value), stage: lead.stage, isNewCustomer: false, address: lead.address || '', brNumber: lead.brNumber || '', financeContactName: lead.financeContactName || '', financeContactPhone: lead.financeContactPhone || '', industry: lead.industry || '',
+      name: lead.name || lead.customerContactName || '',
+      company: lead.company || lead.customerCompanyName || '',
+      email: lead.email || lead.customerEmail || '',
+      phone: lead.phone || lead.customerPhone || '',
+      source: lead.source || 'website',
+      vat: lead.vat || '',
+      svat: lead.svat || '',
+      description: lead.description || '',
+      customerId: lead.customerId || '',
+      priority: lead.priority || 'medium',
+      value: String(lead.value !== undefined && lead.value !== null ? lead.value : ''),
+      stage: lead.stage || 'new',
+      saveToCustomerDatabase: !lead.customerId,
+      address: lead.address || '',
+      brNumber: lead.brNumber || '',
+      financeContactName: lead.financeContactName || '',
+      financeContactPhone: lead.financeContactPhone || '',
+      industry: lead.industry || '',
       grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => {
         let items: any[] = [];
         try {
@@ -353,139 +372,134 @@ export const Leads: React.FC = () => {
   }
 
   const handleSaveLead = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitting(true)
-    
+    e.preventDefault();
+    if (!formData.company?.trim()) {
+      alert('Please enter a Company / Business Name.');
+      return;
+    }
+    if (!formData.name?.trim()) {
+      alert('Please enter a Contact Person Name.');
+      return;
+    }
+    if (!formData.phone?.trim()) {
+      alert('Please enter a Phone Number.');
+      return;
+    }
+
+    setSubmitting(true);
     let currentLeadId = editId;
 
-    if (editId) {
-      // Update existing lead
-      const updatedLead = {
-        ...formData,
-        value: Number(formData.value) || 0,
-        lastActivity: toMySQLDate(new Date())
-      }
-      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer'];
-      keysToRemove.forEach(k => delete (updatedLead as any)[k]);
-      await updateLead(editId, updatedLead)
-    } else {
-      // Create new lead
-      const newLead = {
-        id: 'LEAD-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
-        ...formData,
-        value: Number(formData.value) || 0,
-        probability: 10,
-        assignedTo: user?.name || 'System Admin',
-        lastActivity: toMySQLDate(new Date())
-      }
-      currentLeadId = newLead.id;
-      if (formData.isNewCustomer) {
-        const custId = 'CUST-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-        try {
-          const { createCustomer } = await import('@/lib/api');
-          await createCustomer({
-            id: custId,
-            name: formData.name,
-            company: (formData.company || '').trim().toUpperCase(),
-            email: formData.email,
-            phone: formData.phone,
-            address: formData.address || '',
-            brNumber: formData.brNumber || '',
-            financeContactName: formData.financeContactName || '',
-            financeContactPhone: formData.financeContactPhone || '',
-            industry: formData.industry || '',
-            status: 'active', segment: 'sme', lifetimeValue: 0, totalRevenue: 0, openDeals: 0, 
-            lastOrder: new Date().toISOString().slice(0, 19).replace('T', ' '), joinDate: new Date().toISOString().slice(0, 19).replace('T', ' '), 
-            avatar: (formData.name || '').substring(0,2).toUpperCase(),
-            vat: formData.vat, svat: formData.svat, creditLimit: 0, creditDays: 30, rating: 0, requiresAdvance: true, currency: 'LKR', isForeign: false
-          });
-          newLead.customerId = custId;
-        } catch(e) {}
-      }
-
-      const keysToRemove = ['includeGRN', 'grnItems', 'grnReceivedBy', 'grnList', 'isNewCustomer'];
-      keysToRemove.forEach(k => delete (newLead as any)[k]);
-      await createLead(newLead)
-    }
-
-    // Process removed customer GRNs
-    if (deletedGrnIds.length > 0) {
-      for (const delId of deletedGrnIds) {
-        try {
-          await deleteCustomerGRN(delId);
-        } catch (e) {
-          console.error('Failed to delete sample GRN:', e);
-        }
-      }
-      setDeletedGrnIds([]);
-    }
-
-    // Save/Update samples
-    if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
-      for (const g of formData.grnList) {
-        const isExisting = g.isExisting || (g.id && leadGrns.some((lg: any) => lg.id === g.id));
-        const itemsPayload = typeof g.items === 'string' ? g.items : JSON.stringify(g.items || []);
-        const photosPayload = Array.isArray(g.photos) ? JSON.stringify(g.photos) : (typeof g.photos === 'string' ? g.photos : '[]');
-
-        if (isExisting && g.id) {
-          await updateCustomerGRN(g.id, {
-            customerName: formData.name,
-            customerCompany: formData.company,
-            customerPhone: formData.phone || '',
-            items: itemsPayload,
-            receivedBy: g.receivedBy || user?.name || 'System Admin',
-            receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
-            notes: g.notes || '',
-            photos: photosPayload
-          });
-        } else {
-          await createCustomerGRN({
-            id: g.id || undefined,
-            quoteId: '',
-            quoNo: '',
-            leadId: currentLeadId,
-            customerName: formData.name,
-            customerCompany: formData.company,
-            customerPhone: formData.phone || '',
-            items: itemsPayload,
-            receivedBy: g.receivedBy || user?.name || 'System Admin',
-            receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
-            notes: g.notes || '',
-            photos: photosPayload,
-            status: 'In Stock'
-          });
-        }
-      }
-    }
-    
     try {
+      const payload: any = {
+        ...formData,
+        company: (formData.company || '').trim().toUpperCase(),
+        name: (formData.name || '').trim(),
+        phone: (formData.phone || '').trim(),
+        value: Number(formData.value) || 0,
+        lastActivity: toMySQLDate(new Date())
+      };
+
+      if (editId) {
+        // Update existing lead
+        const res = await updateLead(editId, payload);
+        if (res && res.customerId && !formData.customerId) {
+          setFormData((prev: any) => ({ ...prev, customerId: res.customerId }));
+        }
+      } else {
+        // Create new lead
+        const newLeadId = 'LEAD-' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        payload.id = newLeadId;
+        payload.probability = Number(payload.probability) || 10;
+        payload.assignedTo = user?.name || 'System Admin';
+        currentLeadId = newLeadId;
+        const res = await createLead(payload);
+        if (res && res.customerId) {
+          payload.customerId = res.customerId;
+        }
+      }
+
+      // Process removed customer GRNs
+      if (deletedGrnIds.length > 0) {
+        for (const delId of deletedGrnIds) {
+          try {
+            await deleteCustomerGRN(delId);
+          } catch (e) {
+            console.error('Failed to delete sample GRN:', e);
+          }
+        }
+        setDeletedGrnIds([]);
+      }
+
+      // Save/Update samples
+      if (formData.grnList && formData.grnList.length > 0 && currentLeadId) {
+        for (const g of formData.grnList) {
+          const isExisting = g.isExisting || (g.id && leadGrns.some((lg: any) => lg.id === g.id));
+          const itemsPayload = typeof g.items === 'string' ? g.items : JSON.stringify(g.items || []);
+          const photosPayload = Array.isArray(g.photos) ? JSON.stringify(g.photos) : (typeof g.photos === 'string' ? g.photos : '[]');
+
+          if (isExisting && g.id) {
+            await updateCustomerGRN(g.id, {
+              customerName: formData.name,
+              customerCompany: formData.company,
+              customerPhone: formData.phone || '',
+              items: itemsPayload,
+              receivedBy: g.receivedBy || user?.name || 'System Admin',
+              receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
+              notes: g.notes || '',
+              photos: photosPayload
+            });
+          } else {
+            await createCustomerGRN({
+              id: g.id || undefined,
+              quoteId: '',
+              quoNo: '',
+              leadId: currentLeadId,
+              customerName: formData.name,
+              customerCompany: formData.company,
+              customerPhone: formData.phone || '',
+              items: itemsPayload,
+              receivedBy: g.receivedBy || user?.name || 'System Admin',
+              receivedAt: g.receivedAt || new Date().toISOString().slice(0, 10),
+              notes: g.notes || '',
+              photos: photosPayload,
+              status: 'In Stock'
+            });
+          }
+        }
+      }
+
       const updatedGrns = await fetchAllCustomerGRNs();
       setLeadGrns(updatedGrns);
-    } catch(e) {}
-    
-    await refetch()
-    setSubmitting(false)
-    setIsModalOpen(false)
+      await refetch();
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Error saving lead: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const handleConvertToCustomer = async () => {
-    if (!editId) return;
-    if (confirm('Are you sure you want to convert this lead to a Customer? It will be marked as Won.')) {
+  const handleConvertToCustomer = async (targetLeadId?: string) => {
+    const lId = targetLeadId || editId;
+    if (!lId) return;
+    if (confirm('Are you sure you want to convert this lead to a Customer? It will be registered in the Customer Database and marked as Won.')) {
       setSubmitting(true);
       try {
-        const res = await fetch('/api/leads/' + editId + '/convert', { method: 'POST' });
-        const data = await res.json();
+        const data = await convertLeadToCustomer(lId);
         if (data.success) {
           alert('Successfully converted to Customer! ID: ' + data.customerId);
-          setIsModalOpen(false);
-          refetch();
+          if (isModalOpen) {
+            setFormData((prev: any) => ({ ...prev, customerId: data.customerId, stage: 'won', saveToCustomerDatabase: false }));
+          }
+          await refetch();
         } else {
           alert('Error: ' + data.error);
         }
-      } catch (e) {
-        alert('Network error');
+      } catch (e: any) {
+        alert('Error: ' + (e.message || 'Network error'));
+      } finally {
+        setSubmitting(false);
       }
-      setSubmitting(false);
     }
   };
 
@@ -696,13 +710,28 @@ export const Leads: React.FC = () => {
               {row.company || 'Unnamed Company'}
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-secondary">
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-secondary flex-wrap">
             <span className="flex items-center gap-1">
               <User size={11} className="text-muted" /> {row.name || 'No contact'}
             </span>
             <span className="text-[10px] font-mono text-muted bg-surface2 px-1 rounded-none border border-theme-subtle">
               {row.id}
             </span>
+            {row.customerId ? (
+              <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30 font-bold" title={`Customer ID: ${row.customerId}`}>
+                {row.customerId}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleQuickConvertToCustomer(row.id); }}
+                className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/30 flex items-center gap-0.5 transition-colors cursor-pointer"
+                title="Save & Convert to Customer Database"
+              >
+                <UserPlus size={10} />
+                <span>+ Save Customer</span>
+              </button>
+            )}
           </div>
         </div>
       ),
@@ -1376,9 +1405,26 @@ export const Leads: React.FC = () => {
                             <Badge value={lead.priority} size="sm" />
                           </div>
                         </div>
-                        <p className="text-[11px] text-muted mb-1.5 truncate flex items-center gap-1">
-                          <User size={10} className="text-muted shrink-0" /> {lead.name}
-                        </p>
+                        <div className="flex items-center justify-between gap-1 mb-1.5">
+                          <p className="text-[11px] text-muted truncate flex items-center gap-1">
+                            <User size={10} className="text-muted shrink-0" /> {lead.name}
+                          </p>
+                          {lead.customerId ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shrink-0" title={`Linked Customer ID: ${lead.customerId}`}>
+                              {lead.customerId}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleQuickConvertToCustomer(lead.id); }}
+                              className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 shrink-0 transition-colors flex items-center gap-0.5 cursor-pointer"
+                              title="Convert & Save to Customer Database"
+                            >
+                              <UserPlus size={9} />
+                              <span>+ Customer</span>
+                            </button>
+                          )}
+                        </div>
 
                         {lead.description && (
                           <p className="text-[10px] text-secondary mb-2 line-clamp-2 italic border-l-2 border-theme-subtle pl-1.5">
@@ -1587,216 +1633,348 @@ export const Leads: React.FC = () => {
           
           {/* Section: Basic Info */}
           <div>
-            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center gap-2">
-              <User size={14} className="text-rex-500" />
-              Lead Information
+            <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-3 pb-2 border-b border-theme-subtle flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Building2 size={14} className="text-rex-500" />
+                Customer & Lead Information
+              </span>
+              {formData.customerId ? (
+                <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                  Linked Customer: {formData.customerId}
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                  Lead Only (Not in Customer DB)
+                </span>
+              )}
             </h3>
-            
-            {/* Customer Selection / Creation Toggle */}
-            <div className="flex gap-2 mb-4 p-1 bg-surface2 rounded-md inline-flex">
-              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: false})} className={`px-4 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${!formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>Select Existing Customer</button>
-              <button type="button" onClick={() => setFormData({...formData, isNewCustomer: true, customerId: '', name: '', company: '', email: '', phone: ''})} className={`px-4 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap shrink-0 transition-all ${formData.isNewCustomer ? 'bg-white shadow text-primary' : 'text-muted hover:text-primary'}`}>+ Register New Customer</button>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {!formData.isNewCustomer ? (
-                <div className="space-y-1.5 col-span-2">
-                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Select Customer <span className="text-rex-500">*</span></label>
+            {/* Customer Status & Linking Bar */}
+            <div className="mb-4">
+              {formData.customerId ? (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-primary">
+                        Linked to Customer Master: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{customers?.find((c: any) => c.id === formData.customerId)?.company || formData.company || formData.customerId}</span>
+                      </p>
+                      <p className="text-[10px] text-muted font-mono">Customer ID: {formData.customerId}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerSearch(!showCustomerSearch)}
+                      className="text-xs text-secondary hover:text-primary font-semibold underline px-2 py-1"
+                    >
+                      {showCustomerSearch ? 'Close Search' : 'Switch Customer'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData((prev: any) => ({ ...prev, customerId: '', saveToCustomerDatabase: true }))}
+                      className="text-xs text-rose-500 hover:text-rose-600 font-semibold underline px-2 py-1"
+                    >
+                      Unlink Customer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="text-amber-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                        Lead Only (Not yet registered in Customer Database)
+                      </p>
+                      <p className="text-[10px] text-muted">
+                        This lead is only in the leads table. You can link to an existing customer or save it to Customer Master.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerSearch(!showCustomerSearch)}
+                      className="text-xs px-2.5 py-1 bg-surface border border-theme-subtle hover:border-rex-500 rounded font-semibold text-secondary hover:text-primary transition-colors flex items-center gap-1"
+                    >
+                      <Search size={12} />
+                      <span>{showCustomerSearch ? 'Close Search' : 'Link Existing Customer'}</span>
+                    </button>
+                    {editId && (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => handleConvertToCustomer()}
+                        className="text-xs px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold transition-colors flex items-center gap-1 shadow-xs"
+                      >
+                        <UserPlus size={12} />
+                        <span>Save as Customer Now</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Customer Autocomplete Dropdown when searching */}
+              {showCustomerSearch && (
+                <div className="mt-2 p-3 bg-surface border border-rex-500/40 rounded-lg space-y-1.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                      Select Customer from Database
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerSearch(false)}
+                      className="text-[10px] text-muted hover:text-primary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                   <CustomerAutocomplete
                     value={formData.customerId}
                     customers={customers}
                     onChange={(val, c) => {
-                      setFormData((prev: any) => ({
-                        ...prev,
-                        customerId: val,
-                        ...(c ? {
-                          name: c.name || '',
-                          company: c.company || '',
-                          email: c.email || '',
-                          phone: c.phone || '',
-                          vat: c.vat || '',
-                          svat: c.svat || '',
-                          address: c.address || '',
-                          brNumber: c.brNumber || '',
-                          industry: c.industry || ''
-                        } : {
-                          name: '',
-                          company: '',
-                          email: '',
-                          phone: '',
-                          vat: '',
-                          svat: '',
-                          address: '',
-                          brNumber: '',
-                          industry: ''
-                        })
-                      }));
+                      if (c) {
+                        setFormData((prev: any) => ({
+                          ...prev,
+                          customerId: val,
+                          company: c.company || prev.company || '',
+                          name: c.name || prev.name || '',
+                          email: c.email || prev.email || '',
+                          phone: c.phone || prev.phone || '',
+                          vat: c.vat || prev.vat || '',
+                          svat: c.svat || prev.svat || '',
+                          address: c.address || prev.address || '',
+                          brNumber: c.brNumber || prev.brNumber || '',
+                          industry: c.industry || prev.industry || '',
+                          financeContactName: c.financeContactName || prev.financeContactName || '',
+                          financeContactPhone: c.financeContactPhone || prev.financeContactPhone || '',
+                          saveToCustomerDatabase: false
+                        }));
+                        setShowCustomerSearch(false);
+                      }
                     }}
-                    placeholder="Search existing customer (name, company, phone)..."
+                    placeholder="Search existing customer by company, name, or phone..."
                     className="text-xs"
                   />
-                  {formData.customerId && (() => {
-                     const sc = customers?.find((x: any) => x.id === formData.customerId);
-                     if (!sc) return null;
-
-                     let rawContacts: any[] = [];
-                     if (Array.isArray(sc.contacts)) {
-                       rawContacts = sc.contacts;
-                     } else if (typeof sc.contacts === 'string' && sc.contacts.trim()) {
-                       try {
-                         const parsed = JSON.parse(sc.contacts);
-                         rawContacts = Array.isArray(parsed) ? parsed : [];
-                       } catch (e) {
-                         rawContacts = [];
-                       }
-                     }
-
-                     const contactOptions: Array<{
-                       id: string;
-                       name: string;
-                       designation?: string;
-                       phone?: string;
-                       email?: string;
-                       roleTag: string;
-                     }> = [];
-
-                     if (sc.name) {
-                       contactOptions.push({
-                         id: '__primary__',
-                         name: sc.name,
-                         designation: 'Primary Contact',
-                         phone: sc.phone || sc.phone2 || '',
-                         email: sc.email || '',
-                         roleTag: 'Primary'
-                       });
-                     }
-
-                     if (sc.financeContactName) {
-                       contactOptions.push({
-                         id: '__finance__',
-                         name: sc.financeContactName,
-                         designation: 'Finance',
-                         phone: sc.financeContactPhone || '',
-                         email: sc.financeContactEmail || '',
-                         roleTag: 'Finance'
-                       });
-                     }
-
-                     rawContacts.forEach((c: any, idx: number) => {
-                       if (c && typeof c === 'object' && (c.name || c.phone || c.email)) {
-                         const contactPhone = c.phone || c.mobile || c.tel || c.contactPhone || c.phone1 || '';
-                         contactOptions.push({
-                           id: String(c.id || `contact-${idx}`),
-                           name: c.name || `Contact ${idx + 1}`,
-                           designation: c.designation || '',
-                           phone: contactPhone,
-                           email: c.email || '',
-                           roleTag: c.designation || 'Additional'
-                         });
-                       }
-                     });
-
-                     if (contactOptions.length <= 1) return null;
-
-                     const currentSelectedId = contactOptions.find(c => 
-                       c.name.trim().toLowerCase() === (formData.name || '').trim().toLowerCase()
-                     )?.id || '__primary__';
-
-                     const handleSelectContact = (targetId: string) => {
-                       const chosen = contactOptions.find(c => c.id === targetId);
-                       if (!chosen) return;
-                       setFormData((f: any) => ({
-                         ...f,
-                         name: chosen.name,
-                         phone: chosen.phone ? chosen.phone : (sc.phone || f.phone || ''),
-                         email: chosen.email ? chosen.email : (sc.email || f.email || '')
-                       }));
-                     };
-
-                     return (
-                        <div className="mt-3 bg-surface p-2.5 rounded-lg border border-theme-subtle">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                              <User size={12} className="text-rex-500" />
-                              Attention / Contact Person
-                            </label>
-                            <span className="text-[10px] text-muted font-medium">
-                              {contactOptions.length} contacts available
-                            </span>
-                          </div>
-                          
-                          <select 
-                            className="w-full input-base text-xs font-medium cursor-pointer"
-                            value={currentSelectedId}
-                            onChange={e => handleSelectContact(e.target.value)}
-                          >
-                            {contactOptions.map(c => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} {c.designation ? `(${c.designation})` : ''} {c.phone ? `• ${c.phone}` : ''}
-                              </option>
-                            ))}
-                          </select>
-
-                          {/* Quick Select Chips */}
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {contactOptions.map(c => {
-                              const isSelected = currentSelectedId === c.id;
-                              return (
-                                <button
-                                  key={c.id}
-                                  type="button"
-                                  onClick={() => handleSelectContact(c.id)}
-                                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
-                                    isSelected 
-                                      ? 'bg-rex-500/15 border-rex-500 text-rex-600 font-bold shadow-sm' 
-                                      : 'bg-surface2/60 border-theme-subtle/80 text-secondary hover:border-rex-500/50 hover:text-primary'
-                                  }`}
-                                  title={`Click to set Attn: ${c.name}${c.designation ? ` (${c.designation})` : ''}${c.phone ? ` • ${c.phone}` : ''}`}
-                                >
-                                  <span>{c.name}</span>
-                                  {c.designation && (
-                                    <span className="opacity-70 text-[9px]">({c.designation})</span>
-                                  )}
-                                  {c.phone && (
-                                    <span className="opacity-80 font-mono text-[9px] text-rex-600 font-semibold">• {c.phone}</span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                     );
-                  })()}
                 </div>
-              ) : (
-                <>
-                  <div className="col-span-2"><div className="h-px bg-theme-subtle my-2" /><p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">New Customer Details</p></div>
-                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Customer Name <span className="text-rex-500">*</span></label>
-                    <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full input-base" placeholder="e.g. Jane Doe" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Company / Business Name <span className="text-rex-500">*</span> (BLOCK CAPITALS)</label>
-                    <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value.toUpperCase()})} className="w-full input-base uppercase font-semibold" placeholder="E.G. ACME CORP" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Full Address</label>
-                    <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full input-base" placeholder="123 Main St, City" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Business Registration No.</label>
-                    <input value={formData.brNumber} onChange={e => setFormData({...formData, brNumber: e.target.value})} className="w-full input-base" placeholder="e.g. PV00123" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Industry</label>
-                    <input value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full input-base" placeholder="e.g. Manufacturing" />
-                  </div>
-                </>
               )}
+            </div>
+
+            {/* Customer Details Form Grid - ALWAYS VISIBLE & EDITABLE */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Company / Business Name <span className="text-rex-500">*</span> (BLOCK CAPITALS)
+                </label>
+                <input
+                  required
+                  value={formData.company}
+                  onChange={e => setFormData({ ...formData, company: e.target.value.toUpperCase() })}
+                  className="w-full input-base uppercase font-semibold"
+                  placeholder="E.G. TECHNOVA PVT LTD"
+                />
+              </div>
 
               <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">Estimated Value (Rs.) <span className="text-rex-500">*</span></label>
-                <input type="number" required value={formData.value} onChange={e => setFormData({...formData, value: e.target.value})} className="w-full input-base" placeholder="100000" />
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Contact Person Name <span className="text-rex-500">*</span>
+                </label>
+                <input
+                  required
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full input-base"
+                  placeholder="e.g. Kasun Herath"
+                />
+              </div>
+
+              {/* Contact Person selector chips if linked customer has multiple contacts */}
+              {formData.customerId && (() => {
+                const sc = customers?.find((x: any) => x.id === formData.customerId);
+                if (!sc) return null;
+
+                let rawContacts: any[] = [];
+                if (Array.isArray(sc.contacts)) {
+                  rawContacts = sc.contacts;
+                } else if (typeof sc.contacts === 'string' && sc.contacts.trim()) {
+                  try {
+                    const parsed = JSON.parse(sc.contacts);
+                    rawContacts = Array.isArray(parsed) ? parsed : [];
+                  } catch (e) {
+                    rawContacts = [];
+                  }
+                }
+
+                const contactOptions: Array<{
+                  id: string;
+                  name: string;
+                  designation?: string;
+                  phone?: string;
+                  email?: string;
+                  roleTag: string;
+                }> = [];
+
+                if (sc.name) {
+                  contactOptions.push({
+                    id: '__primary__',
+                    name: sc.name,
+                    designation: 'Primary Contact',
+                    phone: sc.phone || sc.phone2 || '',
+                    email: sc.email || '',
+                    roleTag: 'Primary'
+                  });
+                }
+
+                if (sc.financeContactName) {
+                  contactOptions.push({
+                    id: '__finance__',
+                    name: sc.financeContactName,
+                    designation: 'Finance',
+                    phone: sc.financeContactPhone || '',
+                    email: sc.financeContactEmail || '',
+                    roleTag: 'Finance'
+                  });
+                }
+
+                rawContacts.forEach((c: any, idx: number) => {
+                  if (c && typeof c === 'object' && (c.name || c.phone || c.email)) {
+                    const contactPhone = c.phone || c.mobile || c.tel || c.contactPhone || c.phone1 || '';
+                    contactOptions.push({
+                      id: String(c.id || `contact-${idx}`),
+                      name: c.name || `Contact ${idx + 1}`,
+                      designation: c.designation || '',
+                      phone: contactPhone,
+                      email: c.email || '',
+                      roleTag: c.designation || 'Additional'
+                    });
+                  }
+                });
+
+                if (contactOptions.length <= 1) return null;
+
+                const currentSelectedId = contactOptions.find(c => 
+                  c.name.trim().toLowerCase() === (formData.name || '').trim().toLowerCase()
+                )?.id || '__primary__';
+
+                const handleSelectContact = (targetId: string) => {
+                  const chosen = contactOptions.find(c => c.id === targetId);
+                  if (!chosen) return;
+                  setFormData((f: any) => ({
+                    ...f,
+                    name: chosen.name,
+                    phone: chosen.phone ? chosen.phone : (sc.phone || f.phone || ''),
+                    email: chosen.email ? chosen.email : (sc.email || f.email || '')
+                  }));
+                };
+
+                return (
+                  <div className="col-span-2 bg-surface p-2.5 rounded-lg border border-theme-subtle">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                        <User size={12} className="text-rex-500" />
+                        Available Customer Contacts ({contactOptions.length})
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {contactOptions.map(c => {
+                        const isSelected = currentSelectedId === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleSelectContact(c.id)}
+                            className={`text-[10px] px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
+                              isSelected 
+                                ? 'bg-rex-500/15 border-rex-500 text-rex-600 font-bold shadow-sm' 
+                                : 'bg-surface2/60 border-theme-subtle/80 text-secondary hover:border-rex-500/50 hover:text-primary'
+                            }`}
+                          >
+                            <span>{c.name}</span>
+                            {c.designation && <span className="opacity-70 text-[9px]">({c.designation})</span>}
+                            {c.phone && <span className="opacity-80 font-mono text-[9px] text-rex-600 font-semibold">• {c.phone}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Full Address
+                </label>
+                <input
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full input-base"
+                  placeholder="e.g. 123 Main Street, Colombo 03"
+                />
+              </div>
+
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Business Registration (BR) No.
+                </label>
+                <input
+                  value={formData.brNumber}
+                  onChange={e => setFormData({ ...formData, brNumber: e.target.value })}
+                  className="w-full input-base"
+                  placeholder="e.g. PV00123"
+                />
+              </div>
+
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Industry
+                </label>
+                <input
+                  value={formData.industry}
+                  onChange={e => setFormData({ ...formData, industry: e.target.value })}
+                  className="w-full input-base"
+                  placeholder="e.g. Manufacturing, Construction"
+                />
+              </div>
+
+              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider">
+                  Estimated Value (Rs.) <span className="text-rex-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={formData.value}
+                  onChange={e => setFormData({ ...formData, value: e.target.value })}
+                  className="w-full input-base font-mono"
+                  placeholder="100000"
+                />
+              </div>
+
+              {/* Save / Sync Customer Master Database Option */}
+              <div className="col-span-2">
+                {!formData.customerId ? (
+                  <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.saveToCustomerDatabase)}
+                      onChange={e => setFormData({ ...formData, saveToCustomerDatabase: e.target.checked })}
+                      className="rounded border-emerald-500 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Automatically register as an official Customer in the Customer Database on save</span>
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-surface2 border border-theme-subtle text-xs text-secondary font-medium">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.saveToCustomerDatabase)}
+                      onChange={e => setFormData({ ...formData, saveToCustomerDatabase: e.target.checked })}
+                      className="rounded text-rex-600 focus:ring-rex-500"
+                    />
+                    <span>Sync and update Customer Master Database record ({formData.customerId})</span>
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -2239,7 +2417,21 @@ export const Leads: React.FC = () => {
 
           <div className="pt-4 flex items-center justify-between border-t border-theme-subtle">
             {editId ? (
-              <Button variant="ghost" type="button" onClick={handleDelete} className="text-rex-500 hover:bg-rex-500/10">Delete Lead</Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" type="button" onClick={handleDelete} className="text-rex-500 hover:bg-rex-500/10">Delete Lead</Button>
+                {!formData.customerId && (
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => handleConvertToCustomer()}
+                    disabled={submitting}
+                    className="text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 text-xs font-bold"
+                  >
+                    <UserPlus size={13} className="mr-1.5" />
+                    Save to Customer Database
+                  </Button>
+                )}
+              </div>
             ) : <div />}
             <div className="flex gap-3">
               <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>

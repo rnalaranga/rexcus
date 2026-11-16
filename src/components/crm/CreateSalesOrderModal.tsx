@@ -140,6 +140,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     quotationNo: '',
     customerId: '',
     customerName: '',
+    customerCompany: '',
     attention: '',
     customerPhone: '',
     customerEmail: '',
@@ -332,8 +333,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
     const currentYY = String(new Date().getFullYear()).slice(-2);
     const fallbackOrderNo = `SO-${currentYY}-${Date.now().toString().slice(-4)}`;
-    const custName = group.clientName || group.clientCompany || group.leadCompany || group.leadName || 'Customer';
-    const attn = quoteData.attention || quotation.attention || group.clientContact || group.leadContact || (cust as any)?.name || '';
+    const resolvedCompany = cust?.company || lead?.company || quoteData.customerCompany || group.clientCompany || group.leadCompany || '';
+    const resolvedCustName = cust?.name || lead?.name || quoteData.customerName || group.clientName || group.leadName || resolvedCompany || 'Customer';
+    const attn = quoteData.attention || quotation.attention || group.clientContact || group.leadContact || (cust as any)?.name || (lead as any)?.name || '';
 
     // Check if any existing sales order already exists for this quotation
     const qId = String(quotation.id || '');
@@ -372,7 +374,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       quoteId: quotation.id,
       quotationNo: group.quoNo,
       customerId: custId || '',
-      customerName: custName,
+      customerName: resolvedCustName,
+      customerCompany: resolvedCompany,
       attention: attn,
       customerPhone: group.clientPhone || group.leadPhone || '',
       customerEmail: group.clientEmail || group.leadEmail || '',
@@ -929,8 +932,13 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           <div className="p-4 bg-surface2/60 border border-theme-subtle text-xs space-y-3.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-theme-subtle/60 pb-2.5">
               <div>
-                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Customer</span>
-                <span className="text-sm font-bold text-primary">{formData.customerName}</span>
+                <span className="text-[10px] text-muted uppercase font-bold tracking-wider block">Customer & Company</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-bold text-primary">{formData.customerCompany || formData.customerName}</span>
+                  {formData.customerCompany && formData.customerName && formData.customerCompany !== formData.customerName && (
+                    <span className="text-xs text-secondary font-medium">({formData.customerName})</span>
+                  )}
+                </div>
                 {formData.attention && (
                   <span className="text-[11px] text-muted block">Attn: {formData.attention}</span>
                 )}

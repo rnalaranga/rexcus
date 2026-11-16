@@ -87,8 +87,12 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     }];
   }
 
-  const customerName = order.customerName || order.clientName || customer?.company || customer?.name || 'Valued Customer';
-  const attention = order.attention || customer?.attention || customer?.contactPerson || customer?.name || '';
+  const customerCompany = (order.customerCompany || customer?.company || '').trim();
+  const rawCustomerName = (order.customerName || order.clientName || customer?.name || '').trim();
+  const displayCompany = customerCompany || (rawCustomerName && rawCustomerName !== customer?.name ? rawCustomerName : '');
+  const displayContactName = (rawCustomerName && rawCustomerName !== displayCompany) ? rawCustomerName : '';
+  const customerName = displayCompany || rawCustomerName || 'Valued Customer';
+  const attention = (order.attention || customer?.attention || customer?.contactPerson || displayContactName || '').trim();
   const customerAddress = order.deliveryAddress || order.customerAddress || customer?.address || '';
   const customerPhone = order.customerPhone || customer?.phone || '';
   const customerEmail = order.customerEmail || customer?.email || '';
@@ -284,9 +288,14 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
           <div className="w-[52%] p-2.5 border-r border-black flex flex-col justify-between">
             <div>
               <div className="font-bold italic mb-0.5 text-[10px] text-gray-700 uppercase">CUSTOMER / BILL TO</div>
-              {customerName && (
+              {displayCompany && (
                 <div className="font-bold text-[12px] uppercase leading-tight text-black">
-                  {customerName}
+                  {displayCompany}
+                </div>
+              )}
+              {displayContactName && displayContactName !== displayCompany && (
+                <div className="text-[11px] font-semibold text-black mt-0.5">
+                  {displayContactName}
                 </div>
               )}
               {customerAddress && (
@@ -296,7 +305,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
               )}
             </div>
             <div className="mt-2 space-y-0.5 font-medium text-[10.5px]">
-              {attention && (
+              {attention && attention !== displayCompany && (
                 <div className="flex items-start">
                   <span className="font-bold shrink-0 whitespace-nowrap" style={{ width: "75px", whiteSpace: "nowrap", flexShrink: 0 }}>Attn</span>
                   <span className="font-bold mr-1 shrink-0">:</span>

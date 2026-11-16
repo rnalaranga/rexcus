@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import {
   Check, CheckSquare, Square, DollarSign, Wallet, Calendar,
-  ArrowRight, Sparkles, AlertCircle, Info, RefreshCw, FileText
+  ArrowRight, Sparkles, AlertCircle, Info, RefreshCw, FileText,
+  Paperclip, Upload, Eye, Trash2
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
-import { settleCustomerOutstanding } from '@/lib/api';
+import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
+import { settleCustomerOutstanding, uploadFileToStorage } from '@/lib/api';
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
@@ -44,6 +45,8 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
   const [reference, setReference] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [totalAmount, setTotalAmount] = useState<string>('');
+  const [depositSlip, setDepositSlip] = useState<string>('');
+  const [isUploadingSlip, setIsUploadingSlip] = useState<boolean>(false);
 
   // Map of invoiceId -> allocated amount (as number)
   const [allocations, setAllocations] = useState<Record<string, number>>({});
@@ -225,6 +228,34 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
     return Object.values(allocations).filter(v => (v || 0) > 0).length;
   }, [allocations]);
 
+  // Bank Deposit Slip Upload
+  const handleSlipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSlip(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+          setDepositSlip(base64);
+          const uploaded = await uploadFileToStorage(base64, file.name, 'slips');
+          if (uploaded && uploaded.url) {
+            setDepositSlip(uploaded.url);
+          }
+        } catch (err) {
+          console.warn('Storage upload fallback:', err);
+        } finally {
+          setIsUploadingSlip(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('File read error:', err);
+      setIsUploadingSlip(false);
+    }
+  };
+
   // Form Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +295,7 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
         depositAccountId: depositAccountId || undefined,
         reference: reference.trim() || undefined,
         notes: notes.trim() || undefined,
+        depositSlip: depositSlip || undefined,
         totalAmount: numEnteredTotal,
         currency: settlementCurrency,
         allocations: validAllocationsList
@@ -396,11 +428,11 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             </div>
           </div>
 
-          {/* Reference & Notes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-theme-subtle">
+          {/* Reference, Notes & Attachment */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-theme-subtle">
             <div>
               <label className="block text-[11px] font-medium text-secondary mb-1">
-                Cheque No / Slip No / Reference <span className="text-muted">(Optional)</span>
+                Cheque / Slip No / Reference <span className="text-muted">(Optional)</span>
               </label>
               <input
                 type="text"
@@ -412,15 +444,48 @@ export const MultiInvoiceSettlementModal: React.FC<MultiInvoiceSettlementModalPr
             </div>
             <div>
               <label className="block text-[11px] font-medium text-secondary mb-1">
-                Internal Settlement Remarks <span className="text-muted">(Optional)</span>
+                Internal Remarks <span className="text-muted">(Optional)</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g. Lump-sum settlement for project milestones"
+                placeholder="e.g. Lump-sum invoice settlement"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 className="w-full bg-surface-secondary border border-theme rounded-lg px-3 py-1.5 text-xs text-primary outline-none focus:ring-1 focus:ring-rex-500"
               />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-secondary mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1"><Paperclip size={11} /> Bank Slip / Cheque Copy</span>
+                {depositSlip && (
+                  <button
+                    type="button"
+                    onClick={() => openDataUriOrUrl(depositSlip, 'Customer Bank Deposit Slip')}
+                    className="text-[10px] text-rex-500 hover:underline font-bold flex items-center gap-1"
+                  >
+                    <Eye size={11} /> View Slip
+                  </button>
+                )}
+              </label>
+              {depositSlip ? (
+                <div className="flex items-center justify-between px-2.5 py-1.5 bg-surface-secondary border border-theme rounded-lg text-xs">
+                  <span className="text-[11px] text-emerald-500 font-medium truncate">Slip Attached ✓</span>
+                  <button
+                    type="button"
+                    onClick={() => setDepositSlip('')}
+                    className="text-rose-500 hover:text-rose-400 p-0.5"
+                    title="Remove attachment"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 border border-dashed border-theme hover:border-rex-500 bg-surface-secondary rounded-lg text-xs cursor-pointer text-muted hover:text-primary transition-colors">
+                  <Upload size={13} />
+                  <span className="truncate">{isUploadingSlip ? 'Uploading...' : 'Upload Bank Slip (Image/PDF)'}</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={handleSlipUpload} className="hidden" />
+                </label>
+              )}
             </div>
           </div>
         </div>

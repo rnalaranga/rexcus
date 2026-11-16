@@ -1527,6 +1527,19 @@ async function runDatabaseSync() {
     // Ensure Foreign Currency USD Account and Master Setup Setting exist
     await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1010', '1010', 'Foreign Currency Bank Account (USD)', 'Asset', 'Bank', 0, NOW())`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('usd_master_account_id', 'acc_1010') ON DUPLICATE KEY UPDATE val=val`);
+
+    // Ensure Supplier Advance / Prepayment Account and Setting exist
+    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1450', '1450', 'Advance to Suppliers / Prepayments', 'Asset', 'Current Asset', 0, NOW())`);
+    await db.query(`INSERT INTO settings (id, val) VALUES ('default_supplier_advance_account_id', 'acc_1450') ON DUPLICATE KEY UPDATE val=val`);
+
+    // Clean up any historical journal lines where Bank/Cash was incorrectly tagged with partyType='Customer'
+    await db.query(`
+      UPDATE journal_lines jl
+      JOIN chart_of_accounts coa ON jl.accountId = coa.id
+      SET jl.partyId = NULL, jl.partyType = NULL
+      WHERE (coa.subtype IN ('Bank', 'Cash') OR coa.name LIKE '%Bank%' OR coa.name LIKE '%Cash%')
+        AND jl.partyType = 'Customer'
+    `);
   } catch (e) {
     console.error('Error seeding COA:', e);
   }
@@ -2002,9 +2015,11 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_vouchers ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN billId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN paidAmount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills MODIFY COLUMN date VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_bills MODIFY COLUMN dueDate VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
     `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
       id VARCHAR(50) PRIMARY KEY,
       jobNo VARCHAR(50) NOT NULL UNIQUE,
@@ -4350,6 +4365,84 @@ app.post('/api/customers/:id/approve-credit', async (req, res) => {
 });
 
 // -- LEADS --
+
+// Helper to find or register a customer in the customer database from lead data
+async function findOrCreateCustomerFromLead(leadData: any) {
+  const companyName = String(leadData.company || leadData.name || 'NEW CUSTOMER').trim().toUpperCase();
+  const contactName = String(leadData.name || leadData.company || 'Contact Person').trim();
+  const phoneNo = String(leadData.phone || '').trim() || '+94 00 000 0000';
+  const address = String(leadData.address || '').trim() || 'Address not specified';
+
+  // 1. If lead already has customerId, verify if exists
+  if (leadData.customerId) {
+    const [existing]: any = await db.query('SELECT id FROM customers WHERE id = ? LIMIT 1', [leadData.customerId]);
+    if (existing && existing.length > 0) {
+      return existing[0].id;
+    }
+  }
+
+  // 2. Check if customer with same uppercase company already exists
+  const [matchRows]: any = await db.query(
+    'SELECT id FROM customers WHERE UPPER(TRIM(company)) = ? LIMIT 1',
+    [companyName]
+  );
+  if (matchRows && matchRows.length > 0) {
+    return matchRows[0].id;
+  }
+
+  // 3. Generate unique CUST- ID
+  let finalCustId = '';
+  for (let i = 0; i < 15; i++) {
+    const candidate = 'CUST-' + Math.floor(1000 + Math.random() * 9000);
+    const [chk]: any = await db.query('SELECT id FROM customers WHERE id = ? LIMIT 1', [candidate]);
+    if (!chk || chk.length === 0) {
+      finalCustId = candidate;
+      break;
+    }
+  }
+  if (!finalCustId) finalCustId = 'CUST-' + Date.now().toString().slice(-4);
+
+  const customerPayload: any = {
+    id: finalCustId,
+    name: contactName,
+    company: companyName,
+    email: leadData.email || '',
+    phone: phoneNo,
+    address: address,
+    status: 'active',
+    segment: 'sme',
+    industry: leadData.industry || '',
+    lifetimeValue: 0,
+    totalRevenue: 0,
+    openDeals: 1,
+    lastOrder: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    joinDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    avatar: contactName.substring(0, 2).toUpperCase(),
+    vat: leadData.vat || '',
+    svat: leadData.svat || '',
+    creditLimit: 0,
+    creditDays: 30,
+    brNumber: leadData.brNumber || '',
+    financeContactName: leadData.financeContactName || '',
+    financeContactPhone: leadData.financeContactPhone || '',
+    requiresAdvance: 1,
+    isCreditCustomer: 0,
+    defaultPaymentMode: 'Cash',
+    currency: leadData.currency || 'LKR',
+    isForeign: leadData.isForeign ? 1 : 0,
+    contacts: JSON.stringify([{
+      id: 'primary',
+      name: contactName,
+      phone: phoneNo,
+      email: leadData.email || '',
+      designation: 'Primary Contact'
+    }])
+  };
+
+  await db.query('INSERT INTO customers SET ?', customerPayload);
+  return finalCustId;
+}
+
 app.get('/api/leads', async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -4357,7 +4450,17 @@ app.get('/api/leads', async (req, res) => {
         l.*, 
         COALESCE(NULLIF(l.address, ''), c.address, '') as address,
         COALESCE(NULLIF(l.vat, ''), c.vat, '') as vat,
-        COALESCE(NULLIF(l.svat, ''), c.svat, '') as svat
+        COALESCE(NULLIF(l.svat, ''), c.svat, '') as svat,
+        COALESCE(NULLIF(l.brNumber, ''), c.brNumber, '') as brNumber,
+        COALESCE(NULLIF(l.industry, ''), c.industry, '') as industry,
+        COALESCE(NULLIF(l.company, ''), c.company, '') as company,
+        COALESCE(NULLIF(l.name, ''), c.name, '') as name,
+        COALESCE(NULLIF(l.phone, ''), c.phone, '') as phone,
+        COALESCE(NULLIF(l.email, ''), c.email, '') as email,
+        c.name as customerContactName,
+        c.company as customerCompanyName,
+        c.phone as customerPhone,
+        c.email as customerEmail
       FROM leads l 
       LEFT JOIN customers c ON l.customerId = c.id 
       ORDER BY l.lastActivity DESC
@@ -4372,10 +4475,33 @@ app.get('/api/leads', async (req, res) => {
 app.post('/api/leads', async (req, res) => {
   try {
     const data = { ...req.body };
+    const shouldSaveCustomer = Boolean(data.saveToCustomerDatabase || data.isNewCustomer);
+    delete data.saveToCustomerDatabase;
+    delete data.isNewCustomer;
+    delete data.grnList;
+    delete data.includeGRN;
+    delete data.grnItems;
+    delete data.grnReceivedBy;
+
+    if (shouldSaveCustomer && (data.company || data.name)) {
+      const custId = await findOrCreateCustomerFromLead(data);
+      data.customerId = custId;
+    }
+
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    const [result] = await db.query('INSERT INTO leads SET ?', data);
-    
-    res.json({ success: true, id: data.id });
+
+    // Only allow columns that actually exist in leads table
+    const [cols]: any = await db.query('DESCRIBE leads');
+    const validColNames = new Set(cols.map((c: any) => c.Field));
+    const cleanLeadData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validColNames.has(k)) {
+        cleanLeadData[k] = v;
+      }
+    }
+
+    await db.query('INSERT INTO leads SET ?', cleanLeadData);
+    res.json({ success: true, id: cleanLeadData.id, customerId: cleanLeadData.customerId || null });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
@@ -4386,13 +4512,97 @@ app.put('/api/leads/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const data = { ...req.body };
+    const shouldSaveCustomer = Boolean(data.saveToCustomerDatabase || data.isNewCustomer);
+    delete data.saveToCustomerDatabase;
+    delete data.isNewCustomer;
+    delete data.grnList;
+    delete data.includeGRN;
+    delete data.grnItems;
+    delete data.grnReceivedBy;
+
+    if (shouldSaveCustomer && (data.company || data.name)) {
+      if (!data.customerId) {
+        const custId = await findOrCreateCustomerFromLead(data);
+        data.customerId = custId;
+      } else {
+        const comp = String(data.company || '').trim().toUpperCase();
+        await db.query(`
+          UPDATE customers SET 
+            name = COALESCE(NULLIF(?, ''), name),
+            company = COALESCE(NULLIF(?, ''), company),
+            email = COALESCE(NULLIF(?, ''), email),
+            phone = COALESCE(NULLIF(?, ''), phone),
+            address = COALESCE(NULLIF(?, ''), address),
+            brNumber = COALESCE(NULLIF(?, ''), brNumber),
+            vat = COALESCE(NULLIF(?, ''), vat),
+            svat = COALESCE(NULLIF(?, ''), svat),
+            industry = COALESCE(NULLIF(?, ''), industry),
+            financeContactName = COALESCE(NULLIF(?, ''), financeContactName),
+            financeContactPhone = COALESCE(NULLIF(?, ''), financeContactPhone)
+          WHERE id = ?
+        `, [
+          data.name || '',
+          comp,
+          data.email || '',
+          data.phone || '',
+          data.address || '',
+          data.brNumber || '',
+          data.vat || '',
+          data.svat || '',
+          data.industry || '',
+          data.financeContactName || '',
+          data.financeContactPhone || '',
+          data.customerId
+        ]);
+      }
+    }
+
     if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-    await db.query('UPDATE leads SET ? WHERE id = ?', [data, id]);
-    
-    res.json({ success: true, id });
+
+    // Only allow columns that actually exist in leads table
+    const [cols]: any = await db.query('DESCRIBE leads');
+    const validColNames = new Set(cols.map((c: any) => c.Field));
+    const cleanLeadData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validColNames.has(k)) {
+        cleanLeadData[k] = v;
+      }
+    }
+
+    await db.query('UPDATE leads SET ? WHERE id = ?', [cleanLeadData, id]);
+
+    if (cleanLeadData.customerId) {
+      await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [cleanLeadData.customerId, id]);
+    }
+
+    res.json({ success: true, id, customerId: cleanLeadData.customerId || null });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
+  }
+});
+
+app.post('/api/leads/:id/convert', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [leadRows]: any = await db.query('SELECT * FROM leads WHERE id = ? LIMIT 1', [id]);
+    if (!leadRows || leadRows.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    const lead = leadRows[0];
+
+    const customerId = await findOrCreateCustomerFromLead(lead);
+
+    // Update lead stage to won and link customerId
+    await db.query('UPDATE leads SET customerId = ?, stage = "won", lastActivity = NOW() WHERE id = ?', [customerId, id]);
+
+    // Also update any quotations created under this lead
+    await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [customerId, id]);
+
+    res.json({ success: true, customerId });
+  } catch (error: any) {
+    console.error('Lead convert error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
 
@@ -7382,6 +7592,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       productSku: primarySku,
       customerId: data.customerId || null,
       customerName: data.customerName || 'Customer',
+      customerCompany: data.customerCompany || null,
       attention: data.attention || null,
       customerPhone: data.customerPhone || null,
       customerEmail: data.customerEmail || null,
@@ -7434,6 +7645,7 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       validCols = new Set(colRows.map((c: any) => c.Field));
       
       const alterQueries = [
+        { col: 'customerCompany', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL' },
         { col: 'attention', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN attention VARCHAR(255) DEFAULT NULL' },
         { col: 'stockStatus_resize', sql: 'ALTER TABLE finished_goods_orders MODIFY COLUMN stockStatus VARCHAR(255) DEFAULT \'In Stock\'' },
         { col: 'items', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN items LONGTEXT DEFAULT NULL' },
@@ -9745,7 +9957,7 @@ app.post('/api/purchasing/bills', async (req, res) => {
     if (data.supplierId && data.amount) {
       // Ensure unique ledger ID so it never collides
       const ledgerId = `SL-BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      const ledgerEntry = {
+      const ledgerEntry: any = {
         id: ledgerId,
         supplierId: data.supplierId,
         date: data.date ? (data.date.length === 10 ? data.date + ' 00:00:00' : data.date.replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -9759,7 +9971,14 @@ app.post('/api/purchasing/bills', async (req, res) => {
         notes: data.notes || '',
         billId: data.id
       };
-      await db.query('INSERT INTO supplier_ledger SET ?', ledgerEntry);
+
+      const [slCols]: any = await db.query('SHOW COLUMNS FROM supplier_ledger');
+      const validSlCols = new Set(slCols.map((c: any) => c.Field));
+      const cleanLedgerEntry: any = {};
+      for (const [k, v] of Object.entries(ledgerEntry)) {
+        if (validSlCols.has(k)) cleanLedgerEntry[k] = v;
+      }
+      await db.query('INSERT INTO supplier_ledger SET ?', cleanLedgerEntry);
 
       // Sync supplier balance
       await syncSupplierBalance(data.supplierId);
@@ -9837,7 +10056,9 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
       const b = fullRows[0];
       const billDate = b.date ? (String(b.date).length === 10 ? b.date + ' 00:00:00' : String(b.date).replace('T', ' ')) : new Date().toISOString().slice(0, 19).replace('T', ' ');
       await db.query('DELETE FROM supplier_ledger WHERE referenceNo = ? OR reference = ?', [b.invoiceNo || b.id, b.id]);
-      await db.query('INSERT INTO supplier_ledger SET ?', {
+      const [slCols]: any = await db.query('SHOW COLUMNS FROM supplier_ledger');
+      const validSlCols = new Set(slCols.map((c: any) => c.Field));
+      const updateLedgerEntry: any = {
         id: `SL-BILL-${Date.now().toString().slice(-6)}`,
         supplierId: b.supplierId,
         date: billDate,
@@ -9848,8 +10069,14 @@ app.put('/api/purchasing/bills/:id', async (req, res) => {
         credit: 0,
         amount: Number(b.amount) || 0,
         reference: b.invoiceNo || b.id,
-        notes: b.notes || ''
-      });
+        notes: b.notes || '',
+        billId: b.id
+      };
+      const cleanUpdateEntry: any = {};
+      for (const [k, v] of Object.entries(updateLedgerEntry)) {
+        if (validSlCols.has(k)) cleanUpdateEntry[k] = v;
+      }
+      await db.query('INSERT INTO supplier_ledger SET ?', cleanUpdateEntry);
       await syncSupplierBalance(b.supplierId);
       await syncBillGLEntry(b, billDate);
     }
@@ -11144,7 +11371,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
         
         const customerPartyId = invoice.customerId || invoice.leadId || null;
         const lines = [
-          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, depositAccountId, paymentAmount, 0, customerPartyId, 'Customer'],
+          ['JL-' + Date.now().toString().slice(-5) + '1', jeId, depositAccountId, paymentAmount, 0, null, null],
           ['JL-' + Date.now().toString().slice(-5) + '2', jeId, arAcc[0].id, 0, paymentAmount, customerPartyId, 'Customer']
         ];
         
@@ -11238,6 +11465,7 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
       depositAccountId,
       reference,
       notes,
+      depositSlip,
       totalAmount,
       allocations,
       receivedBy
@@ -11357,7 +11585,8 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
         method: paymentMethod || 'Bank Transfer',
         accountId: finalDepositAccountId,
         accountName: finalDepositAccountName,
-        reference: reference || receiptNum
+        reference: reference || receiptNum,
+        depositSlip: depositSlip || null
       });
 
       const newStatus = balanceDueAfter <= 0.01 ? 'paid' : 'partial';
@@ -11412,8 +11641,8 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
       debit: numTotal,
       credit: 0,
       description: `Payment / Offset received for Invoices: ${settledInvoicesText}`,
-      partyType: 'Customer',
-      partyId: customerId || null
+      partyType: null,
+      partyId: null
     });
     const [accTypeRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalDepositAccountId]);
     const accType = accTypeRow && accTypeRow.length > 0 ? accTypeRow[0].type : 'Asset';
@@ -11452,6 +11681,7 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
       accountId: finalDepositAccountId,
       accountName: finalDepositAccountName,
       reference: reference || `Settlement of ${settledInvoicesText}`,
+      depositSlip: depositSlip || null,
       receivedBy: receivedBy || 'Accounts Officer',
       notes: notes || `Multi-invoice settlement for: ${settledInvoicesText}`,
       status: 'Received',
@@ -11536,12 +11766,13 @@ app.post('/api/finance/payables/settle', async (req, res) => {
 
     const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const voucherRef = referenceNo || `PV-${Date.now().toString().slice(-6)}`;
+    const isOffset = (paymentMethod || '').toLowerCase().includes('setoff') || (paymentMethod || '').toLowerCase().includes('set off') || (paymentMethod || '').toLowerCase().includes('advance offset') || (paymentMethod || '').toLowerCase().includes('prior advance');
+    const voucherRef = referenceNo || (isOffset ? `SOFF-${Date.now().toString().slice(-6)}` : `PV-${Date.now().toString().slice(-6)}`);
     const journalId = `JE-${voucherRef}`;
 
-    // 1. Resolve Credit Account (Cash or Bank)
+    // 1. Resolve Credit Account (Cash, Bank, or Offset Account e.g. Supplier Advance)
     let finalCreditAccId = creditAccountId || null;
-    let finalCreditAccName = 'Bank/Cash Account';
+    let finalCreditAccName = isOffset ? 'Supplier Advances / Prepayments' : 'Bank/Cash Account';
     if (finalCreditAccId) {
       const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [finalCreditAccId]);
       if (accRows.length > 0) {
@@ -11550,28 +11781,51 @@ app.post('/api/finance/payables/settle', async (req, res) => {
       }
     }
     if (!finalCreditAccId) {
-      const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
-      const settingKey = isBank ? 'default_bank_account_id' : 'default_cash_account_id';
-      const [defAccSetting]: any = await conn.query('SELECT val FROM settings WHERE id = ? LIMIT 1', [settingKey]);
-      if (defAccSetting.length > 0 && defAccSetting[0].val) {
-        const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [defAccSetting[0].val]);
-        if (accRows.length > 0) {
-          finalCreditAccId = accRows[0].id;
-          finalCreditAccName = accRows[0].name;
+      if (isOffset) {
+        const [advSetting]: any = await conn.query('SELECT val FROM settings WHERE id = "default_supplier_advance_account_id" LIMIT 1');
+        if (advSetting.length > 0 && advSetting[0].val) {
+          const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [advSetting[0].val]);
+          if (accRows.length > 0) {
+            finalCreditAccId = accRows[0].id;
+            finalCreditAccName = accRows[0].name;
+          }
         }
-      }
-      if (!finalCreditAccId) {
-        const searchSubtype = isBank ? 'Bank' : 'Cash';
-        const [found]: any = await conn.query(
-          'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
-          [searchSubtype, `%${searchSubtype}%`]
-        );
-        if (found.length > 0) {
-          finalCreditAccId = found[0].id;
-          finalCreditAccName = found[0].name;
-        } else {
-          finalCreditAccId = isBank ? 'acc_1000' : 'acc_1100';
-          finalCreditAccName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+        if (!finalCreditAccId) {
+          const [foundAdv]: any = await conn.query(
+            'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%Supplier%" OR name LIKE "%Supplier%Advance%" OR name LIKE "%Vendor%Advance%" OR name LIKE "%Prepayment%" OR code = "1450") AND type = "Asset" LIMIT 1'
+          );
+          if (foundAdv.length > 0) {
+            finalCreditAccId = foundAdv[0].id;
+            finalCreditAccName = foundAdv[0].name;
+          } else {
+            finalCreditAccId = 'acc_1450';
+            finalCreditAccName = 'Advance to Suppliers / Prepayments';
+          }
+        }
+      } else {
+        const isBank = (paymentMethod || '').toLowerCase().includes('bank') || (paymentMethod || '').toLowerCase().includes('cheque') || (paymentMethod || '').toLowerCase().includes('card');
+        const settingKey = isBank ? 'default_bank_account_id' : 'default_cash_account_id';
+        const [defAccSetting]: any = await conn.query('SELECT val FROM settings WHERE id = ? LIMIT 1', [settingKey]);
+        if (defAccSetting.length > 0 && defAccSetting[0].val) {
+          const [accRows]: any = await conn.query('SELECT id, name FROM chart_of_accounts WHERE id = ?', [defAccSetting[0].val]);
+          if (accRows.length > 0) {
+            finalCreditAccId = accRows[0].id;
+            finalCreditAccName = accRows[0].name;
+          }
+        }
+        if (!finalCreditAccId) {
+          const searchSubtype = isBank ? 'Bank' : 'Cash';
+          const [found]: any = await conn.query(
+            'SELECT id, name FROM chart_of_accounts WHERE (subtype = ? OR name LIKE ? OR (subtype IN ("Bank", "Cash") AND type = "Asset")) AND type = "Asset" AND name NOT LIKE "%Receivable%" LIMIT 1',
+            [searchSubtype, `%${searchSubtype}%`]
+          );
+          if (found.length > 0) {
+            finalCreditAccId = found[0].id;
+            finalCreditAccName = found[0].name;
+          } else {
+            finalCreditAccId = isBank ? 'acc_1000' : 'acc_1100';
+            finalCreditAccName = isBank ? 'Commercial Bank' : 'Cash in Hand';
+          }
         }
       }
     }
@@ -11673,12 +11927,16 @@ app.post('/api/finance/payables/settle', async (req, res) => {
 
     await conn.query('INSERT INTO supplier_ledger SET ?', ledgerPayload);
 
-    // 5. Post General Ledger Journal Entry (Debit: AP, Credit: Bank/Cash)
+    // 5. Post General Ledger Journal Entry (Debit: AP, Credit: Bank/Cash/Offset Account)
+    const journalDesc = isOffset
+      ? `Supplier Prior Advance Set-off against Bill(s): ${voucherRef} (${settledBillsText})`
+      : `Vendor Bill Payment Voucher: ${voucherRef} (${settledBillsText})`;
+
     await conn.query('INSERT INTO journal_entries SET ?', {
       id: journalId,
       date: `${formattedDate} 12:00:00`,
       reference: voucherRef,
-      description: `Vendor Bill Payment Voucher: ${voucherRef} (${settledBillsText})`,
+      description: journalDesc,
       totalAmount: numTotal
     });
 
@@ -11695,18 +11953,30 @@ app.post('/api/finance/payables/settle', async (req, res) => {
     });
     await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalDebitAccId]);
 
-    // Credit Line: Cash or Bank Account (Reduces Asset)
+    // Credit Line: Cash, Bank, or Offset Account (Supplier Advance / Prepayment)
+    const creditLineDesc = isOffset
+      ? `Supplier Prior Advance Set-off against Bill(s): ${settledBillsText}`
+      : `Disbursement from ${finalCreditAccName} for: ${settledBillsText}`;
+
     await conn.query('INSERT INTO journal_lines SET ?', {
       id: `JL-${journalId}-2`,
       entryId: journalId,
       accountId: finalCreditAccId,
       debit: 0,
       credit: numTotal,
-      description: `Disbursement from ${finalCreditAccName} for: ${settledBillsText}`,
+      description: creditLineDesc,
       partyType: 'Supplier',
       partyId: supplierId || null
     });
-    await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalCreditAccId]);
+
+    // Update Credit Account balance (reduces Asset, increases Liability/Equity)
+    const [creditAccTypeRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalCreditAccId]);
+    const creditAccType = creditAccTypeRow && creditAccTypeRow.length > 0 ? creditAccTypeRow[0].type : 'Asset';
+    if (creditAccType === 'Liability' || creditAccType === 'Equity' || creditAccType === 'Revenue') {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numTotal, finalCreditAccId]);
+    } else {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, finalCreditAccId]);
+    }
 
     await conn.commit();
 
@@ -11824,8 +12094,33 @@ app.post('/api/supplier-ledger', async (req, res) => {
       }
     }
 
+    const isOffset = (item.paymentMethod || '').toLowerCase().includes('setoff') || (item.paymentMethod || '').toLowerCase().includes('set off') || (item.paymentMethod || '').toLowerCase().includes('advance offset') || (item.paymentMethod || '').toLowerCase().includes('prior advance');
+
     if (!item.creditAccountId) {
-      if (item.type === 'payment' || item.credit > 0) {
+      if (isOffset) {
+        try {
+          const [advSetting]: any = await db.query('SELECT val FROM settings WHERE id = "default_supplier_advance_account_id" LIMIT 1');
+          if (advSetting.length > 0 && advSetting[0].val) {
+            const [accRows]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE id = ?', [advSetting[0].val]);
+            if (accRows.length > 0) {
+              item.creditAccountId = accRows[0].id;
+              item.creditAccountName = `${accRows[0].code} - ${accRows[0].name}`;
+            }
+          }
+          if (!item.creditAccountId) {
+            const [foundAdv]: any = await db.query(
+              'SELECT id, code, name FROM chart_of_accounts WHERE (name LIKE "%Advance%Supplier%" OR name LIKE "%Supplier%Advance%" OR name LIKE "%Vendor%Advance%" OR name LIKE "%Prepayment%" OR code = "1450") AND type = "Asset" LIMIT 1'
+            );
+            if (foundAdv.length > 0) {
+              item.creditAccountId = foundAdv[0].id;
+              item.creditAccountName = `${foundAdv[0].code} - ${foundAdv[0].name}`;
+            } else {
+              item.creditAccountId = 'acc_1450';
+              item.creditAccountName = '1450 - Advance to Suppliers / Prepayments';
+            }
+          }
+        } catch (e) {}
+      } else if (item.type === 'payment' || item.credit > 0) {
         try {
           const [cb]: any = await db.query('SELECT id, code, name FROM chart_of_accounts WHERE code = "1000" OR subtype IN ("Bank", "Cash") OR type = "Asset" LIMIT 1');
           if (cb.length) {
@@ -11867,9 +12162,11 @@ app.post('/api/supplier-ledger', async (req, res) => {
 
       if (debitAccId && creditAccId && amount > 0) {
         const jeId = `JE-SL-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
-        const jeDesc = (item.type === 'payment' || item.credit > 0)
-          ? `Supplier Payment: ${item.description || item.referenceNo || item.id}`
-          : `Supplier Transaction: ${item.description || item.referenceNo || item.id}`;
+        const jeDesc = isOffset
+          ? `Supplier Prior Advance Set-off: ${item.description || item.referenceNo || item.id}`
+          : ((item.type === 'payment' || item.credit > 0)
+            ? `Supplier Payment: ${item.description || item.referenceNo || item.id}`
+            : `Supplier Transaction: ${item.description || item.referenceNo || item.id}`);
 
         await db.query('INSERT INTO journal_entries SET ?', {
           id: jeId,
@@ -12251,7 +12548,13 @@ app.get('/api/finance/party/:id/ledger', async (req, res) => {
        FROM journal_lines jl
        JOIN journal_entries je ON jl.entryId = je.id
        LEFT JOIN chart_of_accounts coa ON jl.accountId = coa.id
-       WHERE jl.partyId = ? AND (coa.type IS NULL OR coa.type = 'Asset' OR coa.id = 'ACC-002' OR coa.subtype = 'Accounts Receivable' OR coa.name LIKE '%Receivable%')
+       WHERE jl.partyId = ? 
+         AND (
+           coa.subtype = 'Accounts Receivable' 
+           OR coa.id IN ('acc_1500', 'ACC-002') 
+           OR coa.code IN ('1200', '1500') 
+           OR (coa.name LIKE '%Receivable%' AND coa.subtype NOT IN ('Bank', 'Cash') AND coa.name NOT LIKE '%Bank%' AND coa.name NOT LIKE '%Cash%')
+         )
        ORDER BY je.date ASC, je.id ASC`,
       [partyId]
     );
@@ -16354,9 +16657,10 @@ app.get('/api/production/work-orders', async (req, res) => {
 
     // Also resolve from quotations and finished_goods_orders for work orders without direct customer name
     let quoteCustomerMap: Record<string, string> = {};
+    let quoteNoMap: Record<string, string> = {};
     try {
       const [qList]: any = await db.query(`
-        SELECT q.id, q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany
+        SELECT q.id, q.quotationNo, q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany
         FROM quotations q
         LEFT JOIN leads l ON q.leadId = l.id
         LEFT JOIN customers c ON q.leadId = c.id
@@ -16366,6 +16670,10 @@ app.get('/api/production/work-orders', async (req, res) => {
         try { qd = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {}); } catch(err) {}
         const cName = q.leadCompany || q.custCompany || q.leadName || q.custName || qd.customerCompany || qd.customerName || '';
         if (cName) quoteCustomerMap[q.id] = cName;
+        if (q.quotationNo) {
+          quoteNoMap[q.id] = q.quotationNo;
+          if (q.id) quoteNoMap[q.id.toLowerCase()] = q.quotationNo;
+        }
       });
     } catch(e) {}
 
@@ -16461,8 +16769,10 @@ app.get('/api/production/work-orders', async (req, res) => {
       const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
 
       const resolvedCust = wo.customer || customerMap[wo.customerId] || (wo.quoteId && quoteCustomerMap[wo.quoteId]) || (wo.orderNo && soCustomerMap[wo.orderNo]) || null;
+      const resolvedQuoNo = (wo.quoteId && quoteNoMap[wo.quoteId]) || (wo.quoteId && quoteNoMap[wo.quoteId.toLowerCase()]) || (wo.quoteId && wo.quoteId.startsWith('QT-') ? wo.quoteId : null);
       return {
         ...wo,
+        quotationNo: resolvedQuoNo,
         customer: resolvedCust,
         customerName: resolvedCust || wo.customer || customerMap[wo.customerId] || null,
         operations: woOps,
@@ -16817,15 +17127,44 @@ app.post('/api/production/work-orders', async (req, res) => {
         );
 
         if (!proformaRows || proformaRows.length === 0) {
-          return res.status(400).json({
-            error: `Customer "${checkedCustName || 'Client'}" requires an advance payment deposit as per registration terms. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`
-          });
+          // Also check payment_receipts table for linked advance receipt
+          let hasReceipt = false;
+          try {
+            const [receiptRows]: any = await db.query(
+              `SELECT id, receiptNo, amount, status FROM payment_receipts 
+               WHERE (amount > 0) AND (status != 'Cancelled' OR status IS NULL) AND (
+                 (quoteId IS NOT NULL AND quoteId != '' AND (quoteId = ? OR quoteId = ?)) OR
+                 (quotationNo IS NOT NULL AND quotationNo != '' AND (quotationNo = ? OR quotationNo = ?)) OR
+                 (orderNo IS NOT NULL AND orderNo != '' AND (orderNo = ? OR orderNo = ?)) OR
+                 (customerId IS NOT NULL AND customerId != '' AND customerId = ?)
+               ) LIMIT 1`,
+              [
+                sourceQuoteId || '',
+                req.body.quotationNo || '',
+                sourceQuoteId || '',
+                req.body.quotationNo || '',
+                req.body.orderNo || '',
+                sourceQuoteId || '',
+                customerId || ''
+              ]
+            );
+            if (receiptRows && receiptRows.length > 0) {
+              hasReceipt = true;
+            }
+          } catch (rErr) {}
+
+          if (!hasReceipt) {
+            return res.status(400).json({
+              error: `Customer "${checkedCustName || 'Client'}" requires an advance payment deposit as per registration terms. An advance payment record must be entered in Finance (Receivables) before issuing a Work Order, or obtain Finance Approval.`
+            });
+          }
         }
       }
     }
 
     const rawOrderNo = (req.body.orderNo || '').trim();
     const rawSalesOrderNo = (req.body.salesOrderNo || req.body.soNo || '').trim();
+    const rawQuotationNo = (req.body.quotationNo || req.body.quoNo || '').trim();
 
     let finalWoNo = '';
     let finalSoNo = rawSalesOrderNo || null;
@@ -16841,6 +17180,10 @@ app.post('/api/production/work-orders', async (req, res) => {
       finalWoNo = `WO-${rawSalesOrderNo}`;
     } else if (rawOrderNo) {
       finalWoNo = `WO-${rawOrderNo}`;
+    } else if (rawQuotationNo) {
+      finalWoNo = req.body.woNo || (rawQuotationNo.startsWith('QT-') ? `WO-${rawQuotationNo}` : `WO-QT-${rawQuotationNo}`);
+    } else if (sourceQuoteId) {
+      finalWoNo = req.body.woNo || (sourceQuoteId.startsWith('QT-') ? `WO-${sourceQuoteId}` : `WO-QT-${sourceQuoteId}`);
     } else {
       finalWoNo = `WO-SO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     }
