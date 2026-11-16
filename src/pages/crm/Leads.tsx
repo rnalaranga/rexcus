@@ -91,6 +91,7 @@ export const Leads: React.FC = () => {
   }, [leads, selectedLeadId])
   const { settings } = useSettings()
   const { user } = useAuth()
+  const { toast, showAlert, showConfirm } = useDialog()
   const isAdmin = Boolean(
     user?.role === 'admin' ||
     user?.roleName?.toLowerCase() === 'admin' ||
@@ -118,21 +119,26 @@ export const Leads: React.FC = () => {
   };
 
   const handleQuickConvertToCustomer = async (leadId: string) => {
-    if (confirm('Are you sure you want to convert this lead to an official Customer? It will be saved into the Customer Database and marked as Won.')) {
-      setSubmitting(true);
-      try {
-        const data = await convertLeadToCustomer(leadId);
-        if (data.success) {
-          alert('Successfully converted & saved to Customer Database! Customer ID: ' + data.customerId);
-          await refetch();
-        } else {
-          alert('Error: ' + data.error);
-        }
-      } catch (e: any) {
-        alert('Error: ' + (e.message || 'Network error'));
-      } finally {
-        setSubmitting(false);
+    const ok = await showConfirm(
+      'Are you sure you want to convert this lead to an official Customer? It will be saved into the Customer Database and marked as Won.',
+      'Convert to Customer',
+      { confirmLabel: 'Convert & Save', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
+    setSubmitting(true);
+    try {
+      const data = await convertLeadToCustomer(leadId);
+      if (data.success) {
+        toast(`Successfully converted & saved to Customer Database! Customer ID: ${data.customerId}`, 'success');
+        await refetch();
+      } else {
+        toast(`Error: ${data.error}`, 'error');
       }
+    } catch (e: any) {
+      toast(`Error: ${e.message || 'Network error'}`, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
   
@@ -296,11 +302,12 @@ export const Leads: React.FC = () => {
         const updatedGrns = await fetchAllCustomerGRNs();
         setLeadGrns(updatedGrns);
         setSampleModalLead(null);
+        toast('Sample photos saved successfully!', 'success');
       } else {
-        alert('Failed to save sample: ' + (res?.error || 'Unknown error'));
+        toast('Failed to save sample: ' + (res?.error || 'Unknown error'), 'error');
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast('Error: ' + err.message, 'error');
     } finally {
       setCollectingSample(false);
     }
@@ -374,15 +381,15 @@ export const Leads: React.FC = () => {
   const handleSaveLead = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.company?.trim()) {
-      alert('Please enter a Company / Business Name.');
+      toast('Please enter a Company / Business Name.', 'warning');
       return;
     }
     if (!formData.name?.trim()) {
-      alert('Please enter a Contact Person Name.');
+      toast('Please enter a Contact Person Name.', 'warning');
       return;
     }
     if (!formData.phone?.trim()) {
-      alert('Please enter a Phone Number.');
+      toast('Please enter a Phone Number.', 'warning');
       return;
     }
 
@@ -472,8 +479,9 @@ export const Leads: React.FC = () => {
       setLeadGrns(updatedGrns);
       await refetch();
       setIsModalOpen(false);
+      toast('Lead saved successfully!', 'success');
     } catch (err: any) {
-      alert('Error saving lead: ' + (err.message || 'Unknown error'));
+      toast('Error saving lead: ' + (err.message || 'Unknown error'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -482,24 +490,29 @@ export const Leads: React.FC = () => {
   const handleConvertToCustomer = async (targetLeadId?: string) => {
     const lId = targetLeadId || editId;
     if (!lId) return;
-    if (confirm('Are you sure you want to convert this lead to a Customer? It will be registered in the Customer Database and marked as Won.')) {
-      setSubmitting(true);
-      try {
-        const data = await convertLeadToCustomer(lId);
-        if (data.success) {
-          alert('Successfully converted to Customer! ID: ' + data.customerId);
-          if (isModalOpen) {
-            setFormData((prev: any) => ({ ...prev, customerId: data.customerId, stage: 'won', saveToCustomerDatabase: false }));
-          }
-          await refetch();
-        } else {
-          alert('Error: ' + data.error);
+    const ok = await showConfirm(
+      'Are you sure you want to convert this lead to a Customer? It will be registered in the Customer Database and marked as Won.',
+      'Register Customer',
+      { confirmLabel: 'Convert to Customer', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
+
+    setSubmitting(true);
+    try {
+      const data = await convertLeadToCustomer(lId);
+      if (data.success) {
+        toast(`Successfully converted to Customer! ID: ${data.customerId}`, 'success');
+        if (isModalOpen) {
+          setFormData((prev: any) => ({ ...prev, customerId: data.customerId, stage: 'won', saveToCustomerDatabase: false }));
         }
-      } catch (e: any) {
-        alert('Error: ' + (e.message || 'Network error'));
-      } finally {
-        setSubmitting(false);
+        await refetch();
+      } else {
+        toast(`Error: ${data.error}`, 'error');
       }
+    } catch (e: any) {
+      toast(`Error: ${e.message || 'Network error'}`, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -515,13 +528,15 @@ export const Leads: React.FC = () => {
     if (deleteTarget.type === 'lead') {
       const res = await deleteLead(deleteTarget.id as string)
       if (res.error) {
-        alert("Cannot delete this lead because it has associated quotations, deals, or follow-ups. In an ERP system, you cannot delete records that have financial or transaction history. Please mark it as 'Lost' instead.");
+        await showAlert("Cannot delete this lead because it has associated quotations, deals, or follow-ups. In an ERP system, you cannot delete records that have financial or transaction history. Please mark it as 'Lost' instead.", "Cannot Delete Lead");
       } else {
+        toast('Lead deleted successfully', 'success');
         await refetch()
         setIsModalOpen(false)
       }
     } else if (deleteTarget.type === 'quotation') {
       await deleteQuotation(String(deleteTarget.id))
+      toast('Quotation deleted', 'success');
       const fresh = await fetchQuotations(editId!)
       setLeadQuotations(fresh)
     }
@@ -3210,7 +3225,7 @@ export const Leads: React.FC = () => {
                   disabled={previewQuoteData.quotation?.status === 'Pending Approval'}
                   onClick={async () => {
                     if (previewQuoteData.quotation?.status === 'Pending Approval') {
-                      alert('This quotation is currently Pending Approval and cannot be exported until approved.');
+                      toast('This quotation is currently Pending Approval and cannot be exported until approved.', 'warning');
                       return;
                     }
                     const quoteNo = previewQuoteData?.quotation?.quotationNo || previewQuoteData?.quotation?.id || 'Quote';
@@ -3227,7 +3242,7 @@ export const Leads: React.FC = () => {
                   disabled={previewQuoteData.quotation?.status === 'Pending Approval'}
                   onClick={() => {
                     if (previewQuoteData.quotation?.status === 'Pending Approval') {
-                      alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                      toast('This quotation is currently Pending Approval and cannot be printed until approved.', 'warning');
                       return;
                     }
                     printElement('print-section', previewQuoteData?.quotation?.quotationNo || 'Quotation');

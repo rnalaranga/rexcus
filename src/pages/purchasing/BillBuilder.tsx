@@ -23,8 +23,10 @@ import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { POAutocomplete } from '@/components/purchasing/POAutocomplete';
 import { createBill, updateBill, uploadFileToStorage, fetchNextDocumentNumber } from '@/lib/api';
 import { formatCurrency, openDataUriOrUrl } from '@/lib/utils';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 export const BillBuilder: React.FC = () => {
+  const { toast } = useDialog();
   const [searchParams] = useSearchParams();
   const idParam = searchParams.get('id') || searchParams.get('bill');
   const grnIdParam = searchParams.get('grn');
@@ -566,7 +568,7 @@ export const BillBuilder: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) {
-      alert('File size exceeds 25MB limit.');
+      toast('File size exceeds 25MB limit.', 'error');
       return;
     }
 
@@ -622,23 +624,23 @@ export const BillBuilder: React.FC = () => {
 
   const handleSave = async () => {
     if (isUploading) {
-      alert('Please wait for the document attachment to finish uploading before saving.');
+      toast('Please wait for the document attachment to finish uploading before saving.', 'warning');
       return;
     }
     if (!invoiceNo.trim()) {
-      alert('Please enter the Vendor Invoice / Bill Number.');
+      toast('Please enter the Vendor Invoice / Bill Number.', 'warning');
       return;
     }
     if (!supplierId) {
-      alert('Please select a Supplier / Vendor.');
+      toast('Please select a Supplier / Vendor.', 'warning');
       return;
     }
     if (amount <= 0) {
-      alert('Please enter a valid bill amount greater than 0.');
+      toast('Please enter a valid bill amount greater than 0.', 'warning');
       return;
     }
     if (lineItems.length === 0 && !expenseAccountId) {
-      alert('Please select a Charge Account (Chart of Accounts) to charge/debit for this bill.');
+      toast('Please select a Charge Account (Chart of Accounts) to charge/debit for this bill.', 'warning');
       return;
     }
 
@@ -680,9 +682,10 @@ export const BillBuilder: React.FC = () => {
         await createBill(payload);
       }
       await refetchBills();
+      toast('Supplier bill saved successfully!', 'success');
       navigate('/finance/vendor-bills');
     } catch (e: any) {
-      alert('Failed to save supplier bill: ' + (e.message || 'Unknown error'));
+      toast('Failed to save supplier bill: ' + (e.message || 'Unknown error'), 'error');
       setSaving(false);
     }
   };

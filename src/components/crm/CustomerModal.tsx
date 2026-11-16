@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { createCustomer } from '@/lib/api'
 import { toMySQLDate } from '@/lib/utils'
 import { useCustomers } from '@/hooks/useData'
+import { useDialog } from '@/components/ui/DialogProvider'
 import { Building2, Briefcase, User, Users, Plus, Trash2, MapPin, Search, Tags, CheckCircle2, CreditCard } from 'lucide-react'
 
 interface CustomerModalProps {
@@ -13,6 +14,7 @@ interface CustomerModalProps {
 }
 
 export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const { toast } = useDialog()
   const [submitting, setSubmitting] = useState(false)
   const { data: customers } = useCustomers()
   const [formData, setFormData] = useState({
@@ -29,32 +31,32 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!trimmedCompany) {
-      alert('Company Name is required.')
+      toast('Company Name is required.', 'warning')
       return
     }
 
     if (!formData.address?.trim()) {
-      alert('Customer Address is required.')
+      toast('Customer Address is required.', 'warning')
       return
     }
 
     if (!formData.name?.trim()) {
-      alert('Primary Contact Person Name is required.')
+      toast('Primary Contact Person Name is required.', 'warning')
       return
     }
 
     if (!formData.phone?.trim()) {
-      alert('Primary Contact Phone Number is required.')
+      toast('Primary Contact Phone Number is required.', 'warning')
       return
     }
 
     if (formData.isCreditCustomer === null || formData.isCreditCustomer === undefined) {
-      alert('Please specify whether this customer is a Credit Customer or Cash Customer.')
+      toast('Please specify whether this customer is a Credit Customer or Cash Customer.', 'warning')
       return
     }
 
     if (duplicateCompany) {
-      alert(`Customer company "${trimmedCompany}" already exists! Duplicate company names are not allowed.`)
+      toast(`Customer company "${trimmedCompany}" already exists! Duplicate company names are not allowed.`, 'error')
       return
     }
 
@@ -91,11 +93,12 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, o
     
     try {
       await createCustomer(newCustomer)
+      toast(`Customer "${trimmedCompany}" created successfully!`, 'success')
       if (onSuccess) onSuccess(newCustomer)
       onClose()
       setFormData({ prefix: '', name: '', company: '', email: '', phone: '', phone2: '', industry: '', segment: 'sme', address: '', vat: '', svat: '', brNumber: '', rating: 0, isCreditCustomer: null, creditLimit: 0, creditDays: 30, defaultPaymentMode: 'Cash', paymentTerms: '', deliveryTerms: '', financeContactName: '', financeContactEmail: '', financeContactPhone: '', bankName: '', bankBranch: '', bankAccountNo: '', requiresAdvance: false, accountManager: 'System Admin', currency: 'LKR', isForeign: false, contacts: [] as any[] })
     } catch (err: any) {
-      alert('Failed to create customer: ' + err.message)
+      toast('Failed to create customer: ' + err.message, 'error')
     } finally {
       setSubmitting(false)
     }

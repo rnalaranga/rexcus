@@ -948,7 +948,7 @@ export const ProductQuotations: React.FC = () => {
               disabled={latest?.status === 'Pending Approval' || status === 'Pending Approval'}
               onClick={() => {
                 if (latest?.status === 'Pending Approval' || status === 'Pending Approval') {
-                  alert(`Quotation ${group.quoNo} has been sent for approval and is currently "Pending Approval". It cannot be emailed until formally approved.`);
+                  toast(`Quotation ${group.quoNo} has been sent for approval and is currently "Pending Approval". It cannot be emailed until formally approved.`, 'warning');
                   return;
                 }
                 setEmailModalData({
@@ -2529,7 +2529,7 @@ export const ProductQuotations: React.FC = () => {
                 disabled={previewData.quotation?.status === 'Pending Approval'}
                 onClick={async () => {
                   if (previewData.quotation?.status === 'Pending Approval') {
-                    alert('This quotation is currently Pending Approval and cannot be downloaded until approved.');
+                    toast('This quotation is currently Pending Approval and cannot be downloaded until approved.', 'warning');
                     return;
                   }
                   const el = document.getElementById('print-section') || document.getElementById('product-quote-list-print');
@@ -2548,7 +2548,7 @@ export const ProductQuotations: React.FC = () => {
                 disabled={previewData.quotation?.status === 'Pending Approval'}
                 onClick={() => {
                   if (previewData.quotation?.status === 'Pending Approval') {
-                    alert('This quotation is currently Pending Approval and cannot be printed until approved.');
+                    toast('This quotation is currently Pending Approval and cannot be printed until approved.', 'warning');
                     return;
                   }
                   printElement('print-section', previewData.quotation?.parsed?.quotationNo || 'Product_Quotation');

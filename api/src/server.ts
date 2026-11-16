@@ -2020,6 +2020,7 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills MODIFY COLUMN date VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_bills MODIFY COLUMN dueDate VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE quotations ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
       id VARCHAR(50) PRIMARY KEY,
       jobNo VARCHAR(50) NOT NULL UNIQUE,
@@ -4572,7 +4573,11 @@ app.put('/api/leads/:id', async (req, res) => {
     await db.query('UPDATE leads SET ? WHERE id = ?', [cleanLeadData, id]);
 
     if (cleanLeadData.customerId) {
-      await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [cleanLeadData.customerId, id]);
+      try {
+        await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [cleanLeadData.customerId, id]);
+      } catch (qErr) {
+        console.warn('Could not sync quotations customerId:', qErr);
+      }
     }
 
     res.json({ success: true, id, customerId: cleanLeadData.customerId || null });
@@ -4597,7 +4602,11 @@ app.post('/api/leads/:id/convert', async (req, res) => {
     await db.query('UPDATE leads SET customerId = ?, stage = "won", lastActivity = NOW() WHERE id = ?', [customerId, id]);
 
     // Also update any quotations created under this lead
-    await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [customerId, id]);
+    try {
+      await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [customerId, id]);
+    } catch (qErr) {
+      console.warn('Could not sync quotations customerId:', qErr);
+    }
 
     res.json({ success: true, customerId });
   } catch (error: any) {
