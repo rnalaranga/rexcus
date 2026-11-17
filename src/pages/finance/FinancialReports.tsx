@@ -36,7 +36,6 @@ export const FinancialReports: React.FC = () => {
   const [billCategory, setBillCategory] = useState<string>('all');
   const [billSource, setBillSource] = useState<string>('all');
   const [agingBucket, setAgingBucket] = useState<string>('all');
-  const [agingReportScope, setAgingReportScope] = useState<'both' | 'receivables' | 'payables'>('both');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cashbookView, setCashbookView] = useState<'by_account' | 'detailed'>('by_account');
   const [search, setSearch] = useState<string>('');
@@ -47,7 +46,6 @@ export const FinancialReports: React.FC = () => {
 
   // Data states
   const [reportData, setReportData] = useState<any>(null);
-  const [arAgingData, setArAgingData] = useState<any>(null);
   const [financialStatementData, setFinancialStatementData] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -97,36 +95,7 @@ export const FinancialReports: React.FC = () => {
   useEffect(() => {
     setLoading(true);
 
-    if (activeTab === 'vendor_bills') {
-      Promise.all([
-        fetchAdvancedReport({
-          reportType: 'vendor_bills',
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-          supplierId: supplierId !== 'all' ? supplierId : undefined,
-          billCategory: billCategory !== 'all' ? billCategory : undefined,
-          billSource: billSource !== 'all' ? billSource : undefined,
-          agingBucket: agingBucket !== 'all' ? agingBucket : undefined,
-          status: statusFilter !== 'all' ? statusFilter : undefined
-        }),
-        fetchAdvancedReport({
-          reportType: 'unpaid_invoices',
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-          customerId: customerId !== 'all' ? customerId : undefined,
-          agingBucket: agingBucket !== 'all' ? agingBucket : undefined,
-        })
-      ])
-        .then(([apRes, arRes]) => {
-          setReportData(apRes);
-          setArAgingData(arRes);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
-    } else if (['invoices', 'unpaid', 'cashbook', 'tax'].includes(activeTab)) {
+    if (['invoices', 'unpaid', 'vendor_bills', 'cashbook', 'tax'].includes(activeTab)) {
       const backendReportType = activeTab === 'unpaid' ? 'unpaid_invoices' : (activeTab === 'tax' ? 'invoices' : activeTab);
       fetchAdvancedReport({
         reportType: backendReportType as any,
@@ -176,30 +145,6 @@ export const FinancialReports: React.FC = () => {
         });
     }
   }, [activeTab, startDate, endDate, customerId, supplierId, billCategory, billSource, agingBucket, statusFilter, selectedAccountId]);
-
-  const filteredArRows = useMemo(() => {
-    if (!arAgingData?.rows) return [];
-    let rows = arAgingData.rows.filter((r: any) => {
-      const invNo = String(r.invoiceNo || r.id || '').toUpperCase();
-      return !(invNo.startsWith('PI-') || r.isProforma || r.invoiceType === 'proforma');
-    });
-    rows = [...rows].sort((a: any, b: any) => {
-      const odDiff = (Number(b.daysOverdue) || 0) - (Number(a.daysOverdue) || 0);
-      if (odDiff !== 0) return odDiff;
-      const dA = String(a.dueDate || a.date || '');
-      const dB = String(b.dueDate || b.date || '');
-      if (dA !== dB) return dA.localeCompare(dB);
-      return String(b.invoiceNo || b.id || '').localeCompare(String(a.invoiceNo || a.id || ''), undefined, { numeric: true, sensitivity: 'base' });
-    });
-    if (!search.trim()) return rows;
-    const q = search.toLowerCase();
-    return rows.filter((r: any) =>
-      (r.invoiceNo && r.invoiceNo.toLowerCase().includes(q)) ||
-      (r.customerName && r.customerName.toLowerCase().includes(q)) ||
-      (r.customerCompany && r.customerCompany.toLowerCase().includes(q)) ||
-      (r.poNo && r.poNo.toLowerCase().includes(q))
-    );
-  }, [arAgingData?.rows, search]);
 
   // Filtered rows by search term with client-side fallback breakdown assurance
   const filteredRows = useMemo(() => {
@@ -461,29 +406,8 @@ export const FinancialReports: React.FC = () => {
         } as any);
 
         const ws = XLSX.utils.json_to_sheet(billRows);
-        XLSX.utils.book_append_sheet(wb, ws, 'Vendor_Payables_AP');
-        if (agingReportScope !== 'payables' && filteredArRows.length > 0) {
-          const arRows = filteredArRows.map((r: any, idx: number) => ({
-            '#': idx + 1,
-            'Invoice No': r.invoiceNo,
-            'Invoice Date': r.date ? r.date.slice(0, 10) : '',
-            'Due Date': r.dueDate ? r.dueDate.slice(0, 10) : '',
-            'Customer / Company': r.customerCompany || r.customerName,
-            'PO / Ref': r.poNo || '',
-            'Net Subtotal (LKR)': r.subtotal || 0,
-            'SSCL (LKR)': r.ssclAmount || 0,
-            'VAT 18% (LKR)': r.vatAmount || 0,
-            'Gross Amount (LKR)': r.total || 0,
-            'Paid Amount (LKR)': r.paidAmount || 0,
-            'Balance Due (LKR)': r.balanceDue || 0,
-            'Overdue Days': r.daysOverdue || 0,
-            'Aging Bucket': r.agingBucket || 'Current',
-            'Status': (r.status || 'unpaid').toUpperCase()
-          }));
-          const wsAr = XLSX.utils.json_to_sheet(arRows);
-          XLSX.utils.book_append_sheet(wb, wsAr, 'Customer_Receivables_AR');
-        }
-        XLSX.writeFile(wb, `Rex_AP_AR_Aging_${dateRangeLabel}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, 'Vendor_Aging_AP');
+        XLSX.writeFile(wb, `Rex_Vendor_Aging_AP_${dateRangeLabel}.xlsx`);
       } else if (activeTab === 'cashbook') {
         if (cashbookView === 'by_account') {
           const accRows = (filteredAccountSummaries || []).map((a: any, idx: number) => ({
@@ -809,7 +733,7 @@ export const FinancialReports: React.FC = () => {
               : 'bg-surface border-theme text-secondary hover:text-primary hover:border-rose-500/30'
           }`}
         >
-          <Clock size={14} /> Customer Receivables (AR Aging)
+          <Clock size={14} /> Customer Aging (AR)
         </button>
 
         <button
@@ -820,7 +744,7 @@ export const FinancialReports: React.FC = () => {
               : 'bg-surface border-theme text-secondary hover:text-primary hover:border-amber-600/30'
           }`}
         >
-          <Receipt size={14} /> AP & AR Aging (Payables / Receivables)
+          <Receipt size={14} /> Vendor Aging (AP)
         </button>
 
         <button
@@ -1487,86 +1411,26 @@ export const FinancialReports: React.FC = () => {
               {/* 1.25 ACCOUNTS RECEIVABLE / CUSTOMER AGING REPORT TABLE */}
               {activeTab === 'unpaid' && renderArAgingSection(reportData, filteredRows)}
 
-              {/* 1.5 AP & AR AGING (SEPARATE CUSTOMER RECEIVABLES & VENDOR PAYABLES REPORTS) */}
+              {/* 1.5 VENDOR BILLS REGISTER / VENDOR AGING (AP) REPORT TABLE */}
               {activeTab === 'vendor_bills' && (
-                <div className="space-y-8">
-                  {/* Scope Switcher (hidden on print) */}
-                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200 print:hidden">
-                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                      Aging Report View:
-                    </span>
-                    <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden bg-slate-50">
-                      <button
-                        type="button"
-                        onClick={() => setAgingReportScope('both')}
-                        className={`px-3 py-1.5 text-xs font-bold transition-colors ${
-                          agingReportScope === 'both'
-                            ? 'bg-slate-800 text-white'
-                            : 'text-slate-600 hover:bg-slate-200/70'
-                        }`}
-                      >
-                        Both Reports (AR & AP)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAgingReportScope('receivables')}
-                        className={`px-3 py-1.5 text-xs font-bold border-l border-slate-300 transition-colors ${
-                          agingReportScope === 'receivables'
-                            ? 'bg-rose-600 text-white'
-                            : 'text-slate-600 hover:bg-slate-200/70'
-                        }`}
-                      >
-                        Customer Receivables (AR)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAgingReportScope('payables')}
-                        className={`px-3 py-1.5 text-xs font-bold border-l border-slate-300 transition-colors ${
-                          agingReportScope === 'payables'
-                            ? 'bg-amber-600 text-white'
-                            : 'text-slate-600 hover:bg-slate-200/70'
-                        }`}
-                      >
-                        Vendor Payables (AP)
-                      </button>
+                <div className="overflow-x-auto">
+                  {/* Aging Schedule Summary Bar */}
+                  {reportData?.summary?.agingBuckets && (
+                    <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded text-xs flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                        Vendor AP Aging Schedule:
+                      </span>
+                      <div className="flex items-center gap-4 text-xs font-mono">
+                        <div>Current: <strong className="text-slate-800">{formatCurrency(reportData.summary.agingBuckets.current || 0)}</strong></div>
+                        <div>1-30d: <strong className="text-amber-600">{formatCurrency(reportData.summary.agingBuckets.days1_30 || 0)}</strong></div>
+                        <div>31-60d: <strong className="text-amber-700">{formatCurrency(reportData.summary.agingBuckets.days31_60 || 0)}</strong></div>
+                        <div>61-90d: <strong className="text-rose-600">{formatCurrency(reportData.summary.agingBuckets.days61_90 || 0)}</strong></div>
+                        <div>90d+: <strong className="text-rose-700 font-black">{formatCurrency(reportData.summary.agingBuckets.days90plus || 0)}</strong></div>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* REPORT 1: CUSTOMER RECEIVABLES AGING (AR) */}
-                  {(agingReportScope === 'both' || agingReportScope === 'receivables') && (
-                    renderArAgingSection(arAgingData, filteredArRows, '1. Customer Receivables Aging Report (AR)')
                   )}
 
-                  {/* REPORT 2: VENDOR PAYABLES AGING (AP) */}
-                  {(agingReportScope === 'both' || agingReportScope === 'payables') && (
-                    <div className="overflow-x-auto">
-                      <div className="mb-2 flex items-center justify-between border-b-2 border-amber-500/40 pb-1.5">
-                        <h3 className="text-xs font-black uppercase tracking-wider text-amber-700">
-                          {agingReportScope === 'both' ? '2. Vendor Payables Aging Report (AP)' : 'Vendor Payables Aging Report (AP)'}
-                        </h3>
-                        {reportData?.summary && (
-                          <span className="text-[11px] font-mono font-bold text-amber-700">
-                            Total Payable: {formatCurrency(reportData.summary.totalDue || 0)}
-                          </span>
-                        )}
-                      </div>
-                      {/* Aging Schedule Summary Bar */}
-                      {reportData?.summary?.agingBuckets && (
-                        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded text-xs flex items-center justify-between flex-wrap gap-2">
-                          <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                            AP Aging Schedule (Vendor Payables):
-                          </span>
-                          <div className="flex items-center gap-4 text-xs font-mono">
-                            <div>Current: <strong className="text-slate-800">{formatCurrency(reportData.summary.agingBuckets.current || 0)}</strong></div>
-                            <div>1-30d: <strong className="text-amber-600">{formatCurrency(reportData.summary.agingBuckets.days1_30 || 0)}</strong></div>
-                            <div>31-60d: <strong className="text-amber-700">{formatCurrency(reportData.summary.agingBuckets.days31_60 || 0)}</strong></div>
-                            <div>61-90d: <strong className="text-rose-600">{formatCurrency(reportData.summary.agingBuckets.days61_90 || 0)}</strong></div>
-                            <div>90d+: <strong className="text-rose-700 font-black">{formatCurrency(reportData.summary.agingBuckets.days90plus || 0)}</strong></div>
-                          </div>
-                        </div>
-                      )}
-
-                      <table className="w-full text-left border-collapse text-xs">
+                  <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-slate-100 border-y border-slate-300 text-slate-700 uppercase text-[10px] tracking-wider">
                         <th className="py-2.5 px-2">Bill #</th>
@@ -1656,8 +1520,6 @@ export const FinancialReports: React.FC = () => {
                       )}
                     </tbody>
                   </table>
-                    </div>
-                  )}
                 </div>
               )}
 

@@ -16132,15 +16132,23 @@ app.get('/api/finance/dashboard', async (req, res) => {
       if (type === 'expense') expenses += bal;
     });
     
-    const [billsSum]: any = await db.query(
-      'SELECT SUM(COALESCE(totalAmount, amount, 0) - IFNULL(paidAmount, 0)) as pendingAP FROM supplier_bills WHERE status != "paid" OR status IS NULL'
-    );
-    const [invoicesSum]: any = await db.query(
-      'SELECT SUM(total - IFNULL(paidAmount, 0)) as pendingAR FROM invoices WHERE (status IS NULL OR (status != "paid" AND status != "draft")) AND (isProforma IS NULL OR isProforma = 0) AND (invoiceNo NOT LIKE "PI-%" OR invoiceNo IS NULL)'
-    );
+    let pendingAPFromBills = 0;
+    let pendingARFromInvoices = 0;
+    try {
+      const [billsSum]: any = await db.query(
+        'SELECT SUM(COALESCE(amount, 0) - IFNULL(paidAmount, 0)) as pendingAP FROM supplier_bills WHERE status != "paid" OR status IS NULL'
+      );
+      pendingAPFromBills = Number(billsSum?.[0]?.pendingAP || 0);
+    } catch (e) {}
+    try {
+      const [invoicesSum]: any = await db.query(
+        'SELECT SUM(total - IFNULL(paidAmount, 0)) as pendingAR FROM invoices WHERE (status IS NULL OR (status != "paid" AND status != "draft")) AND (isProforma IS NULL OR isProforma = 0) AND (invoiceNo NOT LIKE "PI-%" OR invoiceNo IS NULL)'
+      );
+      pendingARFromInvoices = Number(invoicesSum?.[0]?.pendingAR || 0);
+    } catch (e) {}
 
-    const arValue = totalAR || Number(invoicesSum[0]?.pendingAR || 0);
-    const apValue = totalAP || Number(billsSum[0]?.pendingAP || 0);
+    const arValue = totalAR || pendingARFromInvoices;
+    const apValue = totalAP || pendingAPFromBills;
 
     // 1. Build 6-month historical trend (Revenue, Expenses, Cash In/Out)
     const now = new Date();
@@ -16173,7 +16181,7 @@ app.get('/api/finance/dashboard', async (req, res) => {
 
     try {
       const [billMonthly]: any = await db.query(`
-        SELECT DATE_FORMAT(COALESCE(date, createdAt), '%Y-%m') as ym, SUM(COALESCE(totalAmount, amount, 0)) as exp
+        SELECT DATE_FORMAT(COALESCE(date, createdAt), '%Y-%m') as ym, SUM(COALESCE(amount, 0)) as exp
         FROM supplier_bills
         WHERE COALESCE(date, createdAt) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
         GROUP BY ym
@@ -16249,13 +16257,13 @@ app.get('/api/finance/dashboard', async (req, res) => {
 
     try {
       const [unpaidBills]: any = await db.query(`
-        SELECT b.id, b.date, b.dueDate, COALESCE(b.totalAmount, b.amount, 0) as gross, COALESCE(b.paidAmount, 0) as paidAmount,
+        SELECT b.id, b.date, b.dueDate, COALESCE(b.amount, 0) as gross, COALESCE(b.paidAmount, 0) as paidAmount,
                COALESCE(NULLIF(TRIM(s.name), ''), 'Supplier') as partyName,
                DATEDIFF(NOW(), COALESCE(b.dueDate, b.date, b.createdAt)) as overdueDays
         FROM supplier_bills b
         LEFT JOIN suppliers s ON b.supplierId = s.id
         WHERE (b.status IS NULL OR b.status != 'paid')
-          AND (COALESCE(b.totalAmount, b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0.01
+          AND (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0.01
       `);
       const creditorMap = new Map<string, { name: string; due: number; overdue: number; count: number }>();
       (unpaidBills || []).forEach((b: any) => {
@@ -16282,7 +16290,7 @@ app.get('/api/finance/dashboard', async (req, res) => {
     try {
       const [expCats]: any = await db.query(`
         SELECT COALESCE(NULLIF(TRIM(billCategory), ''), 'General Operating') as cat,
-               SUM(COALESCE(totalAmount, amount, 0)) as total
+               SUM(COALESCE(amount, 0)) as total
         FROM supplier_bills
         GROUP BY cat
         ORDER BY total DESC
@@ -16958,7 +16966,7 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
       let query = `
         SELECT 
           b.*,
-          COALESCE(b.billNo, b.invoiceNo, b.id) as displayNo,
+          b.id as displayNo,
           COALESCE(b.amount, 0) as totalAmount,
           COALESCE(b.paidAmount, 0) as paidAmount,
           (COALESCE(b.amount, 0) - COALESCE(b.paidAmount, 0)) as balanceDue,
