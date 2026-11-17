@@ -463,6 +463,22 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                   </tr>
                 )}
                 <tr>
+                  <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Assigned Dept</td>
+                  <td className="py-0.5">
+                    <span className="font-bold mr-1">:</span>
+                    {(() => {
+                      const n = String(workOrder.notes || '');
+                      if (n.includes('[Route: Design Department]')) {
+                        return <span className="font-bold text-blue-800 px-1.5 py-0.2 rounded bg-blue-50 border border-blue-200">Design Department</span>;
+                      }
+                      if (n.includes('[Route: Direct Production]')) {
+                        return <span className="font-bold text-emerald-800 px-1.5 py-0.2 rounded bg-emerald-50 border border-emerald-200">Direct Workshop / Production</span>;
+                      }
+                      return <span className="font-bold text-slate-600 px-1.5 py-0.2 rounded bg-slate-100 border border-slate-300">Not Assigned</span>;
+                    })()}
+                  </td>
+                </tr>
+                <tr>
                   <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Order Issue Date</td>
                   <td className="py-0.5">
                     <span className="font-bold mr-1">:</span>
