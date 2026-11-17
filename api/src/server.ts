@@ -22914,7 +22914,7 @@ Today's Date: ${new Date().toISOString().split('T')[0]}`
         }
       }
 
-      if (!aiRes.ok) {
+      if (aiRes && !aiRes.ok) {
         if (!errMsg) {
           errJson = await aiRes.json().catch(() => errJson);
           errMsg = extractApiErrorMessage(errJson).toLowerCase();
@@ -22948,7 +22948,7 @@ Today's Date: ${new Date().toISOString().split('T')[0]}`
           activeModelName = resolvedModel;
 
           // Asynchronously update DB settings with the verified working model
-          const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+          const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : (isDeepSeek ? 'deepseek_model' : 'openai_model'));
           db.query(
             "INSERT INTO settings (id, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val=?",
             [modelSettingKey, activeModelName, activeModelName]
@@ -22964,7 +22964,7 @@ Today's Date: ${new Date().toISOString().split('T')[0]}`
       }
 
       // Check for Tool Calling not supported error
-      if (!aiRes.ok) {
+      if (aiRes && !aiRes.ok) {
         const isToolUnsupported = 
           errMsg.includes('tool calling is not supported') || 
           errMsg.includes('tool use is not supported') || 
@@ -23145,7 +23145,7 @@ Today's Date: ${new Date().toISOString().split('T')[0]}`
           functionArgs = JSON.parse(toolCall.function.arguments || '{}');
         } catch(e) {}
 
-        const toolResult = await executeAITool(functionName, functionArgs);
+        const toolResult = await executeAITool(functionName, functionArgs, userCtx);
         lastExecutedToolResult = toolResult;
         conversation.push({
           role: 'tool',
