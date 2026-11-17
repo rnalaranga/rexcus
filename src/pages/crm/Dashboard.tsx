@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend
+  Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell
 } from 'recharts'
 import { StatCard } from '@/components/ui/StatCard'
 import { GlassCard } from '@/components/ui/GlassCard'
@@ -153,7 +153,12 @@ export const CRMDashboard: React.FC = () => {
     winRatePct,
     collectionRatePct,
     monthlyActivity,
-    topCustomers
+    topCustomers,
+    leadStages,
+    orderStatuses,
+    recentQuotations,
+    recentOrders,
+    repLeaderboard
   } = useMemo(() => {
     const totalLeads = scopedLeads.length
     const openLeads = scopedLeads.filter((l: any) => !['won', 'lost'].includes(String(l.stage || '').toLowerCase())).length
@@ -231,6 +236,54 @@ export const CRMDashboard: React.FC = () => {
       .sort((a, b) => b.orders - a.orders || b.quotations - a.quotations)
       .slice(0, 5)
 
+    // Lead Stage Breakdown
+    const stageCounts = new Map<string, number>()
+    scopedLeads.forEach((l: any) => {
+      const st = String(l.stage || 'new').toLowerCase()
+      stageCounts.set(st, (stageCounts.get(st) || 0) + 1)
+    })
+    const leadStages = Array.from(stageCounts.entries())
+      .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value }))
+      .sort((a, b) => b.value - a.value)
+
+    // Sales Order Status Breakdown
+    const orderStatusCounts = new Map<string, number>()
+    scopedOrders.forEach((o: any) => {
+      const st = o.isDispatched ? 'Dispatched' : (o.status || 'Pending')
+      orderStatusCounts.set(st, (orderStatusCounts.get(st) || 0) + 1)
+    })
+    const orderStatuses = Array.from(orderStatusCounts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+
+    // Recent Quotations & Orders (latest 5)
+    const recentQuotations = [...scopedQuotations]
+      .sort((a: any, b: any) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime())
+      .slice(0, 5)
+
+    const recentOrders = [...scopedOrders]
+      .sort((a: any, b: any) => new Date(b.orderDate || b.createdAt || 0).getTime() - new Date(a.orderDate || a.createdAt || 0).getTime())
+      .slice(0, 5)
+
+    // Sales Rep Leaderboard (only used when canViewAll is true)
+    const repMap = new Map<string, { rep: string; leads: number; quotes: number; orders: number }>()
+    const addRep = (name: any, field: 'leads' | 'quotes' | 'orders') => {
+      const key = String(name || 'Unassigned').trim() || 'Unassigned'
+      const prev = repMap.get(key) || { rep: key, leads: 0, quotes: 0, orders: 0 }
+      prev[field] += 1
+      repMap.set(key, prev)
+    }
+    scopedLeads.forEach((l: any) => addRep(l.assignedTo || l.createdBy, 'leads'))
+    scopedQuotations.forEach((q: any) => addRep(q.createdBy || q.salesRep, 'quotes'))
+    scopedOrders.forEach((o: any) => addRep(o.createdBy || o.salesRep, 'orders'))
+    const repLeaderboard = Array.from(repMap.values())
+      .map(r => ({
+        ...r,
+        winRate: r.quotes > 0 ? Math.min(100, Math.round((r.orders / r.quotes) * 1000) / 10) : 0
+      }))
+      .sort((a, b) => b.orders - a.orders || b.quotes - a.quotes)
+      .slice(0, 6)
+
     return {
       totalLeads,
       openLeads,
@@ -241,7 +294,12 @@ export const CRMDashboard: React.FC = () => {
       winRatePct,
       collectionRatePct,
       monthlyActivity: months,
-      topCustomers
+      topCustomers,
+      leadStages,
+      orderStatuses,
+      recentQuotations,
+      recentOrders,
+      repLeaderboard
     }
   }, [scopedLeads, scopedQuotations, scopedOrders, scopedInvoices, customers])
 
@@ -369,6 +427,166 @@ export const CRMDashboard: React.FC = () => {
           </div>
         </GlassCard>
       </div>
+
+      {/* Pipeline Stages & Order Status Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary">Lead Pipeline Stages</h2>
+            <button onClick={() => navigate('/crm/leads')} className="text-xs text-rex-500 hover:text-rex-400">
+              View Leads →
+            </button>
+          </div>
+          {leadStages.length === 0 ? (
+            <p className="text-xs text-muted py-6 text-center">No leads in pipeline.</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="w-full sm:w-1/2 h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={leadStages} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={38} outerRadius={64} paddingAngle={3}>
+                      {leadStages.map((_, i) => (
+                        <Cell key={i} fill={['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4'][i % 6]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-full sm:w-1/2 space-y-2">
+                {leadStages.map((st, i) => (
+                  <div key={st.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4'][i % 6] }}
+                      />
+                      <span className="text-secondary font-medium">{st.name}</span>
+                    </div>
+                    <span className="font-mono font-bold text-primary">
+                      {st.value} ({totalLeads > 0 ? Math.round((st.value / totalLeads) * 100) : 0}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </GlassCard>
+
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary">Sales Order Fulfillment Status</h2>
+            <button onClick={() => navigate('/crm/sales-orders')} className="text-xs text-rex-500 hover:text-rex-400">
+              View Orders →
+            </button>
+          </div>
+          {orderStatuses.length === 0 ? (
+            <p className="text-xs text-muted py-6 text-center">No sales orders recorded yet.</p>
+          ) : (
+            <div className="space-y-3 mt-2">
+              {orderStatuses.map((st) => {
+                const pct = totalOrders > 0 ? Math.round((st.value / totalOrders) * 100) : 0
+                return (
+                  <div key={st.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-secondary">{st.name}</span>
+                      <span className="font-mono font-bold text-primary">{st.value} ({pct}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-surface2 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Recent Quotations & Recent Sales Orders */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary">Recent Quotations</h2>
+            <button onClick={() => navigate('/crm/quotations')} className="text-xs text-rex-500 hover:text-rex-400">
+              All Quotations →
+            </button>
+          </div>
+          <div className="space-y-2">
+            {recentQuotations.length === 0 ? (
+              <p className="text-xs text-muted py-4 text-center">No quotations yet.</p>
+            ) : (
+              recentQuotations.map((q: any) => (
+                <div key={q.id} className="flex items-center justify-between py-2 border-b border-theme-subtle last:border-0 text-xs">
+                  <div className="min-w-0 pr-2">
+                    <div className="font-mono font-bold text-primary">{q.docNo || q.quotationNo || q.id}</div>
+                    <div className="text-[11px] text-muted truncate">{q.leadCompany || q.customerCompany || q.leadName || q.customerName || 'Customer'}</div>
+                  </div>
+                  <Badge value={q.status || 'Draft'} size="sm" />
+                </div>
+              ))
+            )}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary">Recent Sales Orders</h2>
+            <button onClick={() => navigate('/crm/sales-orders')} className="text-xs text-rex-500 hover:text-rex-400">
+              All Orders →
+            </button>
+          </div>
+          <div className="space-y-2">
+            {recentOrders.length === 0 ? (
+              <p className="text-xs text-muted py-4 text-center">No sales orders yet.</p>
+            ) : (
+              recentOrders.map((o: any) => (
+                <div key={o.id} className="flex items-center justify-between py-2 border-b border-theme-subtle last:border-0 text-xs">
+                  <div className="min-w-0 pr-2">
+                    <div className="font-mono font-bold text-primary">{o.orderNo || o.id}</div>
+                    <div className="text-[11px] text-muted truncate">{o.customerCompany || o.customerName || 'Customer'}</div>
+                  </div>
+                  <Badge value={o.isDispatched ? 'Dispatched' : (o.status || 'Pending')} size="sm" />
+                </div>
+              ))
+            )}
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* Team Performance Leaderboard (Admin / CRM Manager / Finance Only) */}
+      {canViewAll && repLeaderboard.length > 0 && (
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary">Team CRM Performance</h2>
+            <span className="text-[11px] text-muted">Counts &amp; Win Rate %</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-theme-subtle text-[10px] uppercase text-muted">
+                  <th className="py-2 px-2">Sales Rep</th>
+                  <th className="py-2 px-2 text-right">Leads</th>
+                  <th className="py-2 px-2 text-right">Quotations</th>
+                  <th className="py-2 px-2 text-right">Sales Orders</th>
+                  <th className="py-2 px-2 text-right">Win Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-theme-subtle/50">
+                {repLeaderboard.map(r => (
+                  <tr key={r.rep}>
+                    <td className="py-2 px-2 font-semibold text-primary">{r.rep}</td>
+                    <td className="py-2 px-2 text-right font-mono">{r.leads}</td>
+                    <td className="py-2 px-2 text-right font-mono">{r.quotes}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-emerald-500">{r.orders}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-rex-500">{r.winRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+      )}
 
       {/* Follow-up Reminders Row */}
       <GlassCard className="p-5">

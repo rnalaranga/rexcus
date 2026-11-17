@@ -758,6 +758,57 @@ export const SalesReportsHub: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'orders' && (
+        <GlassCard className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-primary">
+              Sales Orders Value Breakdown (LKR)
+            </span>
+            <span className="text-[11px] text-muted font-mono">
+              Avg Order Value: <strong className="text-primary">{formatCurrency(orderStats.avgOrderValue)}</strong>
+            </span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div className="p-2.5 rounded bg-blue-500/5 border border-blue-500/20">
+              <div className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400">Total Value</div>
+              <div className="text-sm font-black font-mono text-primary mt-0.5">{formatCurrency(orderStats.totalValueLKR)}</div>
+            </div>
+            <div className="p-2.5 rounded bg-emerald-500/5 border border-emerald-500/20">
+              <div className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
+                Dispatched Value ({orderStats.totalValueLKR > 0 ? Math.round((orderStats.dispatchedValueLKR / orderStats.totalValueLKR) * 100) : 0}%)
+              </div>
+              <div className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">{formatCurrency(orderStats.dispatchedValueLKR)}</div>
+            </div>
+            <div className="p-2.5 rounded bg-amber-500/5 border border-amber-500/20">
+              <div className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">
+                Pending Value ({orderStats.totalValueLKR > 0 ? Math.round((orderStats.pendingValueLKR / orderStats.totalValueLKR) * 100) : 0}%)
+              </div>
+              <div className="text-sm font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">{formatCurrency(orderStats.pendingValueLKR)}</div>
+            </div>
+            <div className="p-2.5 rounded bg-purple-500/5 border border-purple-500/20">
+              <div className="text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400">
+                Invoiced Value ({orderStats.totalValueLKR > 0 ? Math.round((orderStats.invoicedValueLKR / orderStats.totalValueLKR) * 100) : 0}%)
+              </div>
+              <div className="text-sm font-black font-mono text-purple-600 dark:text-purple-400 mt-0.5">{formatCurrency(orderStats.invoicedValueLKR)}</div>
+            </div>
+          </div>
+          {orderStats.totalValueLKR > 0 && (
+            <div className="w-full h-2 bg-surface2 rounded-full overflow-hidden flex">
+              <div
+                className="h-full bg-emerald-500"
+                style={{ width: `${(orderStats.dispatchedValueLKR / orderStats.totalValueLKR) * 100}%` }}
+                title={`Dispatched: ${formatCurrency(orderStats.dispatchedValueLKR)}`}
+              />
+              <div
+                className="h-full bg-amber-500"
+                style={{ width: `${(orderStats.pendingValueLKR / orderStats.totalValueLKR) * 100}%` }}
+                title={`Pending: ${formatCurrency(orderStats.pendingValueLKR)}`}
+              />
+            </div>
+          )}
+        </GlassCard>
+      )}
+
       {activeTab === 'quotes' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
           <GlassCard className="p-3.5 border-l-4 border-l-blue-500 flex flex-col justify-between">
