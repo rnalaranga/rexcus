@@ -10526,17 +10526,16 @@ app.get('/api/invoices', async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT i.*, 
-             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name, l2.name) AS customerName, 
-             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, l2.company, i.customerName) AS customerCompany,
-             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address, l2.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address) AS customerAddress,
              COALESCE(NULLIF(i.customerEmail, ''), c.email, c2.email) AS customerEmail,
              COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone,
-             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat, l2.vat) AS customerVat
+             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat) AS customerVat
       FROM invoices i
       LEFT JOIN customers c ON (i.customerId = c.id OR (i.leadId = c.id AND i.customerId IS NULL))
       LEFT JOIN leads l ON (i.leadId = l.id OR (i.customerId = l.id AND i.leadId IS NULL))
       LEFT JOIN customers c2 ON (l.customerId IS NOT NULL AND l.customerId = c2.id)
-      LEFT JOIN leads l2 ON (c.id IS NOT NULL AND l2.customerId = c.id)
       ORDER BY i.date DESC
     `);
     res.json(rows);
@@ -10556,17 +10555,16 @@ app.get('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     const [rows]: any = await db.query(`
       SELECT i.*, 
-             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name, l2.name) AS customerName, 
-             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, l2.company, i.customerName) AS customerCompany,
-             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address, l2.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address) AS customerAddress,
              COALESCE(NULLIF(i.customerEmail, ''), c.email, c2.email) AS customerEmail,
              COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone,
-             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat, l2.vat) AS customerVat
+             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat) AS customerVat
       FROM invoices i
       LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
       LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
       LEFT JOIN customers c2 ON (l.customerId IS NOT NULL AND l.customerId = c2.id)
-      LEFT JOIN leads l2 ON (c.id IS NOT NULL AND l2.customerId = c.id)
       WHERE i.id = ? OR i.invoiceNo = ?
       LIMIT 1
     `, [id, id]);
