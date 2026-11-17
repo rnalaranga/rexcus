@@ -13,14 +13,14 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { formatCurrency } from '@/lib/utils'
-import { fetchWorkOrders, deleteWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs, fetchPOs, fetchGRNs } from '@/lib/api'
+import { fetchWorkOrders, deleteWorkOrder, updateWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs, fetchPOs, fetchGRNs } from '@/lib/api'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
 import { GatePassPrintModal } from '@/components/GatePassPrintModal'
-import { ShoppingBag, Truck } from 'lucide-react'
+import { ShoppingBag, Truck, ChevronDown, UserCheck } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
@@ -47,6 +47,33 @@ export const WorkOrders: React.FC = () => {
 
   // Data State
   const [workOrders, setWorkOrders] = useState<any[]>([])
+  const [openActionWoId, setOpenActionWoId] = useState<string | null>(null)
+  const [assignModalWo, setAssignModalWo] = useState<any | null>(null)
+  const [assigningRoute, setAssigningRoute] = useState(false)
+
+  const getWoRoute = (notes?: string | null): 'Design Department' | 'Direct Production' | null => {
+    if (!notes) return null
+    if (notes.includes('[Route: Design Department]')) return 'Design Department'
+    if (notes.includes('[Route: Direct Production]')) return 'Direct Production'
+    return null
+  }
+
+  const handleAssignRoute = async (wo: any, route: 'Design Department' | 'Direct Production') => {
+    setAssigningRoute(true)
+    try {
+      const cleanedNotes = String(wo.notes || '')
+        .replace(/\[Route:\s*(Design Department|Direct Production)\]\s*/g, '')
+        .trim()
+      const newNotes = `[Route: ${route}]${cleanedNotes ? `\n${cleanedNotes}` : ''}`
+      await updateWorkOrder(wo.id, { notes: newNotes })
+      setWorkOrders(prev => prev.map(w => (w.id === wo.id ? { ...w, notes: newNotes } : w)))
+      setAssignModalWo(null)
+    } catch (e) {
+      console.error('Failed to assign work order route:', e)
+    } finally {
+      setAssigningRoute(false)
+    }
+  }
   const [employees, setEmployees] = useState<any[]>([])
   const [machineries, setMachineries] = useState<any[]>([])
   const [inventory, setInventory] = useState<any[]>([])
@@ -424,7 +451,9 @@ export const WorkOrders: React.FC = () => {
       key: 'orderNo',
       header: 'Job & Customer',
       sortable: true,
-      render: (_: any, row: any) => (
+      render: (_: any, row: any) => {
+        const route = getWoRoute(row.notes)
+        return (
         <div className="py-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-mono font-bold text-xs text-primary">
@@ -435,6 +464,17 @@ export const WorkOrders: React.FC = () => {
                 {row.quotationNo}
               </span>
             )}
+            <span
+              className={`text-[9.5px] font-semibold px-1.5 py-0.2 border rounded-none ${
+                route === 'Design Department'
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                  : route === 'Direct Production'
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                  : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+              }`}
+            >
+              {route || 'Not Assigned'}
+            </span>
           </div>
           <p className="text-xs font-semibold text-secondary truncate max-w-[200px]" title={row.title}>
             {row.title || 'Precision Machining Job'}
@@ -444,7 +484,8 @@ export const WorkOrders: React.FC = () => {
             <span className="truncate">{row.customerCompany || row.customerName || 'Standard / Internal Job'}</span>
           </div>
         </div>
-      )
+        )
+      }
     },
     {
       key: 'currentStep',
@@ -615,88 +656,109 @@ export const WorkOrders: React.FC = () => {
       key: 'actions',
       header: '',
       align: 'right',
-      render: (_: any, row: any) => (
-        <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate(`/production/work-orders/${row.id}`)}
-            className="text-xs font-bold text-rex-600 dark:text-rex-400 border border-rex-500/40 hover:bg-rex-500/10 rounded-none h-7 px-2.5"
-          >
-            <Eye size={12} className="mr-1 text-rex-600 dark:text-rex-400"/> Studio
-          </Button>
+      render: (_: any, row: any) => {
+        const isOpen = openActionWoId === row.id
+        const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
+          id: row.id,
+          orderNo: row.orderNo,
+          quoteId: row.sourceQuoteId || row.quotationId,
+          quotationNo: row.quotationNo || row.sourceQuoteNo,
+          leadId: row.leadId,
+          customerName: row.customerName
+        }, allCustomerGrns)
 
-          {(() => {
-            const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
-              id: row.id,
-              orderNo: row.orderNo,
-              quoteId: row.sourceQuoteId || row.quotationId,
-              quotationNo: row.quotationNo || row.sourceQuoteNo,
-              leadId: row.leadId,
-              customerName: row.customerName
-            }, allCustomerGrns);
-            if (sPhotos.length === 0) return null;
-            return (
+        return (
+          <div className="flex items-center justify-end gap-1.5 relative" onClick={e => e.stopPropagation()}>
+            {/* Separate Assign Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setOpenActionWoId(null)
+                setAssignModalWo(row)
+              }}
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-500/40 hover:bg-blue-500/10 rounded-none h-7 px-2.5"
+              title="Assign to Design Department or Direct Production"
+            >
+              <UserCheck size={12} className="mr-1" /> Assign
+            </Button>
+
+            {/* Actions Dropdown */}
+            <div className="relative">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveViewingPhotos({
-                    photos: sPhotos,
-                    title: `Sample Photos - Work Order #${row.orderNo || row.id} (${matchedGrns.map((g: any) => g.id).join(', ')})`
-                  });
-                }}
-                className="text-xs font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 rounded-none h-7 px-2"
-                title={`View ${sPhotos.length} Customer Sample Photo(s)`}
+                onClick={() => setOpenActionWoId(isOpen ? null : row.id)}
+                className="text-xs font-semibold text-primary border border-theme-subtle hover:bg-surface2 rounded-none h-7 px-2.5"
               >
-                <Camera size={12} className="mr-1 text-amber-500" /> Samples ({sPhotos.length})
+                Actions <ChevronDown size={12} className="ml-1" />
               </Button>
-            );
-          })()}
 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setPrintWo(row)}
-            className="text-xs font-semibold text-secondary hover:text-primary border border-theme-subtle hover:bg-surface2 rounded-none h-7 px-2"
-            title="Print Production Work Order & Job Traveler"
-          >
-            <Printer size={12} className="mr-1 text-muted"/> WO
-          </Button>
+              {isOpen && (
+                <div className="absolute right-0 mt-1 w-44 bg-surface border border-theme-subtle shadow-xl z-50 py-1 text-left">
+                  <button
+                    type="button"
+                    onClick={() => { setOpenActionWoId(null); navigate(`/production/work-orders/${row.id}`) }}
+                    className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-rex-600 dark:text-rex-400 font-semibold"
+                  >
+                    <Eye size={12} /> Open Studio
+                  </button>
 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handlePrintSalesOrder(row)}
-            className="text-xs font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 rounded-none h-7 px-2"
-            title="Print Commercial Sales Order Document"
-          >
-            <ShoppingBag size={12} className="mr-1 text-blue-500"/> SO
-          </Button>
+                  {sPhotos.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenActionWoId(null)
+                        setActiveViewingPhotos({
+                          photos: sPhotos,
+                          title: `Sample Photos - Work Order #${row.orderNo || row.id} (${matchedGrns.map((g: any) => g.id).join(', ')})`
+                        })
+                      }}
+                      className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-amber-600 dark:text-amber-400 font-semibold"
+                    >
+                      <Camera size={12} /> Samples ({sPhotos.length})
+                    </button>
+                  )}
 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handlePrintGatePass(row)}
-            className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 rounded-none h-7 px-2"
-            title="Print Security Gate Pass / Dispatch Note"
-          >
-            <Truck size={12} className="mr-1 text-emerald-500"/> DN
-          </Button>
+                  <button
+                    type="button"
+                    onClick={() => { setOpenActionWoId(null); setPrintWo(row) }}
+                    className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-secondary hover:text-primary"
+                  >
+                    <Printer size={12} /> Print Work Order
+                  </button>
 
-          {isAdmin && (
-            <button 
-              type="button" 
-              onClick={() => setDeleteWoId(row.id)}
-              className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-500/10 rounded-none transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
-              title="Delete Work Order"
-            >
-              <Trash2 size={13}/>
-            </button>
-          )}
-        </div>
-      )
+                  <button
+                    type="button"
+                    onClick={() => { setOpenActionWoId(null); handlePrintSalesOrder(row) }}
+                    className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-blue-600 dark:text-blue-400"
+                  >
+                    <ShoppingBag size={12} /> Print Sales Order
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setOpenActionWoId(null); handlePrintGatePass(row) }}
+                    className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-emerald-600 dark:text-emerald-400"
+                  >
+                    <Truck size={12} /> Print Gate Pass
+                  </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => { setOpenActionWoId(null); setDeleteWoId(row.id) }}
+                      className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-rose-500/10 text-rose-500 border-t border-theme-subtle/50 mt-1 pt-1.5"
+                    >
+                      <Trash2 size={12} /> Delete Work Order
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
     }
   ]
 
@@ -1117,6 +1179,39 @@ export const WorkOrders: React.FC = () => {
           workOrder={printWo}
           settings={settings}
         />
+      )}
+      {assignModalWo && (
+        <Modal
+          isOpen={true}
+          onClose={() => setAssignModalWo(null)}
+          title={`Assign Work Order - ${assignModalWo.orderNo || assignModalWo.id}`}
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-muted">
+              Select where to route <strong className="text-primary">{assignModalWo.orderNo || assignModalWo.id}</strong>:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={assigningRoute}
+                onClick={() => handleAssignRoute(assignModalWo, 'Design Department')}
+                className="p-3.5 text-left border border-blue-500/40 bg-blue-500/5 hover:bg-blue-500/15 transition-colors"
+              >
+                <div className="text-xs font-bold text-blue-600 dark:text-blue-400">To Design Department</div>
+                <div className="text-[11px] text-muted mt-1">CAD / Drawing &amp; Engineering review first</div>
+              </button>
+              <button
+                type="button"
+                disabled={assigningRoute}
+                onClick={() => handleAssignRoute(assignModalWo, 'Direct Production')}
+                className="p-3.5 text-left border border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/15 transition-colors"
+              >
+                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Direct Production</div>
+                <div className="text-[11px] text-muted mt-1">Release straight to workshop floor</div>
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   )
