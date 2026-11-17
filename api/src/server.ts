@@ -2196,21 +2196,7 @@ async function runDatabaseSync() {
     }
   } catch (err) {}
 
-  // Safely auto-sync sales_order sequence with highest existing orderNo without overwriting user's sequence or altering existing VPS records
-  try {
-    const [maxOrder]: any = await db.query(
-      "SELECT MAX(CAST(REGEXP_SUBSTR(orderNo, '[0-9]+$') AS UNSIGNED)) as maxNum FROM finished_goods_orders WHERE orderNo REGEXP '[0-9]+$'"
-    );
-    if (maxOrder && maxOrder[0] && maxOrder[0].maxNum) {
-      const highestNum = Number(maxOrder[0].maxNum);
-      if (highestNum >= 1000 && highestNum < 100000 && highestNum !== 7528) {
-        await db.query(
-          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
-          [highestNum + 1]
-        );
-      }
-    }
-  } catch (err) {}
+  // Note: sales_order sequence is managed via Serial Number Manager and order creation; do not auto-modify on startup.
 
   // Auto-sync payment receipt sequence: starting from REC-1000
   try {

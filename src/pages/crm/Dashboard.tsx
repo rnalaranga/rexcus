@@ -1,35 +1,27 @@
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Users, TrendingUp, Briefcase, DollarSign,
-  ArrowUpRight, Star, Bell, CheckCircle2, AlertCircle,
-  Phone, Mail, Users2, CheckSquare, MessageSquare, MapPin, Calendar, ChevronRight
+  Users, TrendingUp, FileText, ShoppingBag, Award, Percent,
+  Bell, CheckCircle2, AlertCircle, Phone, Mail, Users2,
+  CheckSquare, MessageSquare, MapPin, Calendar, ChevronRight, Shield
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import { StatCard } from '@/components/ui/StatCard'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
-import { useCustomers, useLeads, useDeals, useFollowups } from '@/hooks/useData'
-import { formatCurrency, relativeTime } from '@/lib/utils'
-
-const PIE_COLORS = ['#b91c1c', '#dc2626', '#ef4444', '#f87171', '#fca5a5']
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="glass border border-theme px-3 py-2 text-xs shadow-card">
-      <p className="text-muted mb-1 font-medium">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
-          {p.name}: {formatCurrency(p.value, true)}
-        </p>
-      ))}
-    </div>
-  )
-}
+import {
+  useCustomers,
+  useLeads,
+  useQuotations,
+  useFinishedGoodsOrders,
+  useInvoices,
+  useFollowups
+} from '@/hooks/useData'
+import { useAuth } from '@/contexts/AuthContext'
+import { relativeTime } from '@/lib/utils'
 
 const ACTIVITY_TYPE_ICONS: Record<string, any> = {
   call: Phone, meeting: Users2, email: Mail, task: CheckSquare,
@@ -40,79 +32,218 @@ const ACTIVITY_TYPE_COLORS: Record<string, string> = {
   task: 'text-amber-500', whatsapp: 'text-emerald-500', site_visit: 'text-orange-500',
 }
 
+const ActivityTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="glass border border-theme px-3 py-2 text-xs shadow-card">
+      <p className="text-muted mb-1 font-medium">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
+          {p.name}: {p.value}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export const CRMDashboard: React.FC = () => {
   const navigate = useNavigate()
+  const { user, can } = useAuth()
   const { data: customers, loading: cl } = useCustomers()
   const { data: leads, loading: ll } = useLeads()
-  const { data: deals, loading: dl } = useDeals()
+  const { data: quotations, loading: ql } = useQuotations()
+  const { data: orders, loading: ol } = useFinishedGoodsOrders()
+  const { data: invoices, loading: il } = useInvoices()
   const { data: followupsRaw } = useFollowups()
 
-  const [currencies, setCurrencies] = React.useState<any[]>([])
-  React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/currencies`)
-      .then(res => res.json())
-      .then(data => setCurrencies(Array.isArray(data) ? data : []))
-      .catch(console.error)
-  }, [])
+  // Admin, CRM Manager, or Finance see all CRM data; other users see only their own
+  const canViewAll = useMemo(() => {
+    const role = String(user?.role || '').toLowerCase()
+    const roleName = String(user?.roleName || '').toLowerCase()
+    const username = String(user?.username || '').toLowerCase()
+    return Boolean(
+      role === 'admin' ||
+      username === 'admin' ||
+      role === 'manager' ||
+      role === 'crm_manager' ||
+      role === 'finance' ||
+      role === 'finance_manager' ||
+      role === 'accounts' ||
+      roleName.includes('admin') ||
+      roleName.includes('crm manager') ||
+      roleName.includes('finance') ||
+      can('quotations.view_all')
+    )
+  }, [user, can])
 
-  // Enrich followups with overdue status
+  const userIdentifiers = useMemo(() => {
+    return [user?.id, user?.username, user?.name]
+      .filter(Boolean)
+      .map(v => String(v).trim().toLowerCase())
+  }, [user])
+
+  const belongsToUser = (rec: any): boolean => {
+    if (canViewAll) return true
+    if (!rec || userIdentifiers.length === 0) return false
+    const candidates = [
+      rec.createdBy,
+      rec.assignedTo,
+      rec.salesRep,
+      rec.userId,
+      rec.ownerId,
+      rec.repName
+    ]
+      .filter(Boolean)
+      .map(v => String(v).trim().toLowerCase())
+    return candidates.some(c => userIdentifiers.includes(c))
+  }
+
+  // Scoped datasets
+  const scopedLeads = useMemo(() => (leads || []).filter(belongsToUser), [leads, canViewAll, userIdentifiers])
+  const scopedQuotations = useMemo(() => (quotations || []).filter(belongsToUser), [quotations, canViewAll, userIdentifiers])
+
+  const scopedOrderIdsOrQuoteIds = useMemo(() => {
+    const qIds = new Set(scopedQuotations.map((q: any) => String(q.id)))
+    const qNos = new Set(scopedQuotations.map((q: any) => String(q.quotationNo || q.docNo || '')).filter(Boolean))
+    return { qIds, qNos }
+  }, [scopedQuotations])
+
+  const scopedOrders = useMemo(() => {
+    if (canViewAll) return orders || []
+    return (orders || []).filter((o: any) =>
+      belongsToUser(o) ||
+      (o.quoteId && scopedOrderIdsOrQuoteIds.qIds.has(String(o.quoteId))) ||
+      (o.quotationNo && scopedOrderIdsOrQuoteIds.qNos.has(String(o.quotationNo)))
+    )
+  }, [orders, canViewAll, userIdentifiers, scopedOrderIdsOrQuoteIds])
+
+  const scopedInvoices = useMemo(() => {
+    const validInvs = (invoices || []).filter((inv: any) => {
+      const invNo = String(inv.invoiceNo || inv.id || '').toUpperCase()
+      return !invNo.startsWith('PI-') && !inv.isProforma && inv.invoiceType !== 'proforma' && inv.status !== 'draft'
+    })
+    if (canViewAll) return validInvs
+    const orderNos = new Set(scopedOrders.map((o: any) => String(o.orderNo || o.id)))
+    return validInvs.filter((inv: any) =>
+      belongsToUser(inv) ||
+      (inv.orderNo && orderNos.has(String(inv.orderNo))) ||
+      (inv.quoteId && scopedOrderIdsOrQuoteIds.qIds.has(String(inv.quoteId)))
+    )
+  }, [invoices, canViewAll, scopedOrders, scopedOrderIdsOrQuoteIds, userIdentifiers])
+
+  // Enrich followups with overdue status & scope
   const followups = useMemo(() => {
     const now = new Date()
-    return followupsRaw.map((f: any) => ({
-      ...f,
-      status: f.status === 'pending' && new Date(f.dueDate) < now ? 'overdue' : f.status
-    }))
-  }, [followupsRaw])
+    return (followupsRaw || [])
+      .filter(belongsToUser)
+      .map((f: any) => ({
+        ...f,
+        status: f.status === 'pending' && new Date(f.dueDate) < now ? 'overdue' : f.status
+      }))
+  }, [followupsRaw, canViewAll, userIdentifiers])
 
+  // Core KPIs (Counts & Rates ONLY — no raw financial amounts)
   const {
-    totalRevenue, activeCustomers, openLeads, openDeals, pipelineValue,
-    monthlyRevenue, dealsByStage
+    totalLeads,
+    openLeads,
+    totalQuotations,
+    convertedQuotations,
+    totalOrders,
+    dispatchedOrders,
+    winRatePct,
+    collectionRatePct,
+    monthlyActivity,
+    topCustomers
   } = useMemo(() => {
-    const totalRevenue    = customers.reduce((s, c) => s + Number(c.totalRevenue || 0), 0)
-    const activeCustomers = customers.filter(c => ['active', 'vip'].includes(c.status)).length
-    const openLeads       = leads.filter(l => !['won', 'lost'].includes(l.stage)).length
-    const openDealsArr    = deals.filter(d => !String(d.stage).includes('closed'))
-    const pipelineValue   = openDealsArr.reduce((s, d) => s + Number(d.value || 0), 0)
+    const totalLeads = scopedLeads.length
+    const openLeads = scopedLeads.filter((l: any) => !['won', 'lost'].includes(String(l.stage || '').toLowerCase())).length
 
-    
-    const monthlyRevenue = (() => {
-      const months: any[] = [];
-      const now = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        months.push({
-          month: d.toLocaleString('default', { month: 'short' }),
-          monthNum: d.getMonth(),
-          year: d.getFullYear(),
-          revenue: 0,
-          target: 2000000
-        });
-      }
+    const totalQuotations = scopedQuotations.length
+    const convertedQuotations = scopedQuotations.filter((q: any) => {
+      const st = String(q.status || '').toLowerCase()
+      return st === 'won' || st === 'po received' || st === 'converted' || Boolean(q.customerPoNo)
+    }).length
 
-      deals.filter(d => String(d.stage).toLowerCase().includes('won')).forEach(d => {
-        const dDate = new Date(d.expectedClose || d.lastUpdated || new Date());
-        const m = months.find(x => x.monthNum === dDate.getMonth() && x.year === dDate.getFullYear());
-        if (m) {
-          m.revenue += Number(d.value || 0);
-        }
-      });
+    const totalOrders = scopedOrders.length
+    const dispatchedOrders = scopedOrders.filter((o: any) => o.isDispatched || String(o.status || '').toLowerCase() === 'dispatched').length
 
-      return months;
-    })();
+    // Win Rate: % of quotations converted (or orders / quotations)
+    const winDenominator = totalQuotations > 0 ? totalQuotations : totalLeads
+    const winNumerator = totalQuotations > 0 ? Math.max(convertedQuotations, Math.min(totalOrders, totalQuotations)) : totalOrders
+    const winRatePct = winDenominator > 0 ? Math.min(100, Math.round((winNumerator / winDenominator) * 1000) / 10) : 0
 
+    // Collection Rate: % of invoiced amount collected (strictly a percentage rate)
+    const totalBilled = scopedInvoices.reduce((s: number, inv: any) => s + Number(inv.total || inv.amount || 0), 0)
+    const totalCollected = scopedInvoices.reduce((s: number, inv: any) => s + Number(inv.paidAmount || 0), 0)
+    const collectionRatePct = totalBilled > 0 ? Math.min(100, Math.round((totalCollected / totalBilled) * 1000) / 10) : 0
 
-    const stages = ['open', 'prospecting', 'proposal', 'negotiation', 'contract']
-    const dealsByStage = stages.map(st => {
-      const stageDeals = openDealsArr.filter(d => d.stage === st)
-      return {
-        stage: st.charAt(0).toUpperCase() + st.slice(1),
-        count: stageDeals.length,
-        value: stageDeals.reduce((s, d) => s + Number(d.value || 0), 0)
-      }
-    }).filter(s => s.count > 0).sort((a, b) => b.value - a.value)
+    // 6-Month Activity Trend (Counts only)
+    const now = new Date()
+    const months: any[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({
+        month: d.toLocaleString('default', { month: 'short' }),
+        monthNum: d.getMonth(),
+        year: d.getFullYear(),
+        leads: 0,
+        quotations: 0,
+        orders: 0
+      })
+    }
 
-    return { totalRevenue, activeCustomers, openLeads, openDeals: openDealsArr, pipelineValue, monthlyRevenue, dealsByStage }
-  }, [customers, leads, deals])
+    const addCount = (dateVal: any, key: 'leads' | 'quotations' | 'orders') => {
+      if (!dateVal) return
+      const d = new Date(dateVal)
+      if (isNaN(d.getTime())) return
+      const m = months.find(x => x.monthNum === d.getMonth() && x.year === d.getFullYear())
+      if (m) m[key] += 1
+    }
+
+    scopedLeads.forEach((l: any) => addCount(l.createdAt || l.lastActivity, 'leads'))
+    scopedQuotations.forEach((q: any) => addCount(q.date || q.createdAt, 'quotations'))
+    scopedOrders.forEach((o: any) => addCount(o.orderDate || o.createdAt, 'orders'))
+
+    // Top Customers by Sales Orders & Quotations count (no financial amounts)
+    const custMap = new Map<string, { name: string; orders: number; quotations: number; totalActivity: number }>()
+    const custLookup = new Map<string, string>()
+    ;(customers || []).forEach((c: any) => {
+      if (c.id) custLookup.set(String(c.id), c.company || c.name || 'Customer')
+    })
+
+    scopedOrders.forEach((o: any) => {
+      const cname = (o.customerCompany || (o.customerId && custLookup.get(String(o.customerId))) || o.customerName || 'Customer').trim()
+      const prev = custMap.get(cname) || { name: cname, orders: 0, quotations: 0, totalActivity: 0 }
+      prev.orders += 1
+      prev.totalActivity += 2
+      custMap.set(cname, prev)
+    })
+
+    scopedQuotations.forEach((q: any) => {
+      const cname = (q.leadCompany || q.customerCompany || (q.leadId && custLookup.get(String(q.leadId))) || q.leadName || q.customerName || 'Customer').trim()
+      const prev = custMap.get(cname) || { name: cname, orders: 0, quotations: 0, totalActivity: 0 }
+      prev.quotations += 1
+      prev.totalActivity += 1
+      custMap.set(cname, prev)
+    })
+
+    const topCustomers = Array.from(custMap.values())
+      .sort((a, b) => b.orders - a.orders || b.quotations - a.quotations)
+      .slice(0, 5)
+
+    return {
+      totalLeads,
+      openLeads,
+      totalQuotations,
+      convertedQuotations,
+      totalOrders,
+      dispatchedOrders,
+      winRatePct,
+      collectionRatePct,
+      monthlyActivity: months,
+      topCustomers
+    }
+  }, [scopedLeads, scopedQuotations, scopedOrders, scopedInvoices, customers])
 
   // Followup stats
   const today = new Date().toISOString().slice(0, 10)
@@ -122,238 +253,186 @@ export const CRMDashboard: React.FC = () => {
     .filter((f: any) => f.status === 'pending' && String(f.dueDate).slice(0, 10) > today)
     .slice(0, 5)
 
-  // Top customers sorted by revenue
-  const topCustomers = useMemo(() =>
-    [...customers]
-      .sort((a, b) => Number(b.totalRevenue || 0) - Number(a.totalRevenue || 0))
-      .slice(0, 5)
-  , [customers])
-
-  if (cl || ll || dl) return <div className="p-8 text-center text-muted animate-pulse">Loading data...</div>
+  if (cl || ll || ql || ol || il) {
+    return <div className="p-8 text-center text-muted animate-pulse text-xs">Loading CRM dashboard...</div>
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
-
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard title="Total Revenue"    value={formatCurrency(totalRevenue, true)}  subtitle="FY 2026 YTD"                               icon={DollarSign} trend={14.2} trendLabel="vs last year"  variant="glow" />
-        <StatCard title="Active Customers" value={activeCustomers}                      subtitle={`${customers.length} total accounts`}      icon={Users}      trend={8}    trendLabel="vs last month" />
-        <StatCard title="Open Leads"       value={openLeads}                            subtitle={`${leads.filter(l=>l.priority==='high').length} high priority`} icon={TrendingUp} trend={22} trendLabel="new this month" />
-        <StatCard title="Pipeline Value"   value={formatCurrency(pipelineValue, true)} subtitle={`${openDeals.length} active deals`}         icon={Briefcase}  trend={5.8}  trendLabel="vs last month"  variant="red" />
+      {/* Header Scope Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-theme-subtle">
+        <div>
+          <h1 className="text-lg font-bold text-primary tracking-tight">CRM Performance Dashboard</h1>
+          <p className="text-xs text-muted">
+            Leads, Quotations, Sales Orders, Win Rate &amp; Collection Rate overview
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-surface2 border border-theme-subtle text-secondary">
+          <Shield size={12} className={canViewAll ? 'text-emerald-500' : 'text-blue-500'} />
+          {canViewAll
+            ? 'All Team View (Admin / CRM Manager / Finance)'
+            : `My Activity (${user?.name || user?.username || 'Sales Rep'})`}
+        </div>
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-3 gap-4">
-
-        {/* Revenue chart */}
-        <GlassCard className="col-span-3 xl:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-semibold text-primary">Revenue vs Target</h2>
-              <p className="text-xs text-muted mt-0.5">Last 6 months — LKR</p>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-muted">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-rex-500 inline-block" />Revenue</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-slate-400 inline-block opacity-50" />Target</span>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={monthlyRevenue} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#b91c1c" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#b91c1c" stopOpacity={0}    />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" />
-              <XAxis dataKey="month" tick={{ fill: 'rgb(140,145,165)', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'rgb(140,145,165)', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v/1e6).toFixed(0)}M`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#dc2626" strokeWidth={2} fill="url(#revGrad)" />
-              <Area type="monotone" dataKey="target"  name="Target"  stroke="rgb(148,163,184)" strokeWidth={1.5} fill="none" strokeDasharray="4 3" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </GlassCard>
-
-        {/* Pipeline by stage */}
-        <GlassCard className="col-span-3 xl:col-span-1 p-5">
-          <h2 className="text-sm font-semibold text-primary mb-1">Pipeline by Stage</h2>
-          <p className="text-xs text-muted mb-4">Deal count &amp; value</p>
-          {dealsByStage.length === 0 ? (
-            <p className="text-xs text-muted italic">No active deals.</p>
-          ) : (
-            <div className="space-y-3">
-              {dealsByStage.map((s, i) => (
-                <div key={s.stage} className="flex items-center gap-3">
-                  <div className="w-2 h-2 flex-shrink-0 rounded-sm" style={{ background: PIE_COLORS[i] }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-[11px] text-secondary truncate">{s.stage}</span>
-                      <span className="text-[11px] text-muted ml-2 flex-shrink-0">{s.count}</span>
-                    </div>
-                    <div className="h-1 bg-surface2 w-full overflow-hidden">
-                      <div
-                        className="h-full transition-all duration-500"
-                        style={{ width: `${Math.min((s.value / (pipelineValue || 1)) * 100, 100)}%`, background: PIE_COLORS[i], opacity: 0.75 }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-muted mt-0.5">{formatCurrency(s.value, true)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </GlassCard>
+      {/* KPI Row (Counts & Rates Only — No Financial LKR Amounts) */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard
+          title="My Leads"
+          value={totalLeads}
+          subtitle={`${openLeads} active in pipeline`}
+          icon={Users}
+        />
+        <StatCard
+          title="Quotations"
+          value={totalQuotations}
+          subtitle={`${convertedQuotations} converted / PO`}
+          icon={FileText}
+        />
+        <StatCard
+          title="Sales Orders"
+          value={totalOrders}
+          subtitle={`${dispatchedOrders} dispatched`}
+          icon={ShoppingBag}
+        />
+        <StatCard
+          title="Win Rate"
+          value={`${winRatePct}%`}
+          subtitle="Quote-to-Order conversion"
+          icon={Award}
+          variant="glow"
+        />
+        <StatCard
+          title="Collection Rate"
+          value={`${collectionRatePct}%`}
+          subtitle="Invoiced payment collected"
+          icon={Percent}
+        />
       </div>
 
-      {/* Bottom Row: Follow-ups + Top Customers */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-        {/* Follow-ups widget */}
-        <GlassCard className="p-5">
+      {/* Charts & Top Customers Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* 6-Month Activity Trend */}
+        <GlassCard className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-semibold text-primary flex items-center gap-2">
-                <Bell size={14} className="text-amber-500" /> Follow-ups
+                <TrendingUp size={15} className="text-rex-500" />
+                6-Month CRM Activity Trend
               </h2>
-              <p className="text-xs text-muted mt-0.5">
-                {todayFollowups.length > 0 && <span className="text-amber-500 font-semibold">{todayFollowups.length} due today</span>}
-                {overdueFollowups.length > 0 && <span className="text-red-500 font-semibold ml-2">{overdueFollowups.length} overdue</span>}
-                {todayFollowups.length === 0 && overdueFollowups.length === 0 && 'All clear ✓'}
-              </p>
+              <p className="text-xs text-muted mt-0.5">Leads, Quotations &amp; Sales Orders (Counts)</p>
             </div>
-            <button
-              onClick={() => navigate('/crm/followups')}
-              className="text-[10px] text-rex-600 dark:text-rex-400 hover:text-rex-700 uppercase tracking-widest flex items-center gap-1 transition-colors"
-            >View All <ArrowUpRight size={10} /></button>
           </div>
-
-          {/* Overdue */}
-          {overdueFollowups.slice(0, 2).map((f: any) => {
-            const Icon = ACTIVITY_TYPE_ICONS[f.type] || Bell
-            return (
-              <div key={f.id} onClick={() => navigate('/crm/followups')} className="flex items-start gap-3 px-3 py-2.5 hover:bg-red-500/5 cursor-pointer border-l-2 border-red-500 mb-1 transition-colors">
-                <AlertCircle size={13} className="text-red-500 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-primary truncate font-medium">{f.subject}</p>
-                  <p className="text-[10px] text-red-500">Overdue · {f.relatedName}</p>
-                </div>
-              </div>
-            )
-          })}
-
-          {/* Today */}
-          {todayFollowups.slice(0, 2).map((f: any) => {
-            const Icon = ACTIVITY_TYPE_ICONS[f.type] || Bell
-            return (
-              <div key={f.id} onClick={() => navigate('/crm/followups')} className="flex items-start gap-3 px-3 py-2.5 hover:bg-amber-500/5 cursor-pointer border-l-2 border-amber-400 mb-1 transition-colors">
-                <Icon size={13} className={`${ACTIVITY_TYPE_COLORS[f.type] || 'text-muted'} mt-0.5 flex-shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-primary truncate font-medium">{f.subject}</p>
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400">Today {f.dueTime && `at ${f.dueTime}`} · {f.relatedName}</p>
-                </div>
-              </div>
-            )
-          })}
-
-          {/* Upcoming */}
-          {upcomingFollowups.slice(0, 3).map((f: any) => {
-            const Icon = ACTIVITY_TYPE_ICONS[f.type] || Bell
-            return (
-              <div key={f.id} onClick={() => navigate('/crm/followups')} className="flex items-start gap-3 px-3 py-2.5 hover:bg-surface2/50 cursor-pointer transition-colors">
-                <Icon size={13} className={`${ACTIVITY_TYPE_COLORS[f.type] || 'text-muted'} mt-0.5 flex-shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-secondary truncate">{f.subject}</p>
-                  <p className="text-[10px] text-muted">{String(f.dueDate).slice(0, 10)} · {f.relatedName || '—'}</p>
-                </div>
-                <CheckCircle2 size={12} className="text-muted hover:text-emerald-500 transition-colors mt-0.5 shrink-0" />
-              </div>
-            )
-          })}
-
-          {overdueFollowups.length === 0 && todayFollowups.length === 0 && upcomingFollowups.length === 0 && (
-            <div className="py-8 text-center">
-              <CheckCircle2 size={28} className="mx-auto text-emerald-500 mb-2 opacity-50" />
-              <p className="text-xs text-muted">No pending activities.</p>
-              <button onClick={() => navigate('/crm/followups')} className="text-xs text-rex-500 mt-1 hover:underline">+ Schedule one</button>
-            </div>
-          )}
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={monthlyActivity} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
+              <Tooltip content={<ActivityTooltip />} />
+              <Legend wrapperStyle={{ fontSize: '11px' }} />
+              <Bar dataKey="leads" name="Leads" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={24} />
+              <Bar dataKey="quotations" name="Quotations" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={24} />
+              <Bar dataKey="orders" name="Sales Orders" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
+            </BarChart>
+          </ResponsiveContainer>
         </GlassCard>
 
-        {/* Top Customers */}
+        {/* Top Customers (by Orders & Quotations Count) */}
         <GlassCard className="p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-primary">Top Customers</h2>
-            <button onClick={() => navigate('/crm/customers')} className="text-[10px] text-rex-600 dark:text-rex-400 hover:text-rex-700 uppercase tracking-widest flex items-center gap-1 transition-colors">
-              View All <ArrowUpRight size={10} />
+            <button onClick={() => navigate('/crm/customers')} className="text-xs text-rex-500 hover:text-rex-400">
+              All →
             </button>
           </div>
-          <div className="space-y-0.5">
+          <div className="space-y-3">
             {topCustomers.length === 0 ? (
-              <p className="text-xs text-muted italic py-4 text-center">No customers yet.</p>
-            ) : topCustomers.map((c, i) => (
-              <div key={c.id} onClick={() => navigate(`/crm/customers/${c.id}`)} className="flex items-center gap-3 px-3 py-2.5 hover:bg-rex-500/4 transition-colors cursor-pointer">
-                <span className="text-[10px] text-faint w-4 text-right flex-shrink-0">{i + 1}</span>
-                <div className="w-7 h-7 flex-shrink-0 bg-rex-700 border border-rex-600/50 flex items-center justify-center">
-                  <span className="text-[9px] font-bold text-white">
-                    {(c.companyName || c.name || '?').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+              <p className="text-xs text-muted py-6 text-center">No customer activity recorded yet.</p>
+            ) : (
+              topCustomers.map((c, idx) => (
+                <div key={c.name} className="flex items-center justify-between gap-3 py-2 border-b border-theme-subtle last:border-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-6 h-6 rounded-full bg-rex-500/15 text-rex-600 dark:text-rex-400 text-[11px] font-bold flex items-center justify-center shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-primary truncate">{c.name}</p>
+                      <p className="text-[11px] text-muted">{c.quotations} quote(s)</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                    {c.orders} order{c.orders !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-primary truncate font-medium">{c.companyName || '—'}</p>
-                  <p className="text-[10px] text-muted truncate">{c.contactName || c.name || '—'}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs text-rex-600 dark:text-rex-300 font-semibold">{formatCurrency(Number(c.totalRevenue || 0), true)}</p>
-                  <Badge variant={c.status === 'vip' ? 'vip' : c.status === 'active' ? 'success' : 'default'} size="sm" className="mt-0.5">{(c.status || 'active').toUpperCase()}</Badge>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </GlassCard>
       </div>
 
-      {/* Quick stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <GlassCard className="p-4 text-center">
-          <div className="text-xl font-bold text-primary">{leads.filter((l: any) => l.priority === 'high').length}</div>
-          <div className="text-xs text-muted mt-0.5">High Priority Leads</div>
-        </GlassCard>
-        <GlassCard className="p-4 text-center">
-          <div className="text-xl font-bold text-emerald-500">{deals.filter((d: any) => String(d.stage).includes('won')).length}</div>
-          <div className="text-xs text-muted mt-0.5">Deals Won</div>
-        </GlassCard>
-        <GlassCard className="p-4 text-center">
-          <div className="text-xl font-bold text-amber-500">{followups.filter((f: any) => f.status === 'pending' || f.status === 'overdue').length}</div>
-          <div className="text-xs text-muted mt-0.5">Open Activities</div>
-        </GlassCard>
-        <GlassCard className="p-4 text-center">
-          <div className="text-xl font-bold text-blue-500">{customers.filter((c: any) => c.status === 'vip').length}</div>
-          <div className="text-xs text-muted mt-0.5">VIP Customers</div>
-        </GlassCard>
-      </div>
+      {/* Follow-up Reminders Row */}
+      <GlassCard className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Bell size={15} className="text-rex-500" />
+            <h2 className="text-sm font-semibold text-primary">Follow-up Reminders</h2>
+            {overdueFollowups.length > 0 && (
+              <Badge value={`${overdueFollowups.length} Overdue`} variant="error" size="sm" />
+            )}
+            {todayFollowups.length > 0 && (
+              <Badge value={`${todayFollowups.length} Due Today`} variant="warning" size="sm" />
+            )}
+          </div>
+          <button
+            onClick={() => navigate('/crm/followups')}
+            className="text-xs text-rex-500 hover:text-rex-400 flex items-center gap-0.5 font-medium"
+          >
+            View All <ChevronRight size={13} />
+          </button>
+        </div>
 
-      {/* Exchange Rates Widget */}
-      <GlassCard className="p-5 mt-4">
-        <h2 className="text-sm font-semibold text-primary mb-1 flex items-center gap-2">
-          <DollarSign size={16} className="text-emerald-500" />
-          Live Exchange Rates (Base: LKR)
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mt-4">
-          {currencies.filter(c => c.code !== 'LKR').map(c => (
-            <div key={c.code} className="p-3 bg-surface/30 rounded-lg border border-theme-subtle text-center">
-              <div className="text-[10px] font-bold text-muted uppercase tracking-widest">{c.code}</div>
-              <div className="text-sm font-semibold text-primary mt-1">
-                {Number(c.exchangeRate).toFixed(2)}
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {overdueFollowups.length === 0 && todayFollowups.length === 0 && upcomingFollowups.length === 0 ? (
+            <div className="col-span-full py-6 text-center text-xs text-muted flex flex-col items-center gap-2">
+              <CheckCircle2 size={20} className="text-emerald-500" />
+              <span>All follow-ups are up to date!</span>
             </div>
-          ))}
-          {currencies.filter(c => c.code !== 'LKR').length === 0 && (
-            <div className="col-span-full text-xs text-muted py-2">No foreign currencies configured. Add them in Settings.</div>
+          ) : (
+            [...overdueFollowups.slice(0, 3), ...todayFollowups.slice(0, 3), ...upcomingFollowups.slice(0, 3)]
+              .slice(0, 6)
+              .map((f: any) => {
+                const Icon = ACTIVITY_TYPE_ICONS[f.type] || Calendar
+                const colorClass = ACTIVITY_TYPE_COLORS[f.type] || 'text-muted'
+                const isOverdue = f.status === 'overdue'
+                const isToday = String(f.dueDate).slice(0, 10) === today
+                return (
+                  <div
+                    key={f.id}
+                    onClick={() => navigate('/crm/followups')}
+                    className={`flex items-center gap-3 p-3 border cursor-pointer transition-colors hover:bg-surface2 ${
+                      isOverdue
+                        ? 'border-rose-500/30 bg-rose-500/5'
+                        : isToday
+                        ? 'border-amber-500/30 bg-amber-500/5'
+                        : 'border-theme-subtle bg-surface/50'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 flex items-center justify-center shrink-0 border border-theme-subtle bg-surface ${colorClass}`}>
+                      <Icon size={13} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-primary truncate">{f.subject}</p>
+                      <p className="text-[11px] text-muted truncate">
+                        {f.entityName} • <span className={isOverdue ? 'text-rose-500 font-semibold' : ''}>{relativeTime(f.dueDate)}</span>
+                      </p>
+                    </div>
+                    {isOverdue && <AlertCircle size={13} className="text-rose-500 shrink-0" />}
+                  </div>
+                )
+              })
           )}
         </div>
       </GlassCard>
-
     </div>
   )
 }
