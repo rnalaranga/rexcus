@@ -712,102 +712,32 @@ export const FinancialReports: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Tab Navigation */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-theme">
-        <button
-          onClick={() => setActiveTab('invoices')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'invoices'
-              ? 'bg-rex-500 text-white border-rex-600 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-rex-500/30'
-          }`}
-        >
-          <FileText size={14} /> Invoice Sales & Tax Register
-        </button>
-
-        <button
-          onClick={() => setActiveTab('unpaid')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'unpaid'
-              ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-rose-500/30'
-          }`}
-        >
-          <Clock size={14} /> Customer Aging (AR)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('vendor_bills')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'vendor_bills'
-              ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-amber-600/30'
-          }`}
-        >
-          <Receipt size={14} /> Vendor Aging (AP)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('cashbook')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'cashbook'
-              ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-amber-500/30'
-          }`}
-        >
-          <Wallet size={14} /> Daily Cashbook Movement
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tax')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'tax'
-              ? 'bg-blue-500 text-white border-blue-600 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-blue-500/30'
-          }`}
-        >
-          <Building2 size={14} /> Tax Liability (RAMIS)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('account_ledger')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'account_ledger'
-              ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
-              : 'bg-surface border-theme text-secondary hover:text-primary hover:border-indigo-500/30'
-          }`}
-        >
-          <BookOpen size={14} /> Account Ledger (COA)
-        </button>
-
-        <div className="w-px h-6 bg-theme-subtle mx-1 shrink-0" />
-
-        <button
-          onClick={() => setActiveTab('pnl')}
-          className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'pnl' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme text-secondary hover:text-primary'
-          }`}
-        >
-          <PieChart size={13} /> Profit & Loss
-        </button>
-
-        <button
-          onClick={() => setActiveTab('bs')}
-          className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'bs' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme text-secondary hover:text-primary'
-          }`}
-        >
-          <Landmark size={13} /> Balance Sheet
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tb')}
-          className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 shrink-0 ${
-            activeTab === 'tb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-surface border-theme text-secondary hover:text-primary'
-          }`}
-        >
-          <Layers size={13} /> Trial Balance
-        </button>
+      {/* Report Type Selector (Combo Box) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-theme">
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted shrink-0">
+            Report Type:
+          </label>
+          <select
+            value={activeTab}
+            onChange={e => setActiveTab(e.target.value as MainTab)}
+            className="text-xs sm:text-sm font-bold bg-surface border border-theme rounded-lg px-3.5 py-2 text-primary outline-none focus:ring-2 focus:ring-rex-500/40 focus:border-rex-500 min-w-[260px] sm:min-w-[320px] shadow-sm cursor-pointer"
+          >
+            <optgroup label="Registers &amp; Aging Reports">
+              <option value="invoices">Invoice Sales &amp; Tax Register</option>
+              <option value="unpaid">Customer Aging (AR)</option>
+              <option value="vendor_bills">Vendor Aging (AP)</option>
+              <option value="cashbook">Daily Cashbook Movement</option>
+              <option value="tax">Tax Liability (RAMIS)</option>
+              <option value="account_ledger">Account Ledger (COA)</option>
+            </optgroup>
+            <optgroup label="Financial Statements">
+              <option value="pnl">Profit &amp; Loss Statement</option>
+              <option value="bs">Balance Sheet</option>
+              <option value="tb">Trial Balance</option>
+            </optgroup>
+          </select>
+        </div>
       </div>
 
       {/* QuickBooks-Style Dynamic Filter Bar */}
