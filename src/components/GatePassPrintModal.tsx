@@ -57,7 +57,7 @@ export const GatePassPrintModal: React.FC<GatePassPrintModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-muted">
-                {gatePass.customerName || gatePass.customerCompany || 'Consignee'} &bull; Carrier: {gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}
+                {gatePass.customerCompany || gatePass.customerName || 'Consignee'} &bull; Carrier: {gatePass.carrier || 'Hand Delivery'} {gatePass.vehicleNo ? `(${gatePass.vehicleNo})` : ''}
               </p>
             </div>
           </div>

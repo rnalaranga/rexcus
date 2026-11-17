@@ -242,7 +242,7 @@ export const WorkOrderDispatchesSection: React.FC<WorkOrderDispatchesSectionProp
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-theme-subtle print:hidden">
               <span className="text-xs text-muted">
-                Official Security & Dispatch Gate Pass for <strong className="text-primary">{printGatePass.customerName}</strong>
+                Official Security & Dispatch Gate Pass for <strong className="text-primary">{printGatePass.customerCompany || printGatePass.customerName}</strong>
               </span>
               <Button
                 variant="primary"

@@ -163,8 +163,8 @@ export const GatePassesHub: React.FC = () => {
           bv = b.issuedDate || b.createdAt || '';
           break;
         case 'customer':
-          av = a.customerName || a.customerCompany || a.companyName || '';
-          bv = b.customerName || b.customerCompany || b.companyName || '';
+          av = a.customerCompany || a.companyName || a.customerName || '';
+          bv = b.customerCompany || b.companyName || b.customerName || '';
           break;
         case 'orderNo':
           av = a.orderNo || a.quoNo || '';
@@ -225,7 +225,7 @@ export const GatePassesHub: React.FC = () => {
         type: 'order',
         title: 'Sales Order',
         reference: matchedSo.orderNo || matchedSo.id,
-        subtitle: `${matchedSo.customerName} • Qty: ${matchedSo.qty || 1} pcs`,
+        subtitle: `${matchedSo.customerCompany || matchedSo.customerName} • Qty: ${matchedSo.qty || 1} pcs`,
         statusBadge: {
           label: matchedSo.isDispatched ? 'Dispatched' : 'Active Order',
           variant: matchedSo.isDispatched ? 'success' : 'info'
@@ -604,7 +604,7 @@ export const GatePassesHub: React.FC = () => {
                     itemsText = gp.description || '-';
                   }
 
-                  const custName = gp.customerName || gp.customerCompany || gp.companyName || gp.leadCompany || 'Customer Consignee';
+                  const custName = gp.customerCompany || gp.companyName || gp.leadCompany || gp.customerName || 'Customer Consignee';
 
                   return (
                     <tr key={gp.id} className="hover:bg-surface2/40 transition-colors">

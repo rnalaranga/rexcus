@@ -6656,6 +6656,47 @@ async function reconcileOrderDispatches(targetOrderId?: string) {
 }
 
 // -- GATE PASSES --
+async function resolveGatePassCompany(params: {
+  customerId?: string | null;
+  quoteId?: string | null;
+  orderId?: string | null;
+  orderNo?: string | null;
+}): Promise<string | null> {
+  const { customerId, quoteId, orderId, orderNo } = params;
+  if (customerId) {
+    try {
+      const [rows]: any = await db.query(
+        'SELECT company FROM customers WHERE id = ? AND company IS NOT NULL AND TRIM(company) != "" UNION SELECT company FROM leads WHERE id = ? AND company IS NOT NULL AND TRIM(company) != "" LIMIT 1',
+        [customerId, customerId]
+      );
+      if (rows && rows.length > 0 && rows[0].company) return String(rows[0].company).trim();
+    } catch (e) {}
+  }
+  if (orderId || orderNo) {
+    try {
+      const [rows]: any = await db.query(
+        'SELECT customerCompany FROM finished_goods_orders WHERE (id = ? OR orderNo = ?) AND customerCompany IS NOT NULL AND TRIM(customerCompany) != "" LIMIT 1',
+        [orderId || '___', orderNo || '___']
+      );
+      if (rows && rows.length > 0 && rows[0].customerCompany) return String(rows[0].customerCompany).trim();
+    } catch (e) {}
+  }
+  if (quoteId) {
+    try {
+      const [rows]: any = await db.query(
+        `SELECT COALESCE(NULLIF(TRIM(c.company), ''), NULLIF(TRIM(l.company), '')) as company
+         FROM quotations q
+         LEFT JOIN customers c ON q.leadId = c.id
+         LEFT JOIN leads l ON q.leadId = l.id
+         WHERE q.id = ? LIMIT 1`,
+        [quoteId]
+      );
+      if (rows && rows.length > 0 && rows[0].company) return String(rows[0].company).trim();
+    } catch (e) {}
+  }
+  return null;
+}
+
 app.get('/api/gate-passes', async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -6663,13 +6704,31 @@ app.get('/api/gate-passes', async (req, res) => {
              g.receivedAt as grnReceivedAt, 
              g.receivedBy as grnReceivedBy,
              q.docNo as quotationDocNo,
-             COALESCE(gp.quoNo, q.docNo, q.id) as displayQuoNo
+             COALESCE(gp.quoNo, q.docNo, q.id) as displayQuoNo,
+             COALESCE(
+               NULLIF(TRIM(c.company), ''),
+               NULLIF(TRIM(l.company), ''),
+               NULLIF(TRIM(qc.company), ''),
+               NULLIF(TRIM(ql.company), ''),
+               NULLIF(TRIM(gp.customerCompany), '')
+             ) as resolvedCustomerCompany
       FROM gate_passes gp
       LEFT JOIN customer_grns g ON gp.grnId = g.id
       LEFT JOIN quotations q ON gp.quoteId = q.id
+      LEFT JOIN customers c ON gp.customerId = c.id
+      LEFT JOIN leads l ON gp.customerId = l.id
+      LEFT JOIN customers qc ON q.leadId = qc.id
+      LEFT JOIN leads ql ON q.leadId = ql.id
       ORDER BY gp.createdAt DESC
     `);
-    res.json(rows);
+    const mapped = (rows as any[]).map((r: any) => {
+      const { resolvedCustomerCompany, ...rest } = r;
+      return {
+        ...rest,
+        customerCompany: resolvedCustomerCompany || r.customerCompany || r.customerName || null
+      };
+    });
+    res.json(mapped);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -6725,9 +6784,30 @@ app.get('/api/gate-passes/next-number', async (req, res) => {
 app.get('/api/gate-passes/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows]: any = await db.query('SELECT * FROM gate_passes WHERE id = ?', [id]);
+    const [rows]: any = await db.query(`
+      SELECT gp.*,
+             COALESCE(
+               NULLIF(TRIM(c.company), ''),
+               NULLIF(TRIM(l.company), ''),
+               NULLIF(TRIM(qc.company), ''),
+               NULLIF(TRIM(ql.company), ''),
+               NULLIF(TRIM(gp.customerCompany), '')
+             ) as resolvedCustomerCompany
+      FROM gate_passes gp
+      LEFT JOIN quotations q ON gp.quoteId = q.id
+      LEFT JOIN customers c ON gp.customerId = c.id
+      LEFT JOIN leads l ON gp.customerId = l.id
+      LEFT JOIN customers qc ON q.leadId = qc.id
+      LEFT JOIN leads ql ON q.leadId = ql.id
+      WHERE gp.id = ?
+      LIMIT 1
+    `, [id]);
     if (!rows || rows.length === 0) return res.status(404).json({ error: 'Gate pass not found' });
-    res.json(rows[0]);
+    const { resolvedCustomerCompany, ...rest } = rows[0];
+    res.json({
+      ...rest,
+      customerCompany: resolvedCustomerCompany || rest.customerCompany || rest.customerName || null
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -6739,6 +6819,18 @@ app.post('/api/gate-passes', async (req, res) => {
     const data = { ...req.body };
     if (data.items && typeof data.items === 'object') {
       data.items = JSON.stringify(data.items);
+    }
+
+    const resolvedComp = await resolveGatePassCompany({
+      customerId: data.customerId,
+      quoteId: data.quoteId,
+      orderId: data.orderId,
+      orderNo: data.orderNo
+    });
+    if (resolvedComp && (!data.customerCompany || data.customerCompany === data.customerName)) {
+      data.customerCompany = resolvedComp;
+    } else if (!data.customerCompany && data.customerName) {
+      data.customerCompany = data.customerName;
     }
     
     // Auto-generate Gate Pass ID using document_sequences (GP-XXXX)
@@ -8369,6 +8461,13 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       ? dispatchDetails.vehicleNo.trim()
       : (order.vehicleNo || null);
 
+    const resolvedGpCompany = order.customerCompany || await resolveGatePassCompany({
+      customerId: order.customerId,
+      quoteId: order.quoteId,
+      orderId: order.id,
+      orderNo: order.orderNo
+    }) || order.customerName;
+
     const gatePassData: any = {
       id: gpId,
       type: 'goods_delivery',
@@ -8378,7 +8477,7 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
       quoNo: order.quotationNo || null,
       customerId: order.customerId || null,
       customerName: order.customerName,
-      customerCompany: order.customerName,
+      customerCompany: resolvedGpCompany,
       attention: dispatchDetails.attention || order.attention || order.customerName,
       address: dispatchDetails.destination || order.deliveryAddress || null,
       phone: order.customerPhone || null,
@@ -19385,6 +19484,12 @@ app.post('/api/production/work-orders/:id/partial-dispatch', async (req, res) =>
         }];
 
     // 2. Insert into gate_passes table
+    const resolvedWoCompany = wo.customerCompany || await resolveGatePassCompany({
+      customerId: wo.customerId,
+      quoteId: wo.quoteId,
+      orderNo: wo.salesOrderNo || wo.orderNo
+    }) || wo.customer || 'Customer';
+
     const gatePassData: any = {
       id: gpId,
       type: 'goods_delivery',
@@ -19392,8 +19497,8 @@ app.post('/api/production/work-orders/:id/partial-dispatch', async (req, res) =>
       orderNo: wo.orderNo || wo.id,
       quoteId: wo.quoteId || null,
       customerId: wo.customerId || null,
-      customerName: wo.customer || 'Customer',
-      customerCompany: wo.customer || 'Customer',
+      customerName: wo.customer || resolvedWoCompany,
+      customerCompany: resolvedWoCompany,
       attention: receivedBy || wo.customer,
       address: destination || null,
       carrier: carrier || 'REX Transport',
