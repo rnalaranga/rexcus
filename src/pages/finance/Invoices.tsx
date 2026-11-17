@@ -343,7 +343,8 @@ export const Invoices: React.FC = () => {
 
     // 1. Direct match in customers
     if (custId && customers && customers.length > 0) {
-      const match = customers.find((c: any) => c.id === custId);
+      const match = customers.find((c: any) => c.id === custId) ||
+                    customers.find((c: any) => leads?.some((l: any) => (l.id === custId && l.customerId === c.id)));
       if (match) {
         return {
           id: match.id,
@@ -361,8 +362,9 @@ export const Invoices: React.FC = () => {
 
     // 2. Direct match in leads
     if (custId && leads && leads.length > 0) {
-      const match = leads.find((l: any) => l.id === custId);
+      const match = leads.find((l: any) => l.id === custId || l.customerId === custId);
       if (match) {
+        const linkedCust = match.customerId ? customers?.find((c: any) => c.id === match.customerId) : null;
         return {
           id: match.id,
           name: match.name || match.company || 'Lead',
@@ -370,7 +372,7 @@ export const Invoices: React.FC = () => {
           email: match.email || '',
           phone: match.phone || '',
           address: match.address || inv.customerAddress || '',
-          vat: match.vat || inv.customerVat || '',
+          vat: match.vat || linkedCust?.vat || inv.customerVat || '',
           currency: (match as any).currency || ((match as any).isForeign ? 'USD' : 'LKR'),
           isForeign: Boolean((match as any).isForeign || (match as any).currency === 'USD')
         };

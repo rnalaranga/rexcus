@@ -814,8 +814,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       const totalItemsQty = formData.items.reduce((acc, it) => acc + (Number(it.qty) || 1), 0);
       const itemsSummaryTitle = formData.items.map(it => it.description || it.productName).filter(Boolean).join(', ') || 'Custom Machining / Quoted Job';
 
+      const matchedCust = customers.find((c: any) => c.id === formData.customerId) ||
+                          customers.find((c: any) => leads.some((l: any) => l.id === formData.customerId && l.customerId === c.id));
+      const matchedLead = leads.find((l: any) => l.id === formData.customerId || l.customerId === formData.customerId);
+      const resolvedCustVat = matchedCust?.vat || matchedLead?.vat || '';
+
       const payload = {
         ...formData,
+        customerVat: resolvedCustVat || undefined,
         orderNo: cleanOrderNo,
         currency: formData.currency || 'LKR',
         exchangeRate: Number(formData.exchangeRate) || (formData.currency === 'USD' ? 310 : 1),

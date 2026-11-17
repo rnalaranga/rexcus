@@ -719,7 +719,7 @@ export const ReceivablesHub: React.FC = () => {
       customerAddress: proforma.customerAddress || matchedCustomer?.address || '',
       customerPhone: proforma.customerPhone || matchedCustomer?.phone || '',
       customerEmail: proforma.customerEmail || matchedCustomer?.email || '',
-      customerVat: proforma.customerVat || matchedCustomer?.taxNumber || matchedCustomer?.vatNumber || '',
+      customerVat: proforma.customerVat || matchedCustomer?.vat || matchedCustomer?.taxNumber || matchedCustomer?.vatNumber || '',
       poNo: proforma.poNo || proforma.customerPoNo || '',
       customerPoNo: proforma.customerPoNo || proforma.poNo || '',
       deliveryDate: proforma.deliveryDate || matchedSO?.deliveryDate || matchedSO?.targetDeliveryDate || ''

@@ -2020,6 +2020,7 @@ async function runDatabaseSync() {
     "ALTER TABLE supplier_bills MODIFY COLUMN date VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_bills MODIFY COLUMN dueDate VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE finished_goods_orders ADD COLUMN customerVat VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE quotations ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     `CREATE TABLE IF NOT EXISTS service_inspection_jobs (
       id VARCHAR(50) PRIMARY KEY,
@@ -4376,18 +4377,33 @@ async function findOrCreateCustomerFromLead(leadData: any) {
 
   // 1. If lead already has customerId, verify if exists
   if (leadData.customerId) {
-    const [existing]: any = await db.query('SELECT id FROM customers WHERE id = ? LIMIT 1', [leadData.customerId]);
+    const [existing]: any = await db.query('SELECT id, vat, svat, brNumber FROM customers WHERE id = ? LIMIT 1', [leadData.customerId]);
     if (existing && existing.length > 0) {
+      // Sync latest vat / svat / brNumber from lead to existing customer if provided
+      const updateFields: any = {};
+      if (leadData.vat && !existing[0].vat) updateFields.vat = leadData.vat;
+      if (leadData.svat && !existing[0].svat) updateFields.svat = leadData.svat;
+      if (leadData.brNumber && !existing[0].brNumber) updateFields.brNumber = leadData.brNumber;
+      if (Object.keys(updateFields).length > 0) {
+        await db.query('UPDATE customers SET ? WHERE id = ?', [updateFields, existing[0].id]);
+      }
       return existing[0].id;
     }
   }
 
   // 2. Check if customer with same uppercase company already exists
   const [matchRows]: any = await db.query(
-    'SELECT id FROM customers WHERE UPPER(TRIM(company)) = ? LIMIT 1',
+    'SELECT id, vat, svat, brNumber FROM customers WHERE UPPER(TRIM(company)) = ? LIMIT 1',
     [companyName]
   );
   if (matchRows && matchRows.length > 0) {
+    const updateFields: any = {};
+    if (leadData.vat && !matchRows[0].vat) updateFields.vat = leadData.vat;
+    if (leadData.svat && !matchRows[0].svat) updateFields.svat = leadData.svat;
+    if (leadData.brNumber && !matchRows[0].brNumber) updateFields.brNumber = leadData.brNumber;
+    if (Object.keys(updateFields).length > 0) {
+      await db.query('UPDATE customers SET ? WHERE id = ?', [updateFields, matchRows[0].id]);
+    }
     return matchRows[0].id;
   }
 
@@ -4606,6 +4622,39 @@ app.post('/api/leads/:id/convert', async (req, res) => {
 
     // Update lead stage to won and link customerId
     await db.query('UPDATE leads SET customerId = ?, stage = "won", lastActivity = NOW() WHERE id = ?', [customerId, id]);
+
+    // Ensure customer has vat / svat / brNumber from lead if customer was previously empty
+    try {
+      const updateCust: any = {};
+      if (lead.vat) updateCust.vat = lead.vat;
+      if (lead.svat) updateCust.svat = lead.svat;
+      if (lead.brNumber) updateCust.brNumber = lead.brNumber;
+      if (lead.address) updateCust.address = lead.address;
+      if (lead.phone) updateCust.phone = lead.phone;
+      if (lead.email) updateCust.email = lead.email;
+      if (Object.keys(updateCust).length > 0) {
+        await db.query(`
+          UPDATE customers SET 
+            vat = COALESCE(NULLIF(vat, ''), ?),
+            svat = COALESCE(NULLIF(svat, ''), ?),
+            brNumber = COALESCE(NULLIF(brNumber, ''), ?),
+            address = COALESCE(NULLIF(address, ''), ?),
+            phone = COALESCE(NULLIF(phone, ''), ?),
+            email = COALESCE(NULLIF(email, ''), ?)
+          WHERE id = ?
+        `, [
+          updateCust.vat || null,
+          updateCust.svat || null,
+          updateCust.brNumber || null,
+          updateCust.address || null,
+          updateCust.phone || null,
+          updateCust.email || null,
+          customerId
+        ]);
+      }
+    } catch (syncCustErr) {
+      console.warn('Could not sync customer fields from lead on convert:', syncCustErr);
+    }
 
     // Also update any quotations created under this lead
     try {
@@ -7774,6 +7823,23 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
+    // Auto-resolve customerVat from customer or lead master if missing
+    if (!safeOrder.customerVat && safeOrder.customerId) {
+      try {
+        const [vRows]: any = await db.query(`
+          SELECT COALESCE(NULLIF(c.vat, ''), NULLIF(l.vat, ''), NULLIF(c2.vat, '')) as resolvedVat
+          FROM (SELECT ? as id) x
+          LEFT JOIN customers c ON x.id = c.id
+          LEFT JOIN leads l ON x.id = l.id
+          LEFT JOIN customers c2 ON l.customerId = c2.id
+          LIMIT 1
+        `, [safeOrder.customerId]);
+        if (vRows && vRows.length > 0 && vRows[0].resolvedVat) {
+          safeOrder.customerVat = vRows[0].resolvedVat;
+        }
+      } catch (vErr) {}
+    }
+
     // Server-side enforcement: If customer requires advance, order cannot be Confirmed without payment recorded in Finance (or authorized waiver)
     if (safeOrder.status === 'Confirmed') {
       let requiresAdvance = false;
@@ -10464,12 +10530,13 @@ app.get('/api/invoices', async (req, res) => {
              COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, l2.company, i.customerName) AS customerCompany,
              COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address, l2.address) AS customerAddress,
              COALESCE(NULLIF(i.customerEmail, ''), c.email, c2.email) AS customerEmail,
-             COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone
+             COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone,
+             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat, l2.vat) AS customerVat
       FROM invoices i
-      LEFT JOIN customers c ON i.customerId = c.id
-      LEFT JOIN leads l ON i.leadId = l.id
-      LEFT JOIN customers c2 ON (i.customerId IS NULL AND i.leadId = c2.id)
-      LEFT JOIN leads l2 ON (i.leadId IS NULL AND i.customerId = l2.id)
+      LEFT JOIN customers c ON (i.customerId = c.id OR (i.leadId = c.id AND i.customerId IS NULL))
+      LEFT JOIN leads l ON (i.leadId = l.id OR (i.customerId = l.id AND i.leadId IS NULL))
+      LEFT JOIN customers c2 ON (l.customerId IS NOT NULL AND l.customerId = c2.id)
+      LEFT JOIN leads l2 ON (c.id IS NOT NULL AND l2.customerId = c.id)
       ORDER BY i.date DESC
     `);
     res.json(rows);
@@ -10489,14 +10556,17 @@ app.get('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     const [rows]: any = await db.query(`
       SELECT i.*, 
-             COALESCE(NULLIF(i.customerName, ''), c.name, l.name) AS customerName, 
-             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, i.customerName) AS customerCompany,
-             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address) AS customerAddress,
-             COALESCE(NULLIF(i.customerEmail, ''), c.email) AS customerEmail,
-             COALESCE(NULLIF(i.customerPhone, ''), c.phone) AS customerPhone
+             COALESCE(NULLIF(i.customerName, ''), c.name, l.name, c2.name, l2.name) AS customerName, 
+             COALESCE(NULLIF(i.customerCompany, ''), c.company, l.company, c2.company, l2.company, i.customerName) AS customerCompany,
+             COALESCE(NULLIF(i.customerAddress, ''), c.address, l.address, c2.address, l2.address) AS customerAddress,
+             COALESCE(NULLIF(i.customerEmail, ''), c.email, c2.email) AS customerEmail,
+             COALESCE(NULLIF(i.customerPhone, ''), c.phone, c2.phone) AS customerPhone,
+             COALESCE(NULLIF(i.customerVat, ''), c.vat, l.vat, c2.vat, l2.vat) AS customerVat
       FROM invoices i
       LEFT JOIN customers c ON (i.customerId = c.id OR (i.customerId IS NULL AND i.leadId = c.id))
       LEFT JOIN leads l ON (i.leadId = l.id OR (i.leadId IS NULL AND i.customerId = l.id))
+      LEFT JOIN customers c2 ON (l.customerId IS NOT NULL AND l.customerId = c2.id)
+      LEFT JOIN leads l2 ON (c.id IS NOT NULL AND l2.customerId = c.id)
       WHERE i.id = ? OR i.invoiceNo = ?
       LIMIT 1
     `, [id, id]);
@@ -10598,6 +10668,22 @@ app.post('/api/invoices', async (req, res) => {
     for (const [key, value] of Object.entries(data)) {
       if (validCols.has(key)) {
         safeData[key] = value;
+      }
+    }
+
+    // Auto-resolve customerVat from customer or lead master if missing or empty
+    if (!safeData.customerVat && (safeData.customerId || safeData.leadId)) {
+      const cId = safeData.customerId || safeData.leadId;
+      const [vRows]: any = await db.query(`
+        SELECT COALESCE(NULLIF(c.vat, ''), NULLIF(l.vat, ''), NULLIF(c2.vat, '')) as resolvedVat
+        FROM (SELECT ? as id) x
+        LEFT JOIN customers c ON x.id = c.id
+        LEFT JOIN leads l ON x.id = l.id
+        LEFT JOIN customers c2 ON l.customerId = c2.id
+        LIMIT 1
+      `, [cId]);
+      if (vRows && vRows.length > 0 && vRows[0].resolvedVat) {
+        safeData.customerVat = vRows[0].resolvedVat;
       }
     }
 
@@ -10988,6 +11074,22 @@ app.put('/api/invoices/:id', async (req, res) => {
     for (const [key, value] of Object.entries(data)) {
       if (validCols.has(key)) {
         safeData[key] = value;
+      }
+    }
+
+    // Auto-resolve customerVat from customer or lead master if missing or empty
+    if (!safeData.customerVat && (safeData.customerId || safeData.leadId || currentInv.customerId || currentInv.leadId)) {
+      const cId = safeData.customerId || safeData.leadId || currentInv.customerId || currentInv.leadId;
+      const [vRows]: any = await db.query(`
+        SELECT COALESCE(NULLIF(c.vat, ''), NULLIF(l.vat, ''), NULLIF(c2.vat, '')) as resolvedVat
+        FROM (SELECT ? as id) x
+        LEFT JOIN customers c ON x.id = c.id
+        LEFT JOIN leads l ON x.id = l.id
+        LEFT JOIN customers c2 ON l.customerId = c2.id
+        LIMIT 1
+      `, [cId]);
+      if (vRows && vRows.length > 0 && vRows[0].resolvedVat) {
+        safeData.customerVat = vRows[0].resolvedVat;
       }
     }
 

@@ -995,6 +995,11 @@ export const InvoiceBuilder: React.FC = () => {
   const selectedCustomer = 
     customers.find(c => c.id === customerId) ||
     leads.find(l => l.id === customerId) ||
+    (customerId ? customers.find(c => {
+      const matchLead = leads.find(l => l.id === customerId && l.customerId === c.id);
+      return Boolean(matchLead);
+    }) : null) ||
+    (customerId ? leads.find(l => l.customerId === customerId) : null) ||
     (customCustomer && (customCustomer.id === customerId || !customerId) ? customCustomer : null) ||
     (customCustomer?.company ? (
       customers.find(c => (c.company && c.company.toLowerCase() === customCustomer.company.toLowerCase()) || (c.name && c.name.toLowerCase() === customCustomer.company.toLowerCase())) ||
@@ -1155,7 +1160,8 @@ export const InvoiceBuilder: React.FC = () => {
       );
       const days = isCredit ? (Number(selectedCustomer.creditDays) || 30) : 0;
       setDueDate(new Date(new Date(date).getTime() + days * 86400000).toISOString().split('T')[0]);
-      if (selectedCustomer.vat) setCustomerVat(selectedCustomer.vat);
+      const resolvedCustVat = selectedCustomer.vat || selectedCustomer.vatNumber || selectedCustomer.taxNumber || '';
+      if (resolvedCustVat) setCustomerVat(resolvedCustVat);
 
       // Auto-select Mode of Payment based on Customer Registration
       if (selectedCustomer.defaultPaymentMode) {
