@@ -226,18 +226,22 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
 
     const firstItem = quoteItems[0] || {}
     const quoNoDisplay = quote.docNo || quote.quotationNo || `AD-${quote.id}`
+    const matchedCust = customers.find((c: any) => c.id === (quote.leadId || quote.customerId));
+    const compName = quote.leadCompany || quote.customerCompany || (matchedCust && matchedCust.company) || quote.leadName || quote.customerName || 'Customer';
     const title = quote.subject 
       ? `${quoNoDisplay} - ${quote.subject}` 
       : firstItem.name || firstItem.desc
       ? `WO: ${quoNoDisplay} - ${firstItem.name || firstItem.desc}` 
-      : `WO: ${quoNoDisplay} - ${quote.leadName || quote.customerName || 'Customer'}`
+      : `WO: ${quoNoDisplay} - ${compName}`
 
     setFormData(prev => ({
       ...prev,
       sourceQuoteId: quote.id,
       title,
       customerId: quote.leadId || quote.customerId || '',
-      customer: quote.leadName || quote.customerName || '',
+      customer: compName,
+      customerCompany: compName,
+      customerPoNo: quote.customerPoNo || (data.customerPoNo || ''),
       deadline: quote.validUntil || quote.deliveryDate || '',
       jobQty: Number(data.jobQty || firstItem.qty || 1)
     }))
@@ -328,6 +332,8 @@ export const WorkOrderCreateModal: React.FC<WorkOrderCreateModalProps> = ({
         orderNo: formData.orderNo,
         customerId: formData.customerId || null,
         customer: formData.customer || null,
+        customerCompany: (formData as any).customerCompany || formData.customer || null,
+        customerPoNo: (formData as any).customerPoNo || null,
         priority: formData.priority,
         plannedStartDate: formData.plannedStartDate,
         deadline: formData.deadline || null,

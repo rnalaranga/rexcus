@@ -2145,10 +2145,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       const order = createWoModalOrder;
       const jobQty = Math.max(1, Number(order.qty) || (createWoModalItems.reduce((acc, it) => acc + (Number(it.qty) || 1), 0)) || 1);
 
+      const compName = order.customerCompany || order.customerName || 'Customer';
       const woData = {
-        title: createWoJobTitle || `WO: ${order.orderNo} - ${order.customerName}`,
+        title: createWoJobTitle || `WO: ${order.orderNo} - ${compName}`,
         customerId: order.customerId || null,
-        customer: order.customerName,
+        customer: compName,
+        customerCompany: compName,
+        customerPoNo: order.customerPoNo || null,
         salesOrderNo: order.orderNo,
         orderNo: `WO-${order.orderNo}`,
         sourceQuoteId: order.quoteId || null,
@@ -2240,10 +2243,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       }
 
       const jobQty = Math.max(1, Number(order.qty) || 1)
+      const compName = order.customerCompany || order.customerName || 'Customer';
       const woData = {
-        title: `WO: ${order.orderNo} - ${order.customerName}`,
+        title: `WO: ${order.orderNo} - ${compName}`,
         customerId: order.customerId || null,
-        customer: order.customerName,
+        customer: compName,
+        customerCompany: compName,
+        customerPoNo: order.customerPoNo || null,
         salesOrderNo: order.orderNo,
         orderNo: `WO-${order.orderNo}`,
         sourceQuoteId: order.quoteId || null,

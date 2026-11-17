@@ -40,12 +40,13 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const soNo = workOrder.salesOrderNo || (workOrder.orderNo?.startsWith('SO-') ? workOrder.orderNo : (workOrder.soId || '-'));
   const quoteRef = workOrder.quoteId || workOrder.sourceQuoteId || workOrder.quotationId || workOrder.quotationNo;
 
-  // Find linked sales order if available
+  // Find linked sales order if available (prioritize exact salesOrderNo/orderNo first to prevent wrong PO matching)
   const linkedOrder = (allOrders || []).find((o: any) =>
     (workOrder.salesOrderNo && (String(o.orderNo).toLowerCase() === String(workOrder.salesOrderNo).toLowerCase() || String(o.id) === String(workOrder.salesOrderNo))) ||
     (workOrder.orderNo && (String(o.orderNo).toLowerCase() === String(workOrder.orderNo).toLowerCase() || String(o.id) === String(workOrder.orderNo))) ||
-    (workOrder.id && (String(o.orderNo) === String(workOrder.id) || String(o.id) === String(workOrder.id))) ||
-    (workOrder.quoteId && o.quoteId && String(o.quoteId) === String(workOrder.quoteId))
+    (workOrder.id && (String(o.orderNo) === String(workOrder.id) || String(o.id) === String(workOrder.id)))
+  ) || (allOrders || []).find((o: any) =>
+    workOrder.quoteId && o.quoteId && String(o.quoteId) === String(workOrder.quoteId) && (!workOrder.salesOrderNo || workOrder.salesOrderNo === o.orderNo)
   );
 
   // Find linked quotation
@@ -78,18 +79,30 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
     }
   }
 
-  // Customer Name: ONLY client name (no personal phone, no personal email on floor traveller)
+  // Customer Name: Prioritize Company Name over contact person/attn
   const customerName = (
+    workOrder.customerCompany ||
+    linkedOrder?.customerCompany ||
+    quoteData?.customerCompany ||
+    linkedQuote?.customerCompany ||
+    (linkedQuote?.data && typeof linkedQuote.data === 'object' && linkedQuote.data.customerCompany) ||
     workOrder.customerName ||
     workOrder.customer ||
     workOrder.clientName ||
     linkedOrder?.customerName ||
     titleCustomer ||
-    quoteData?.customerCompany ||
     quoteData?.customerName ||
-    linkedQuote?.customerCompany ||
     linkedQuote?.customerName ||
     'Valued Client'
+  ).trim();
+
+  // Resolved Customer PO Number for this specific order/work order
+  const customerPoNo = (
+    workOrder.customerPoNo ||
+    linkedOrder?.customerPoNo ||
+    quoteData?.customerPoNo ||
+    linkedQuote?.customerPoNo ||
+    ''
   ).trim();
 
   // Header meta values
@@ -437,6 +450,15 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
                     <td className="py-0.5">
                       <span className="font-bold mr-1">:</span>
                       <span className="font-mono font-bold text-emerald-800">{quotationNo}</span>
+                    </td>
+                  </tr>
+                )}
+                {customerPoNo && customerPoNo !== '-' && customerPoNo !== 'WITHOUT PO' && (
+                  <tr>
+                    <td className="font-bold py-0.5 whitespace-nowrap" style={{ width: "130px", whiteSpace: "nowrap" }}>Customer PO No.</td>
+                    <td className="py-0.5">
+                      <span className="font-bold mr-1">:</span>
+                      <span className="font-mono font-bold text-amber-900 px-1 py-0.2 rounded bg-amber-50 border border-amber-200">{customerPoNo}</span>
                     </td>
                   </tr>
                 )}

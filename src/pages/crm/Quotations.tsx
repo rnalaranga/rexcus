@@ -496,7 +496,11 @@ export const Quotations: React.FC = () => {
       }
 
       const jobQty = Math.max(1, Number(data.jobQty || (data.custItems && data.custItems[0]?.qty) || (data.items && data.items[0]?.qty) || 1));
-      const targetCustomerName = woDialog.group.leadCompany || woDialog.group.leadName || woDialog.group.clientName || 'Customer';
+      const cust = customers.find((c: any) => c.id === woDialog.group.customerId || c.id === woDialog.group.leadId || (woDialog.group.leadCompany && c.company === woDialog.group.leadCompany));
+      const lead = leads.find((l: any) => l.id === woDialog.group.leadId || (woDialog.group.leadCompany && l.company === woDialog.group.leadCompany));
+      const targetCustomerCompany = woDialog.group.leadCompany || woDialog.group.clientCompany || cust?.company || lead?.company || '';
+      const targetCustomerName = targetCustomerCompany || woDialog.group.leadName || woDialog.group.clientName || 'Customer';
+      const targetCustomerPo = woDialog.latestMain?.customerPoNo || data.customerPoNo || null;
 
       const woData = {
         woNo: `WO-${woDialog.group.quoNo}`,
@@ -504,6 +508,8 @@ export const Quotations: React.FC = () => {
         customerId: woDialog.group.leadId || null,
         customer: targetCustomerName,
         customerName: targetCustomerName,
+        customerCompany: targetCustomerCompany || targetCustomerName,
+        customerPoNo: targetCustomerPo,
         quotationNo: woDialog.group.quoNo,
         sourceQuoteId: woDialog.latestMain?.id || null,
         priority: 'Medium',

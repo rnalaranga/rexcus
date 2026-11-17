@@ -1796,6 +1796,8 @@ async function runDatabaseSync() {
     "ALTER TABLE leads ADD COLUMN requiresAdvance TINYINT(1) DEFAULT 0",
     "ALTER TABLE work_orders ADD COLUMN customerId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN customer VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN customerCompany VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN customerPoNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN orderNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN plannedStartDate DATETIME DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN attachments LONGTEXT DEFAULT NULL",
@@ -2119,7 +2121,7 @@ async function runDatabaseSync() {
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('work_order', 'Work Orders', 'WO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('invoice', 'Tax Invoices', 'REX_', 1, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
-    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+    "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1000, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('customer_grn', 'Customer Samples (GRN)', 'CGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_order', 'Purchase Orders', 'PO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('purchase_grn', 'Purchase GRN', 'PGRN-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
@@ -2206,6 +2208,26 @@ async function runDatabaseSync() {
           "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
           [highestNum + 1]
         );
+      }
+    }
+  } catch (err) {}
+
+  // Auto-sync payment receipt sequence: starting from REC-1000
+  try {
+    const [recSeq]: any = await db.query("SELECT prefix, padding, next_number FROM document_sequences WHERE id = 'receipt' LIMIT 1");
+    if (!recSeq || recSeq.length === 0) {
+      await db.query("INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1000, 4, NOW())");
+    } else {
+      if (recSeq[0].next_number < 1000 || recSeq[0].next_number === 1001) {
+        const [maxRec]: any = await db.query(
+          "SELECT MAX(CAST(REGEXP_SUBSTR(receiptNo, '[0-9]+$') AS UNSIGNED)) as maxNum FROM payment_receipts WHERE receiptNo REGEXP '^REC-[0-9]{4,}$'"
+        );
+        const highestNum = maxRec && maxRec[0] && maxRec[0].maxNum ? Number(maxRec[0].maxNum) : 0;
+        if (highestNum >= 1000) {
+          await db.query("UPDATE document_sequences SET next_number = ?, prefix = 'REC-', padding = 4, updated_at = NOW() WHERE id = 'receipt'", [highestNum + 1]);
+        } else {
+          await db.query("UPDATE document_sequences SET next_number = 1000, prefix = 'REC-', padding = 4, updated_at = NOW() WHERE id = 'receipt'");
+        }
       }
     }
   } catch (err) {}
@@ -3733,6 +3755,9 @@ app.post('/api/sequences/next', async (req, res) => {
       'pgrn': 'purchase_grn',
       'bill': 'supplier_bill',
       'supplier_bill': 'supplier_bill',
+      'receipt': 'receipt',
+      'payment_receipt': 'receipt',
+      'rec': 'receipt',
     };
     const seqType = typeAliasMap[String(type).toLowerCase()] || type;
     const [rows]: any = await db.query('SELECT * FROM document_sequences WHERE id = ? LIMIT 1', [seqType]);
@@ -8137,10 +8162,24 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
                     newQuoteStatus = 'PO Received';
                   }
                 }
-                await db.query(
-                  `UPDATE quotations SET customerPoNo = COALESCE(?, customerPoNo), customerPoDate = COALESCE(?, customerPoDate), customerPoAttachment = COALESCE(?, customerPoAttachment), status = ?, soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
-                  [poStr || null, data.customerPoDate || null, data.customerPoAttachment ? String(data.customerPoAttachment) : null, newQuoteStatus, JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
-                ).catch(console.error);
+                // Only update quotation-level customerPoNo if the quotation doesn't already have one or this is the sole order
+                const [otherOrders]: any = await db.query(
+                  'SELECT COUNT(*) as cnt FROM finished_goods_orders WHERE (quoteId = ? OR quotationNo = ?) AND id != ? AND orderNo != ?',
+                  [qRow.id, qRow.quotationNo || '', req.params.id, req.params.id]
+                ).catch(() => [[{ cnt: 0 }]]);
+                const hasMultipleOrders = otherOrders && otherOrders[0]?.cnt > 0;
+
+                if (!hasMultipleOrders || !qRow.customerPoNo) {
+                  await db.query(
+                    `UPDATE quotations SET customerPoNo = COALESCE(?, customerPoNo), customerPoDate = COALESCE(?, customerPoDate), customerPoAttachment = COALESCE(?, customerPoAttachment), status = ?, soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                    [poStr || null, data.customerPoDate || null, data.customerPoAttachment ? String(data.customerPoAttachment) : null, newQuoteStatus, JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+                  ).catch(console.error);
+                } else {
+                  await db.query(
+                    `UPDATE quotations SET soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
+                    [JSON.stringify(changeRecord), JSON.stringify(parsed), qRow.id]
+                  ).catch(console.error);
+                }
               } else {
                 await db.query(
                   `UPDATE quotations SET soChangeInfo = ?, soChanged = 1, data = ? WHERE id = ?`,
@@ -10034,14 +10073,86 @@ app.post('/api/purchasing/bills', async (req, res) => {
       data.dueDate = normalizeDateTime(data.dueDate);
     }
 
-    // Guard against duplicate bill ID: ensure unique ID or generate next sequence
-    if (!data.id) {
-      data.id = `BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // 1. Guard against duplicate bills for the same vendor:
+    // If supplierId and invoiceNo already exist in supplier_bills -> block duplicate
+    if (data.supplierId && data.invoiceNo && String(data.invoiceNo).trim()) {
+      const [existingInv]: any = await db.query(
+        'SELECT id FROM supplier_bills WHERE supplierId = ? AND LOWER(TRIM(invoiceNo)) = LOWER(TRIM(?)) LIMIT 1',
+        [data.supplierId, String(data.invoiceNo).trim()]
+      );
+      if (existingInv && existingInv.length > 0) {
+        return res.status(400).json({ 
+          error: `A vendor bill with invoice number "${data.invoiceNo}" already exists for this vendor (${existingInv[0].id}).` 
+        });
+      }
+    }
+    // If supplierId and grnId already exist in supplier_bills -> block duplicate
+    if (data.supplierId && data.grnId && String(data.grnId).trim()) {
+      const [existingGrn]: any = await db.query(
+        'SELECT id FROM supplier_bills WHERE supplierId = ? AND grnId = ? LIMIT 1',
+        [data.supplierId, String(data.grnId).trim()]
+      );
+      if (existingGrn && existingGrn.length > 0) {
+        return res.status(400).json({ 
+          error: `A vendor bill for GRN "${data.grnId}" already exists for this vendor (${existingGrn[0].id}).` 
+        });
+      }
+    }
+
+    // 2. Sequential Document Number generation from document_sequences:
+    let finalBillId = (data.id || '').trim();
+    if (!finalBillId || finalBillId.startsWith('BILL-1794')) {
+      const [seqRows]: any = await db.query("SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'supplier_bill' FOR UPDATE");
+      let nextNum = 1001;
+      let pfx = 'BILL-';
+      let pad = 4;
+      if (seqRows && seqRows.length > 0) {
+        nextNum = Number(seqRows[0].next_number) || 1001;
+        pfx = seqRows[0].prefix || 'BILL-';
+        pad = Number(seqRows[0].padding) || 4;
+      }
+      finalBillId = `${pfx}${String(nextNum).padStart(pad, '0')}`;
+      let checkNum = nextNum;
+      while (true) {
+        const [coll]: any = await db.query('SELECT id FROM supplier_bills WHERE id = ? LIMIT 1', [finalBillId]);
+        if (!coll || coll.length === 0) break;
+        checkNum++;
+        finalBillId = `${pfx}${String(checkNum).padStart(pad, '0')}`;
+      }
+      data.id = finalBillId;
+      await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'supplier_bill'", [checkNum + 1]);
     } else {
-      const [existing]: any = await db.query('SELECT id FROM supplier_bills WHERE id = ? LIMIT 1', [data.id]);
+      const [existing]: any = await db.query('SELECT id FROM supplier_bills WHERE id = ? LIMIT 1', [finalBillId]);
       if (existing && existing.length > 0) {
-        // If an existing bill with this ID already exists, generate a fresh non-colliding ID
-        data.id = `BILL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        // ID is already taken: generate next sequential document number instead of random timestamp
+        const [seqRows]: any = await db.query("SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'supplier_bill' FOR UPDATE");
+        let nextNum = 1001;
+        let pfx = 'BILL-';
+        let pad = 4;
+        if (seqRows && seqRows.length > 0) {
+          nextNum = Number(seqRows[0].next_number) || 1001;
+          pfx = seqRows[0].prefix || 'BILL-';
+          pad = Number(seqRows[0].padding) || 4;
+        }
+        let checkNum = nextNum;
+        let candidateId = `${pfx}${String(checkNum).padStart(pad, '0')}`;
+        while (true) {
+          const [coll]: any = await db.query('SELECT id FROM supplier_bills WHERE id = ? LIMIT 1', [candidateId]);
+          if (!coll || coll.length === 0) break;
+          checkNum++;
+          candidateId = `${pfx}${String(checkNum).padStart(pad, '0')}`;
+        }
+        data.id = candidateId;
+        await db.query("UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'supplier_bill'", [checkNum + 1]);
+      } else {
+        data.id = finalBillId;
+        const numMatch = finalBillId.match(/\d+$/);
+        if (numMatch) {
+          const parsedNum = parseInt(numMatch[0], 10);
+          if (!isNaN(parsedNum) && parsedNum >= 1000) {
+            await db.query("UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'supplier_bill'", [parsedNum + 1]);
+          }
+        }
       }
     }
     if (validCols.has('billNo') && !data.billNo) {
@@ -11525,7 +11636,9 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
     }
     
     // Generate and record official Payment Receipt in payment_receipts
-    const receiptNum = payment.receiptNo || `REC-${Date.now().toString().slice(-6)}`;
+    const receiptNum = (payment.receiptNo && !/^REC-\d{6,}$/.test(payment.receiptNo))
+      ? payment.receiptNo
+      : await getNextReceiptNumber(db);
     const receiptPayload: any = {
       id: receiptNum,
       receiptNo: receiptNum,
@@ -11629,7 +11742,7 @@ app.post('/api/finance/receivables/settle', async (req, res) => {
 
     const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const receiptNum = `REC-${Date.now().toString().slice(-6)}`;
+    const receiptNum = await getNextReceiptNumber(conn);
     const journalId = `JE-${receiptNum}`;
 
     let finalDepositAccountId = depositAccountId || null;
@@ -15170,6 +15283,49 @@ app.delete('/api/finance/cheques/:id', async (req, res) => {
 
 
 
+// Helper function to generate sequential Payment Receipt numbers starting from REC-1000
+export async function getNextReceiptNumber(customConn?: any): Promise<string> {
+  const executor = customConn || db;
+  const [seqRows]: any = await executor.query(
+    "SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'receipt' FOR UPDATE"
+  );
+  let nextNum = 1000;
+  let pfx = 'REC-';
+  let pad = 4;
+  if (seqRows && seqRows.length > 0) {
+    nextNum = Math.max(1000, Number(seqRows[0].next_number) || 1000);
+    pfx = seqRows[0].prefix || 'REC-';
+    pad = Number(seqRows[0].padding) || 4;
+  } else {
+    await executor.query(
+      "INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) VALUES ('receipt', 'Payment Receipts', 'REC-', 1000, 4, NOW())"
+    );
+    nextNum = 1000;
+  }
+
+  let candidateNum = nextNum;
+  let candidateNo = `${pfx}${String(candidateNum).padStart(pad, '0')}`;
+
+  while (true) {
+    const [coll]: any = await executor.query(
+      "SELECT id FROM payment_receipts WHERE id = ? OR receiptNo = ? LIMIT 1",
+      [candidateNo, candidateNo]
+    );
+    if (!coll || coll.length === 0) {
+      break;
+    }
+    candidateNum++;
+    candidateNo = `${pfx}${String(candidateNum).padStart(pad, '0')}`;
+  }
+
+  await executor.query(
+    "UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'receipt'",
+    [candidateNum + 1]
+  );
+
+  return candidateNo;
+}
+
 // ==========================================
 // PAYMENT RECEIPTS (Customer Advance / Quotation Receipts)
 // ==========================================
@@ -15232,6 +15388,26 @@ app.get('/api/finance/payment-receipts', async (req, res) => {
   }
 });
 
+app.get('/api/finance/payment-receipts/next-number', async (req, res) => {
+  try {
+    const [seqRows]: any = await db.query(
+      "SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'receipt' LIMIT 1"
+    );
+    let nextNum = 1000;
+    let pfx = 'REC-';
+    let pad = 4;
+    if (seqRows && seqRows.length > 0) {
+      nextNum = Math.max(1000, Number(seqRows[0].next_number) || 1000);
+      pfx = seqRows[0].prefix || 'REC-';
+      pad = Number(seqRows[0].padding) || 4;
+    }
+    const formatted = `${pfx}${String(nextNum).padStart(pad, '0')}`;
+    res.json({ nextNumber: nextNum, formattedNumber: formatted, prefix: pfx, padding: pad });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/finance/payment-receipts/:id', async (req, res) => {
   try {
     const [rows]: any = await db.query(
@@ -15257,8 +15433,31 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
       return res.status(400).json({ error: 'Please enter a valid receipt amount greater than zero' });
     }
 
-    const docId = data.id || `REC-${Date.now().toString().slice(-6)}`;
-    const receiptNum = data.receiptNo || docId;
+    // Determine sequential receipt number (series starting from REC-1000)
+    let receiptNum = (data.receiptNo || data.id || '').trim();
+    if (!receiptNum || receiptNum === 'AUTO' || /^REC-\d{6,}$/.test(receiptNum) || receiptNum.startsWith('REC-17')) {
+      receiptNum = await getNextReceiptNumber(conn);
+    } else {
+      const [existing]: any = await conn.query(
+        'SELECT id FROM payment_receipts WHERE id = ? OR receiptNo = ? LIMIT 1',
+        [receiptNum, receiptNum]
+      );
+      if (existing && existing.length > 0) {
+        receiptNum = await getNextReceiptNumber(conn);
+      } else {
+        const numMatch = receiptNum.match(/(\d+)$/);
+        if (numMatch) {
+          const parsed = parseInt(numMatch[1], 10);
+          if (!isNaN(parsed) && parsed >= 1000) {
+            await conn.query(
+              "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'receipt'",
+              [parsed + 1]
+            );
+          }
+        }
+      }
+    }
+    const docId = receiptNum;
     const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const receiptDate = data.date 
       ? (String(data.date).includes(' ') || String(data.date).includes('T')
@@ -16726,17 +16925,20 @@ app.get('/api/production/work-orders', async (req, res) => {
           unitCost: Number(ord.unitPrice) || 0
         }];
 
+        const woCompany = ord.customerCompany || ord.customerName;
         await db.query(`
           INSERT IGNORE INTO work_orders 
-          (id, orderNo, salesOrderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, overheadPct, estimatedCost, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'Normal', 'Pending', ?, ?, ?, ?, ?, 15, ?, ?, ?)
+          (id, orderNo, salesOrderNo, title, customerId, customer, customerCompany, customerPoNo, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, overheadPct, estimatedCost, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Normal', 'Pending', ?, ?, ?, ?, ?, 15, ?, ?, ?)
         `, [
           woId,
           woId,
           ord.orderNo,
-          `WO: ${ord.orderNo} - ${ord.customerName}`,
+          `WO: ${ord.orderNo} - ${woCompany}`,
           ord.customerId || null,
-          ord.customerName,
+          woCompany,
+          ord.customerCompany || null,
+          ord.customerPoNo || null,
           ord.quoteId || null,
           ord.orderDate || ord.createdAt || new Date(),
           ord.targetDeliveryDate || null,
@@ -16773,25 +16975,32 @@ app.get('/api/production/work-orders', async (req, res) => {
       console.error('Error fetching stock_ledger for work orders:', e);
     }
 
-    // Resolve customer names from customers & leads tables
+    // Resolve customer names & companies from customers & leads tables
     let customerMap: Record<string, string> = {};
+    let companyMap: Record<string, string> = {};
     try {
       const [custs]: any = await db.query('SELECT id, name, company FROM customers');
-      custs.forEach((c: any) => { customerMap[c.id] = c.company ? `${c.name} (${c.company})` : c.name || c.id; });
+      custs.forEach((c: any) => { 
+        if (c.company) companyMap[c.id] = c.company;
+        customerMap[c.id] = c.company || c.name || c.id; 
+      });
     } catch(e) {}
     try {
       const [leads]: any = await db.query('SELECT id, name, company FROM leads');
       leads.forEach((l: any) => { 
-        if (!customerMap[l.id]) customerMap[l.id] = l.company ? `${l.name} (${l.company})` : l.name || l.id; 
+        if (l.company && !companyMap[l.id]) companyMap[l.id] = l.company;
+        if (!customerMap[l.id]) customerMap[l.id] = l.company || l.name || l.id; 
       });
     } catch(e) {}
 
-    // Also resolve from quotations and finished_goods_orders for work orders without direct customer name
+    // Also resolve company and PO from quotations and finished_goods_orders
+    let quoteCompanyMap: Record<string, string> = {};
     let quoteCustomerMap: Record<string, string> = {};
     let quoteNoMap: Record<string, string> = {};
+    let quotePoMap: Record<string, string> = {};
     try {
       const [qList]: any = await db.query(`
-        SELECT q.id, q.quotationNo, q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany
+        SELECT q.id, q.quotationNo, q.leadId, q.customerPoNo, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany
         FROM quotations q
         LEFT JOIN leads l ON q.leadId = l.id
         LEFT JOIN customers c ON q.leadId = c.id
@@ -16799,8 +17008,11 @@ app.get('/api/production/work-orders', async (req, res) => {
       qList.forEach((q: any) => {
         let qd: any = {};
         try { qd = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {}); } catch(err) {}
-        const cName = q.leadCompany || q.custCompany || q.leadName || q.custName || qd.customerCompany || qd.customerName || '';
+        const comp = q.leadCompany || q.custCompany || qd.customerCompany || '';
+        const cName = comp || q.leadName || q.custName || qd.customerName || '';
+        if (comp) quoteCompanyMap[q.id] = comp;
         if (cName) quoteCustomerMap[q.id] = cName;
+        if (q.customerPoNo) quotePoMap[q.id] = q.customerPoNo;
         if (q.quotationNo) {
           quoteNoMap[q.id] = q.quotationNo;
           if (q.id) quoteNoMap[q.id.toLowerCase()] = q.quotationNo;
@@ -16808,11 +17020,22 @@ app.get('/api/production/work-orders', async (req, res) => {
       });
     } catch(e) {}
 
+    let soCompanyMap: Record<string, string> = {};
     let soCustomerMap: Record<string, string> = {};
+    let soPoMap: Record<string, string> = {};
     try {
-      const [soList]: any = await db.query('SELECT orderNo, customerName FROM finished_goods_orders WHERE customerName IS NOT NULL AND customerName != ""');
+      const [soList]: any = await db.query('SELECT orderNo, id, customerCompany, customerName, customerPoNo FROM finished_goods_orders');
       soList.forEach((so: any) => {
-        if (so.orderNo && so.customerName) soCustomerMap[so.orderNo] = so.customerName;
+        if (so.orderNo) {
+          if (so.customerCompany) soCompanyMap[so.orderNo] = so.customerCompany;
+          if (so.customerName) soCustomerMap[so.orderNo] = so.customerName;
+          if (so.customerPoNo) soPoMap[so.orderNo] = so.customerPoNo;
+        }
+        if (so.id) {
+          if (so.customerCompany && !soCompanyMap[so.id]) soCompanyMap[so.id] = so.customerCompany;
+          if (so.customerName && !soCustomerMap[so.id]) soCustomerMap[so.id] = so.customerName;
+          if (so.customerPoNo && !soPoMap[so.id]) soPoMap[so.id] = so.customerPoNo;
+        }
       });
     } catch(e) {}
 
@@ -16899,13 +17122,34 @@ app.get('/api/production/work-orders', async (req, res) => {
       const completedSteps = woOps.filter((o: any) => o.status === 'Completed').length;
       const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
 
-      const resolvedCust = wo.customer || customerMap[wo.customerId] || (wo.quoteId && quoteCustomerMap[wo.quoteId]) || (wo.orderNo && soCustomerMap[wo.orderNo]) || null;
+      const resolvedCompany = wo.customerCompany || 
+        companyMap[wo.customerId] || 
+        (wo.salesOrderNo && soCompanyMap[wo.salesOrderNo]) || 
+        (wo.orderNo && soCompanyMap[wo.orderNo]) || 
+        (wo.quoteId && quoteCompanyMap[wo.quoteId]) || 
+        null;
+
+      const resolvedCust = resolvedCompany || 
+        (wo.salesOrderNo && soCustomerMap[wo.salesOrderNo]) || 
+        (wo.orderNo && soCustomerMap[wo.orderNo]) || 
+        customerMap[wo.customerId] || 
+        (wo.quoteId && quoteCustomerMap[wo.quoteId]) || 
+        wo.customer || null;
+
+      const resolvedPoNo = wo.customerPoNo || 
+        (wo.salesOrderNo && soPoMap[wo.salesOrderNo]) || 
+        (wo.orderNo && soPoMap[wo.orderNo]) || 
+        (wo.quoteId && quotePoMap[wo.quoteId]) || 
+        null;
+
       const resolvedQuoNo = (wo.quoteId && quoteNoMap[wo.quoteId]) || (wo.quoteId && quoteNoMap[wo.quoteId.toLowerCase()]) || (wo.quoteId && wo.quoteId.startsWith('QT-') ? wo.quoteId : null);
       return {
         ...wo,
         quotationNo: resolvedQuoNo,
-        customer: resolvedCust,
-        customerName: resolvedCust || wo.customer || customerMap[wo.customerId] || null,
+        customerCompany: resolvedCompany || resolvedCust,
+        customer: resolvedCompany || resolvedCust,
+        customerName: resolvedCompany || resolvedCust,
+        customerPoNo: resolvedPoNo,
         operations: woOps,
         qcInspections: woQcs,
         reworkLogs: woReworks,
@@ -16956,7 +17200,10 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
         }
       } catch (e) {}
       try {
-        const [sos]: any = await db.query('SELECT customerPoNo, notes FROM finished_goods_orders WHERE quoteId = ? OR id = ? OR orderNo = ? LIMIT 1', [wo.quoteId, wo.quoteId, wo.orderNo || '']);
+        const [sos]: any = await db.query(
+          'SELECT customerPoNo, notes FROM finished_goods_orders WHERE (orderNo = ? OR id = ? OR orderNo = ?) OR (quoteId = ? AND ? IS NULL) LIMIT 1',
+          [wo.salesOrderNo || '___', wo.salesOrderNo || '___', wo.orderNo || '___', wo.quoteId || '___', wo.salesOrderNo]
+        );
         if (sos && sos.length > 0) {
           const soPo = String(sos[0].customerPoNo || '').trim().toUpperCase();
           if (soPo === 'PO PENDING' || (sos[0].notes && sos[0].notes.includes('[PO Pending]') && !sos[0].customerPoNo)) {
@@ -17065,23 +17312,52 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
     const completedSteps = enrichedOps.filter((o: any) => o.status === 'Completed').length;
     const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : (wo.status === 'Completed' ? 100 : 0);
 
-    // Resolve Customer Name if missing
-    let woCustomerName = wo.customer || null;
-    if (!woCustomerName && wo.customerId) {
+    // Resolve Customer & Company Name (Company name is prioritized over contact person)
+    let woCustomerCompany = wo.customerCompany || null;
+    let woCustomerName = woCustomerCompany || wo.customer || null;
+    let woCustomerPoNo = wo.customerPoNo || null;
+
+    if (wo.customerId) {
       try {
         const [custRows]: any = await db.query(
-          'SELECT name, company FROM customers WHERE id = ? UNION SELECT name, company FROM leads WHERE id = ? LIMIT 1',
+          'SELECT company, name FROM customers WHERE id = ? UNION SELECT company, name FROM leads WHERE id = ? LIMIT 1',
           [wo.customerId, wo.customerId]
         );
         if (custRows && custRows.length > 0) {
-          woCustomerName = custRows[0].company ? `${custRows[0].name} (${custRows[0].company})` : custRows[0].name;
+          if (custRows[0].company) {
+            woCustomerCompany = custRows[0].company;
+            woCustomerName = custRows[0].company;
+          } else if (!woCustomerName) {
+            woCustomerName = custRows[0].name;
+          }
         }
       } catch(e) {}
     }
-    if (!woCustomerName && wo.quoteId) {
+
+    if (wo.salesOrderNo || wo.orderNo) {
+      try {
+        const [soRows]: any = await db.query(
+          'SELECT customerCompany, customerName, customerPoNo FROM finished_goods_orders WHERE orderNo = ? OR id = ? OR orderNo = ? LIMIT 1',
+          [wo.salesOrderNo || '___', wo.salesOrderNo || '___', wo.orderNo || '___']
+        );
+        if (soRows && soRows.length > 0) {
+          if (soRows[0].customerCompany) {
+            woCustomerCompany = soRows[0].customerCompany;
+            woCustomerName = soRows[0].customerCompany;
+          } else if (soRows[0].customerName && !woCustomerName) {
+            woCustomerName = soRows[0].customerName;
+          }
+          if (soRows[0].customerPoNo && !woCustomerPoNo) {
+            woCustomerPoNo = soRows[0].customerPoNo;
+          }
+        }
+      } catch(e) {}
+    }
+
+    if ((!woCustomerCompany || !woCustomerPoNo) && wo.quoteId) {
       try {
         const [qRows]: any = await db.query(
-          `SELECT q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
+          `SELECT q.leadId, q.customerPoNo, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
            FROM quotations q 
            LEFT JOIN leads l ON q.leadId = l.id 
            LEFT JOIN customers c ON q.leadId = c.id 
@@ -17092,26 +17368,26 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
           const qr = qRows[0];
           let qData: any = {};
           try { qData = typeof qr.data === 'string' ? JSON.parse(qr.data) : (qr.data || {}); } catch(e) {}
-          woCustomerName = qr.leadCompany || qr.custCompany || qr.leadName || qr.custName || qData.customerCompany || qData.customerName || null;
-        }
-      } catch(e) {}
-    }
-    if (!woCustomerName && wo.orderNo) {
-      try {
-        const [soRows]: any = await db.query(
-          'SELECT customerName FROM finished_goods_orders WHERE orderNo = ? OR id = ? LIMIT 1',
-          [wo.orderNo, wo.orderNo]
-        );
-        if (soRows && soRows.length > 0) {
-          woCustomerName = soRows[0].customerName || null;
+          const qComp = qr.leadCompany || qr.custCompany || qData.customerCompany || null;
+          if (qComp) {
+            woCustomerCompany = qComp;
+            woCustomerName = qComp;
+          } else if (!woCustomerName) {
+            woCustomerName = qr.leadName || qr.custName || qData.customerName || null;
+          }
+          if (qr.customerPoNo && !woCustomerPoNo) {
+            woCustomerPoNo = qr.customerPoNo;
+          }
         }
       } catch(e) {}
     }
 
     res.json({
       ...wo,
-      customer: woCustomerName || wo.customer,
-      customerName: woCustomerName || wo.customer,
+      customer: woCustomerCompany || woCustomerName || wo.customer,
+      customerCompany: woCustomerCompany || woCustomerName || wo.customer,
+      customerName: woCustomerCompany || woCustomerName || wo.customer,
+      customerPoNo: woCustomerPoNo || wo.customerPoNo || null,
       qcCheckpoints: parsedQcCheckpoints,
       dispatches: parsedDispatches,
       operations: enrichedOps,
@@ -17142,7 +17418,7 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
 app.post('/api/production/work-orders', async (req, res) => {
   try {
     const { 
-      title, customerId, customer, priority, plannedStartDate, deadline, 
+      title, customerId, customer, customerCompany, customerPoNo, priority, plannedStartDate, deadline, 
       operations, bom, sourceQuoteId, notes, attachments, jobQty, overheadPct, estimatedCost 
     } = req.body;
 
@@ -17154,19 +17430,22 @@ app.post('/api/production/work-orders', async (req, res) => {
       }
     }
 
+    let resolvedCompany = (customerCompany || '').trim();
     let resolvedCustomer = (customer || req.body.customerName || '').trim();
-    if (!resolvedCustomer && customerId) {
+
+    if (!resolvedCompany && customerId) {
       try {
-        const [cRows]: any = await db.query('SELECT company, name FROM customers WHERE id = ? LIMIT 1', [customerId]);
+        const [cRows]: any = await db.query('SELECT company, name FROM customers WHERE id = ? UNION SELECT company, name FROM leads WHERE id = ? LIMIT 1', [customerId, customerId]);
         if (cRows && cRows.length > 0) {
-          resolvedCustomer = cRows[0].company || cRows[0].name || '';
+          resolvedCompany = cRows[0].company || '';
+          if (!resolvedCustomer) resolvedCustomer = cRows[0].company || cRows[0].name || '';
         }
       } catch (cErr) {}
     }
-    if (!resolvedCustomer && sourceQuoteId) {
+    if ((!resolvedCompany || !resolvedCustomer) && sourceQuoteId) {
       try {
         const [qRows]: any = await db.query(
-          `SELECT q.leadId, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
+          `SELECT q.leadId, q.customerPoNo, q.data, l.name as leadName, l.company as leadCompany, c.name as custName, c.company as custCompany 
            FROM quotations q 
            LEFT JOIN leads l ON q.leadId = l.id 
            LEFT JOIN customers c ON q.leadId = c.id 
@@ -17177,9 +17456,27 @@ app.post('/api/production/work-orders', async (req, res) => {
           const qr = qRows[0];
           let qData: any = {};
           try { qData = typeof qr.data === 'string' ? JSON.parse(qr.data) : (qr.data || {}); } catch(e) {}
-          resolvedCustomer = qr.leadCompany || qr.custCompany || qr.leadName || qr.custName || qData.customerCompany || qData.customerName || '';
+          const qComp = qr.leadCompany || qr.custCompany || qData.customerCompany || '';
+          if (qComp && !resolvedCompany) resolvedCompany = qComp;
+          if (!resolvedCustomer) resolvedCustomer = qComp || qr.leadName || qr.custName || qData.customerName || '';
         }
       } catch(e) {}
+    }
+    if ((!resolvedCompany || !resolvedCustomer) && (req.body.orderNo || req.body.salesOrderNo)) {
+      try {
+        const [soRows]: any = await db.query(
+          `SELECT customerCompany, customerName, customerPoNo FROM finished_goods_orders WHERE orderNo = ? OR id = ? OR orderNo = ? LIMIT 1`,
+          [req.body.salesOrderNo || '___', req.body.orderNo || '___', req.body.orderNo || '___']
+        );
+        if (soRows && soRows.length > 0) {
+          if (soRows[0].customerCompany && !resolvedCompany) resolvedCompany = soRows[0].customerCompany;
+          if (!resolvedCustomer) resolvedCustomer = soRows[0].customerCompany || soRows[0].customerName || '';
+        }
+      } catch(e) {}
+    }
+
+    if (resolvedCompany && (!resolvedCustomer || resolvedCustomer === 'Customer' || resolvedCustomer.toLowerCase().includes('attn'))) {
+      resolvedCustomer = resolvedCompany;
     }
     if (!resolvedCustomer && req.body.orderNo) {
       try {
@@ -17321,12 +17618,37 @@ app.post('/api/production/work-orders', async (req, res) => {
 
     const woId = finalWoNo;
 
+    let finalCustomerPo = (customerPoNo || req.body.customerPo || '').trim();
+    if (!finalCustomerPo && (finalSoNo || rawOrderNo)) {
+      try {
+        const [soPoRows]: any = await db.query(
+          'SELECT customerPoNo FROM finished_goods_orders WHERE orderNo = ? OR id = ? OR orderNo = ? LIMIT 1',
+          [finalSoNo || '___', rawOrderNo || '___', rawOrderNo || '___']
+        );
+        if (soPoRows && soPoRows.length > 0 && soPoRows[0].customerPoNo) {
+          finalCustomerPo = soPoRows[0].customerPoNo;
+        }
+      } catch(e) {}
+    }
+    if (!finalCustomerPo && sourceQuoteId) {
+      try {
+        const [qPoRows]: any = await db.query('SELECT customerPoNo FROM quotations WHERE id = ? OR quotationNo = ? LIMIT 1', [sourceQuoteId, sourceQuoteId]);
+        if (qPoRows && qPoRows.length > 0 && qPoRows[0].customerPoNo) {
+          finalCustomerPo = qPoRows[0].customerPoNo;
+        }
+      } catch(e) {}
+    }
+
     await db.query(
       `INSERT INTO work_orders 
-       (id, orderNo, salesOrderNo, title, customerId, customer, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       (id, orderNo, salesOrderNo, title, customerId, customer, customerCompany, customerPoNo, quoteId, priority, status, plannedStartDate, deadline, jobQty, bom, notes, attachments, overheadPct, estimatedCost, createdAt, updatedAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        woId, finalWoNo, finalSoNo, title, customerId || null, resolvedCustomer || customer || null, sourceQuoteId || null, 
+        woId, finalWoNo, finalSoNo, title, customerId || null, 
+        resolvedCompany || resolvedCustomer || customer || null,
+        resolvedCompany || null,
+        finalCustomerPo || null,
+        sourceQuoteId || null, 
         priority || 'Normal', plannedStartDate || new Date(), deadline || null, 
         Math.max(1, Number(jobQty || 1)), bom ? JSON.stringify(bom) : null, 
         notes || null, attachments ? JSON.stringify(attachments) : null,

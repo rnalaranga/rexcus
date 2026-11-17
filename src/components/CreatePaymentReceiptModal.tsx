@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, numberToWords } from "@/lib/utils";
-import { createPaymentReceipt, fetchPaymentReceipts, uploadFileToStorage } from "@/lib/api";
+import { createPaymentReceipt, fetchPaymentReceipts, uploadFileToStorage, fetchNextDocumentNumber } from "@/lib/api";
 import { useAccounts } from "@/hooks/useFinance";
 import { useDialog } from "@/components/ui/DialogProvider";
 import { useAuth } from "@/contexts/AuthContext";
@@ -123,6 +123,15 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
 
   const [existingReceipts, setExistingReceipts] = useState<any[]>([]);
   const [loadingExisting, setLoadingExisting] = useState(false);
+  const [nextRecNo, setNextRecNo] = useState<string>("");
+
+  useEffect(() => {
+    fetchNextDocumentNumber('receipt').then((res: any) => {
+      if (res && res.formattedNumber) {
+        setNextRecNo(res.formattedNumber);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Form states
   const [amount, setAmount] = useState<number | string>("");
@@ -363,6 +372,11 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                 {quotationNo && (
                   <span className="text-xs font-mono font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
                     Quote: {quotationNo}
+                  </span>
+                )}
+                {nextRecNo && (
+                  <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                    Receipt #{nextRecNo}
                   </span>
                 )}
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">

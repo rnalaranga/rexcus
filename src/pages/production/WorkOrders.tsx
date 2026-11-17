@@ -84,7 +84,8 @@ export const WorkOrders: React.FC = () => {
   const handlePrintSalesOrder = (row: any) => {
     const linkedOrder = orders.find((o: any) => 
       (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
-      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo)) ||
+      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo))
+    ) || orders.find((o: any) =>
       (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId)) ||
       (row.quotationNo && o.quotationNo && String(o.quotationNo) === String(row.quotationNo))
     );
@@ -97,7 +98,8 @@ export const WorkOrders: React.FC = () => {
         quotationNo: row.quotationNo || row.sourceQuoteNo || null,
         quoteId: row.sourceQuoteId || row.quotationId || null,
         customerId: row.customerId,
-        customerName: row.customerName || row.customer || 'Valued Customer',
+        customerName: row.customerCompany || row.customerName || row.customer || 'Valued Customer',
+        customerCompany: row.customerCompany || row.customerName || row.customer || 'Valued Customer',
         orderDate: row.createdAt || new Date().toISOString(),
         targetDeliveryDate: row.deadline || null,
         paymentTerms: 'Standard Terms',
@@ -119,9 +121,10 @@ export const WorkOrders: React.FC = () => {
   const handlePrintGatePass = async (row: any) => {
     const linkedOrder = orders.find((o: any) => 
       (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
-      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo)) ||
+      (row.orderNo && (o.orderNo === row.orderNo || o.id === row.orderNo))
+    ) || orders.find((o: any) =>
       (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId)) ||
-      (row.quotationNo && o.quotationNo && String(row.quotationNo) === String(row.quotationNo))
+      (row.quotationNo && o.quotationNo && String(o.quotationNo) === String(row.quotationNo))
     );
     if (linkedOrder?.gatePassId || linkedOrder?.gatePassNo) {
       const gpId = linkedOrder.gatePassId || linkedOrder.gatePassNo;
@@ -140,8 +143,8 @@ export const WorkOrders: React.FC = () => {
       orderNo: row.orderNo || row.id,
       orderId: linkedOrder?.id || null,
       quoNo: row.quotationNo || null,
-      customerName: row.customerName || row.customer || 'Customer',
-      customerCompany: row.customerName || row.customer || 'Customer',
+      customerName: row.customerCompany || row.customerName || row.customer || 'Customer',
+      customerCompany: row.customerCompany || row.customerName || row.customer || 'Customer',
       address: linkedOrder?.deliveryAddress || '',
       phone: linkedOrder?.customerPhone || '',
       email: linkedOrder?.customerEmail || '',
@@ -299,8 +302,10 @@ export const WorkOrders: React.FC = () => {
     // 2. Linked Customer / Sales Order
     const linkedOrder = orders.find((o: any) => 
       (row.salesOrderNo && (o.orderNo === row.salesOrderNo || o.id === row.salesOrderNo)) ||
-      (o.orderNo && (o.orderNo === row.orderNo || (row.title && row.title.includes(o.orderNo)))) ||
-      (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId))
+      (row.orderNo && (o.orderNo === row.orderNo || (row.title && row.title.includes(o.orderNo))))
+    ) || orders.find((o: any) => 
+      (row.sourceQuoteId && o.quoteId && String(o.quoteId) === String(row.sourceQuoteId)) ||
+      (row.quotationNo && o.quotationNo && String(o.quotationNo) === String(row.quotationNo))
     )
     if (linkedOrder) {
       traces.push({
@@ -434,9 +439,9 @@ export const WorkOrders: React.FC = () => {
           <p className="text-xs font-semibold text-secondary truncate max-w-[200px]" title={row.title}>
             {row.title || 'Precision Machining Job'}
           </p>
-          <div className="flex items-center gap-1 text-[11px] text-muted truncate max-w-[200px]" title={row.customerName}>
+          <div className="flex items-center gap-1 text-[11px] text-muted truncate max-w-[200px]" title={row.customerCompany || row.customerName}>
             <Building size={11} className="text-muted shrink-0" />
-            <span className="truncate">{row.customerName || 'Standard / Internal Job'}</span>
+            <span className="truncate">{row.customerCompany || row.customerName || 'Standard / Internal Job'}</span>
           </div>
         </div>
       )
