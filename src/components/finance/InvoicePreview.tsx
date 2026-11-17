@@ -60,27 +60,27 @@ export function formatGazetteDate(dStr?: string): string {
   // Extract date part in case dStr contains time (e.g., "2026-10-13 00:00:00" or "2026-10-13T00:00:00.000Z")
   const datePart = clean.split(/[T\s]/)[0];
   
-  // Check if datePart matches YYYY-MM-DD or YYYY/MM/DD -> format as DD-MM-YYYY
+  // Check if datePart matches YYYY-MM-DD or YYYY/MM/DD -> format as MM-DD-YYYY
   const ymdMatch = datePart.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (ymdMatch) {
     const [, y, m, d] = ymdMatch;
-    return d.padStart(2, '0') + '-' + m.padStart(2, '0') + '-' + y;
+    return m.padStart(2, '0') + '-' + d.padStart(2, '0') + '-' + y;
   }
 
-  // Check if datePart matches DD-MM-YYYY or MM-DD-YYYY or with slash
+  // Check if datePart matches MM-DD-YYYY or DD-MM-YYYY or with slash
   const dmyMatch = datePart.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (dmyMatch) {
     const [, p1, p2, y] = dmyMatch;
     return p1.padStart(2, '0') + '-' + p2.padStart(2, '0') + '-' + y;
   }
 
-  // Fallback to Date object parsing (format as DD-MM-YYYY)
+  // Fallback to Date object parsing (format as MM-DD-YYYY)
   const dateObj = new Date(clean);
   if (!isNaN(dateObj.getTime())) {
-    const dd = String(dateObj.getDate()).padStart(2, '0');
     const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
     const yyyy = dateObj.getFullYear();
-    return dd + '-' + mm + '-' + yyyy;
+    return mm + '-' + dd + '-' + yyyy;
   }
 
   return clean;
