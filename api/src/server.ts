@@ -16108,32 +16108,360 @@ app.get('/api/finance/dashboard', async (req, res) => {
     let totalAP = 0;
     let revenue = 0;
     let expenses = 0;
+    const cashAccounts: any[] = [];
     
-    accounts.forEach(acc => {
-      const type = acc.type.toLowerCase();
-      const subtype = acc.subtype ? acc.subtype.toLowerCase() : '';
-      const name = acc.name ? acc.name.toLowerCase() : '';
-      const bal = Number(acc.balance);
+    accounts.forEach((acc: any) => {
+      const type = String(acc.type || '').toLowerCase();
+      const subtype = acc.subtype ? String(acc.subtype).toLowerCase() : '';
+      const name = acc.name ? String(acc.name).toLowerCase() : '';
+      const bal = Number(acc.balance) || 0;
       
-      if (subtype.includes('bank') || subtype.includes('cash') || name.includes('bank') || name.includes('cash')) totalCash += bal;
+      if (subtype.includes('bank') || subtype.includes('cash') || name.includes('bank') || name.includes('cash')) {
+        totalCash += bal;
+        cashAccounts.push({
+          id: acc.id,
+          code: acc.code,
+          name: acc.name,
+          subtype: acc.subtype || 'Cash/Bank',
+          balance: bal
+        });
+      }
       if (subtype.includes('receivable') || name.includes('receivable')) totalAR += bal;
       if ((subtype.includes('payable') || name.includes('payable')) && !subtype.includes('tax') && !name.includes('tax')) totalAP += bal;
       if (type === 'revenue') revenue += bal;
       if (type === 'expense') expenses += bal;
     });
     
-    const [bills] = await db.query('SELECT SUM(amount) as pendingAP FROM supplier_bills WHERE status = "unpaid" OR status IS NULL');
-    const [invoices] = await db.query('SELECT SUM(total - IFNULL(paidAmount, 0)) as pendingAR FROM invoices WHERE (status IS NULL OR (status != "paid" AND status != "draft"))');
+    const [billsSum]: any = await db.query(
+      'SELECT SUM(COALESCE(totalAmount, amount, 0) - IFNULL(paidAmount, 0)) as pendingAP FROM supplier_bills WHERE status != "paid" OR status IS NULL'
+    );
+    const [invoicesSum]: any = await db.query(
+      'SELECT SUM(total - IFNULL(paidAmount, 0)) as pendingAR FROM invoices WHERE (status IS NULL OR (status != "paid" AND status != "draft")) AND (isProforma IS NULL OR isProforma = 0) AND (invoiceNo NOT LIKE "PI-%" OR invoiceNo IS NULL)'
+    );
+
+    const arValue = totalAR || Number(invoicesSum[0]?.pendingAR || 0);
+    const apValue = totalAP || Number(billsSum[0]?.pendingAP || 0);
+
+    // 1. Build 6-month historical trend (Revenue, Expenses, Cash In/Out)
+    const now = new Date();
+    const monthBuckets: { key: string; label: string; revenue: number; expenses: number; cashIn: number; cashOut: number }[] = [];
+    const monthMap = new Map<string, any>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      const entry = { key, label, revenue: 0, expenses: 0, cashIn: 0, cashOut: 0 };
+      monthBuckets.push(entry);
+      monthMap.set(key, entry);
+    }
+
+    try {
+      const [invMonthly]: any = await db.query(`
+        SELECT DATE_FORMAT(COALESCE(date, createdAt), '%Y-%m') as ym, SUM(COALESCE(total, 0)) as rev
+        FROM invoices
+        WHERE (isProforma IS NULL OR isProforma = 0)
+          AND (invoiceNo NOT LIKE 'PI-%' OR invoiceNo IS NULL)
+          AND (status IS NULL OR status != 'draft')
+          AND COALESCE(date, createdAt) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY ym
+      `);
+      (invMonthly || []).forEach((r: any) => {
+        const b = monthMap.get(r.ym);
+        if (b) b.revenue += Number(r.rev || 0);
+      });
+    } catch (e) {}
+
+    try {
+      const [billMonthly]: any = await db.query(`
+        SELECT DATE_FORMAT(COALESCE(date, createdAt), '%Y-%m') as ym, SUM(COALESCE(totalAmount, amount, 0)) as exp
+        FROM supplier_bills
+        WHERE COALESCE(date, createdAt) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY ym
+      `);
+      (billMonthly || []).forEach((r: any) => {
+        const b = monthMap.get(r.ym);
+        if (b) b.expenses += Number(r.exp || 0);
+      });
+    } catch (e) {}
+
+    try {
+      const [cbMonthly]: any = await db.query(`
+        SELECT DATE_FORMAT(COALESCE(date, createdAt), '%Y-%m') as ym,
+               SUM(CASE WHEN LOWER(type) IN ('inflow', 'income', 'receipt', 'deposit', 'in') THEN COALESCE(amount, 0) ELSE 0 END) as cashIn,
+               SUM(CASE WHEN LOWER(type) IN ('outflow', 'expense', 'payment', 'withdrawal', 'out') THEN COALESCE(amount, 0) ELSE 0 END) as cashOut
+        FROM cashbook_entries
+        WHERE COALESCE(date, createdAt) >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY ym
+      `);
+      (cbMonthly || []).forEach((r: any) => {
+        const b = monthMap.get(r.ym);
+        if (b) {
+          b.cashIn += Number(r.cashIn || 0);
+          b.cashOut += Number(r.cashOut || 0);
+        }
+      });
+    } catch (e) {}
+
+    const historicalTrend = monthBuckets.map(b => ({
+      ...b,
+      netProfit: Math.round((b.revenue - b.expenses) * 100) / 100,
+      isForecast: false
+    }));
+
+    // 2. AR & AP Aging Summary + Top Debtors & Creditors
+    const arAgingSummary = { current: 0, days1_30: 0, days31_60: 0, days61_90: 0, days90plus: 0, totalOverdue: 0 };
+    const apAgingSummary = { current: 0, days1_30: 0, days31_60: 0, days61_90: 0, days90plus: 0, totalOverdue: 0 };
+    let topDebtors: any[] = [];
+    let topCreditors: any[] = [];
+
+    try {
+      const [unpaidInvs]: any = await db.query(`
+        SELECT i.id, i.invoiceNo, i.date, i.dueDate, i.total, COALESCE(i.paidAmount, 0) as paidAmount,
+               COALESCE(NULLIF(TRIM(c.company), ''), NULLIF(TRIM(l.company), ''), NULLIF(TRIM(i.customerCompany), ''), i.customerName, 'Customer') as partyName,
+               DATEDIFF(NOW(), COALESCE(i.dueDate, i.date, i.createdAt)) as overdueDays
+        FROM invoices i
+        LEFT JOIN customers c ON i.customerId = c.id
+        LEFT JOIN leads l ON (i.leadId = l.id OR (i.customerId = l.id AND c.id IS NULL))
+        WHERE (i.status IS NULL OR (i.status != 'paid' AND i.status != 'draft'))
+          AND (i.isProforma IS NULL OR i.isProforma = 0)
+          AND (i.invoiceNo NOT LIKE 'PI-%' OR i.invoiceNo IS NULL)
+          AND (i.total - COALESCE(i.paidAmount, 0)) > 0.01
+      `);
+      const debtorMap = new Map<string, { name: string; due: number; overdue: number; count: number }>();
+      (unpaidInvs || []).forEach((inv: any) => {
+        const due = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
+        const od = Number(inv.overdueDays || 0);
+        if (od <= 0) arAgingSummary.current += due;
+        else if (od <= 30) { arAgingSummary.days1_30 += due; arAgingSummary.totalOverdue += due; }
+        else if (od <= 60) { arAgingSummary.days31_60 += due; arAgingSummary.totalOverdue += due; }
+        else if (od <= 90) { arAgingSummary.days61_90 += due; arAgingSummary.totalOverdue += due; }
+        else { arAgingSummary.days90plus += due; arAgingSummary.totalOverdue += due; }
+
+        const pName = inv.partyName || 'Customer';
+        const prev = debtorMap.get(pName) || { name: pName, due: 0, overdue: 0, count: 0 };
+        prev.due += due;
+        if (od > 0) prev.overdue += due;
+        prev.count += 1;
+        debtorMap.set(pName, prev);
+      });
+      topDebtors = Array.from(debtorMap.values()).sort((a, b) => b.due - a.due).slice(0, 5);
+    } catch (e) {}
+
+    try {
+      const [unpaidBills]: any = await db.query(`
+        SELECT b.id, b.date, b.dueDate, COALESCE(b.totalAmount, b.amount, 0) as gross, COALESCE(b.paidAmount, 0) as paidAmount,
+               COALESCE(NULLIF(TRIM(s.name), ''), 'Supplier') as partyName,
+               DATEDIFF(NOW(), COALESCE(b.dueDate, b.date, b.createdAt)) as overdueDays
+        FROM supplier_bills b
+        LEFT JOIN suppliers s ON b.supplierId = s.id
+        WHERE (b.status IS NULL OR b.status != 'paid')
+          AND (COALESCE(b.totalAmount, b.amount, 0) - COALESCE(b.paidAmount, 0)) > 0.01
+      `);
+      const creditorMap = new Map<string, { name: string; due: number; overdue: number; count: number }>();
+      (unpaidBills || []).forEach((b: any) => {
+        const due = Math.max(0, Number(b.gross || 0) - Number(b.paidAmount || 0));
+        const od = Number(b.overdueDays || 0);
+        if (od <= 0) apAgingSummary.current += due;
+        else if (od <= 30) { apAgingSummary.days1_30 += due; apAgingSummary.totalOverdue += due; }
+        else if (od <= 60) { apAgingSummary.days31_60 += due; apAgingSummary.totalOverdue += due; }
+        else if (od <= 90) { apAgingSummary.days61_90 += due; apAgingSummary.totalOverdue += due; }
+        else { apAgingSummary.days90plus += due; apAgingSummary.totalOverdue += due; }
+
+        const pName = b.partyName || 'Supplier';
+        const prev = creditorMap.get(pName) || { name: pName, due: 0, overdue: 0, count: 0 };
+        prev.due += due;
+        if (od > 0) prev.overdue += due;
+        prev.count += 1;
+        creditorMap.set(pName, prev);
+      });
+      topCreditors = Array.from(creditorMap.values()).sort((a, b) => b.due - a.due).slice(0, 5);
+    } catch (e) {}
+
+    // 3. Expense Breakdown by Category
+    let expenseBreakdown: { name: string; value: number }[] = [];
+    try {
+      const [expCats]: any = await db.query(`
+        SELECT COALESCE(NULLIF(TRIM(billCategory), ''), 'General Operating') as cat,
+               SUM(COALESCE(totalAmount, amount, 0)) as total
+        FROM supplier_bills
+        GROUP BY cat
+        ORDER BY total DESC
+        LIMIT 6
+      `);
+      expenseBreakdown = (expCats || [])
+        .map((r: any) => ({ name: r.cat, value: Math.round(Number(r.total || 0)) }))
+        .filter((r: any) => r.value > 0);
+    } catch (e) {}
+
+    // 4. AI Forecasting & Future Suggestions Engine (Linear Trend + Working Capital Analytics)
+    const linearForecast = (vals: number[], steps: number): number[] => {
+      const n = vals.length;
+      if (n === 0) return Array(steps).fill(0);
+      const nonZero = vals.filter(v => v > 0);
+      if (nonZero.length === 0) return Array(steps).fill(0);
+      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+      for (let i = 0; i < n; i++) {
+        sumX += i;
+        sumY += vals[i];
+        sumXY += i * vals[i];
+        sumXX += i * i;
+      }
+      const denom = n * sumXX - sumX * sumX;
+      const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+      const intercept = (sumY - slope * sumX) / n;
+      const out: number[] = [];
+      for (let s = 1; s <= steps; s++) {
+        const pred = intercept + slope * (n - 1 + s);
+        out.push(Math.max(0, Math.round(pred)));
+      }
+      return out;
+    };
+
+    const revForecast = linearForecast(historicalTrend.map(m => m.revenue), 3);
+    const expForecast = linearForecast(historicalTrend.map(m => m.expenses), 3);
+    const cashInForecast = linearForecast(historicalTrend.map(m => m.cashIn), 3);
+    const cashOutForecast = linearForecast(historicalTrend.map(m => m.cashOut), 3);
+
+    const forecastTrend: any[] = [];
+    for (let s = 1; s <= 3; s++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + s, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${d.toLocaleString('en-US', { month: 'short', year: '2-digit' })} (Est)`;
+      const rev = revForecast[s - 1];
+      const exp = expForecast[s - 1];
+      forecastTrend.push({
+        key,
+        label,
+        revenue: rev,
+        expenses: exp,
+        netProfit: rev - exp,
+        cashIn: cashInForecast[s - 1],
+        cashOut: cashOutForecast[s - 1],
+        isForecast: true
+      });
+    }
+
+    // Liquidity & Health Score (0-100)
+    const profitVal = revenue - expenses;
+    const profitMarginPct = revenue > 0 ? Math.round((profitVal / revenue) * 1000) / 10 : 0;
+    const cashToApRatio = apValue > 0 ? totalCash / apValue : 2;
+    const arOverduePct = arValue > 0 ? (arAgingSummary.totalOverdue / arValue) * 100 : 0;
+
+    let healthScore = 50;
+    if (profitMarginPct >= 20) healthScore += 20;
+    else if (profitMarginPct >= 10) healthScore += 12;
+    else if (profitMarginPct > 0) healthScore += 5;
+    else healthScore -= 15;
+
+    if (cashToApRatio >= 1.5) healthScore += 20;
+    else if (cashToApRatio >= 1.0) healthScore += 12;
+    else if (cashToApRatio >= 0.5) healthScore += 4;
+    else healthScore -= 12;
+
+    if (arOverduePct <= 15) healthScore += 10;
+    else if (arOverduePct >= 50) healthScore -= 15;
+    else if (arOverduePct >= 30) healthScore -= 8;
+
+    healthScore = Math.max(10, Math.min(98, Math.round(healthScore)));
+
+    // Dynamic AI Suggestions
+    const suggestions: any[] = [];
+
+    if (arAgingSummary.totalOverdue > 0) {
+      const topDebtor = topDebtors[0];
+      suggestions.push({
+        id: 'ar-collection',
+        severity: arOverduePct > 40 ? 'critical' : 'warning',
+        category: 'Collections & Cashflow',
+        title: `Accelerate Overdue Receivables (${Math.round(arOverduePct)}% of AR overdue)`,
+        detail: topDebtor
+          ? `Prioritize follow-up with ${topDebtor.name} (${topDebtor.count} invoice(s), LKR ${Math.round(topDebtor.due).toLocaleString()}). Collecting 50% of overdue AR unlocks LKR ${Math.round(arAgingSummary.totalOverdue * 0.5).toLocaleString()} in immediate liquidity.`
+          : `You have LKR ${Math.round(arAgingSummary.totalOverdue).toLocaleString()} in overdue customer invoices. Sending automated payment reminders can improve cash runway.`,
+        impactAmount: Math.round(arAgingSummary.totalOverdue * 0.5),
+        actionLabel: 'View AR Aging',
+        actionPath: '/finance/reports'
+      });
+    }
+
+    if (apValue > totalCash && apValue > 0) {
+      suggestions.push({
+        id: 'ap-liquidity-gap',
+        severity: 'critical',
+        category: 'Liquidity Risk',
+        title: 'Vendor Payables Exceed Current Liquid Cash',
+        detail: `Current cash & bank (${Math.round(totalCash).toLocaleString()}) covers ${Math.round((totalCash / apValue) * 100)}% of pending payables (${Math.round(apValue).toLocaleString()}). Schedule critical supplier payments against expected AR collections.`,
+        impactAmount: Math.round(apValue - totalCash),
+        actionLabel: 'Manage Payables',
+        actionPath: '/finance/payables'
+      });
+    } else if (apAgingSummary.totalOverdue > 0) {
+      suggestions.push({
+        id: 'ap-overdue',
+        severity: 'warning',
+        category: 'Supplier Relations',
+        title: `Clear Overdue Vendor Bills (${Math.round(apAgingSummary.totalOverdue).toLocaleString()} overdue)`,
+        detail: topCreditors[0]
+          ? `Largest pending supplier is ${topCreditors[0].name} (LKR ${Math.round(topCreditors[0].due).toLocaleString()}). Settling overdue bills protects material supply continuity.`
+          : `Prioritize overdue supplier bills to avoid supply delays or late-payment penalties.`,
+        impactAmount: Math.round(apAgingSummary.totalOverdue),
+        actionLabel: 'Open Payables Hub',
+        actionPath: '/finance/payables'
+      });
+    }
+
+    if (expenseBreakdown.length > 0) {
+      const topExp = expenseBreakdown[0];
+      const potentialSave = Math.round(topExp.value * 0.08);
+      suggestions.push({
+        id: 'cost-optimization',
+        severity: 'opportunity',
+        category: 'Margin Optimization',
+        title: `Optimize "${topExp.name}" Spend (Top Cost Driver)`,
+        detail: `"${topExp.name}" accounts for LKR ${topExp.value.toLocaleString()} in billed costs. Negotiating bulk rates or reducing waste by 8% could add ~LKR ${potentialSave.toLocaleString()} directly to net profit.`,
+        impactAmount: potentialSave,
+        actionLabel: 'Inspect Vendor Bills',
+        actionPath: '/finance/vendor-bills'
+      });
+    }
+
+    const nextMoRev = forecastTrend[0]?.revenue || 0;
+    const nextMoProfit = forecastTrend[0]?.netProfit || 0;
+    suggestions.push({
+      id: 'next-month-forecast',
+      severity: 'forecast',
+      category: 'AI 30-Day Projection',
+      title: `Projected Next Month Revenue: LKR ${nextMoRev.toLocaleString()}`,
+      detail: `Based on your 6-month trajectory, next month's estimated net margin is LKR ${nextMoProfit.toLocaleString()}. ${nextMoProfit >= 0 ? 'Maintain current billing cadence and keep AR days under 30.' : 'Tighten discretionary outflows or accelerate invoicing to stay cash-positive.'}`,
+      impactAmount: nextMoProfit,
+      actionLabel: 'View Cashflow Hub',
+      actionPath: '/finance/daily-cashflow'
+    });
 
     res.json({
       cash: totalCash,
-      ar: totalAR || Number(invoices[0]?.pendingAR || 0),
-      ap: totalAP || Number(bills[0]?.pendingAP || 0),
-      profit: revenue - expenses,
+      ar: arValue,
+      ap: apValue,
+      profit: profitVal,
       revenue,
-      expenses
+      expenses,
+      cashAccounts: cashAccounts.sort((a, b) => b.balance - a.balance),
+      monthlyTrend: [...historicalTrend, ...forecastTrend],
+      arAgingSummary,
+      apAgingSummary,
+      expenseBreakdown,
+      topDebtors,
+      topCreditors,
+      aiInsights: {
+        healthScore,
+        profitMarginPct,
+        arOverduePct: Math.round(arOverduePct),
+        cashToApRatio: Math.round(cashToApRatio * 100) / 100,
+        projectedNextMonthRevenue: nextMoRev,
+        projectedNextMonthProfit: nextMoProfit,
+        suggestions
+      }
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 
