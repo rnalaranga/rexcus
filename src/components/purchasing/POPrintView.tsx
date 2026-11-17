@@ -547,8 +547,8 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
         </div>
       </div>
 
-      {/* ── 7. AUTHORIZED SIGNATURES (Rex Standard 3-box approval) ── */}
-      <div className="grid grid-cols-3 border-collapse text-center text-[10px] print-no-break" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+      {/* ── 7. AUTHORIZED SIGNATURES ── */}
+      <div className="grid grid-cols-2 border-collapse text-center text-[10px] print-no-break" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
         <div className="p-2 border-r border-black flex flex-col justify-between min-h-[55px]">
           <div className="text-left font-bold text-neutral-500 uppercase">PREPARED BY</div>
           <div className="mt-4 border-t border-black pt-0.5">
@@ -557,19 +557,11 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
           </div>
         </div>
 
-        <div className="p-2 border-r border-black flex flex-col justify-between min-h-[55px]">
+        <div className="p-2 flex flex-col justify-between min-h-[55px]">
           <div className="text-left font-bold text-neutral-500 uppercase">CHECKED & VERIFIED</div>
           <div className="mt-4 border-t border-black pt-0.5">
             <div className="font-bold text-black text-[11px]">Stores & Accounts Head</div>
             <div className="text-neutral-500 text-[9.5px]">Inventory & Finance</div>
-          </div>
-        </div>
-
-        <div className="p-2 flex flex-col justify-between min-h-[55px]">
-          <div className="text-left font-bold text-neutral-500 uppercase">AUTHORIZED BY</div>
-          <div className="mt-4 border-t border-black pt-0.5">
-            <div className="font-bold text-black text-[11px]">Managing Director</div>
-            <div className="text-neutral-500 text-[9.5px]">Rex Industries (Pvt) Ltd</div>
           </div>
         </div>
       </div>

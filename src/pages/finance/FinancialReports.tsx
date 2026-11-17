@@ -160,8 +160,25 @@ export const FinancialReports: React.FC = () => {
       return true;
     });
 
-    // 2. Sort by Invoice Number order (e.g. 26NOV_REX_00733, 00732, 00731...)
-    if (['invoices', 'unpaid', 'tax'].includes(activeTab)) {
+    // 2. Sort cleanly: Aging tabs sort by overdue days DESC then date/docNo; other invoice tabs sort by Invoice Number DESC
+    if (activeTab === 'unpaid') {
+      rowsToProcess = [...rowsToProcess].sort((a: any, b: any) => {
+        const odDiff = (Number(b.daysOverdue) || 0) - (Number(a.daysOverdue) || 0);
+        if (odDiff !== 0) return odDiff;
+        const dA = String(a.dueDate || a.date || '');
+        const dB = String(b.dueDate || b.date || '');
+        if (dA !== dB) return dA.localeCompare(dB);
+        return String(b.invoiceNo || b.id || '').localeCompare(String(a.invoiceNo || a.id || ''), undefined, { numeric: true, sensitivity: 'base' });
+      });
+    } else if (activeTab === 'vendor_bills') {
+      rowsToProcess = [...rowsToProcess].sort((a: any, b: any) => {
+        const odDiff = (Number(b.overdueDays) || 0) - (Number(a.overdueDays) || 0);
+        if (odDiff !== 0) return odDiff;
+        const dA = String(a.dueDate || a.date || '');
+        const dB = String(b.dueDate || b.date || '');
+        return dA.localeCompare(dB);
+      });
+    } else if (['invoices', 'tax'].includes(activeTab)) {
       rowsToProcess = [...rowsToProcess].sort((a: any, b: any) => {
         const noA = String(a.invoiceNo || a.id || '');
         const noB = String(b.invoiceNo || b.id || '');
@@ -886,22 +903,26 @@ export const FinancialReports: React.FC = () => {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted font-medium">Aging:</span>
-                  <select
-                    value={agingBucket}
-                    onChange={e => setAgingBucket(e.target.value)}
-                    className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
-                  >
-                    <option value="all">All Aging</option>
-                    <option value="current">Current (Not Due)</option>
-                    <option value="1-30">1-30 Days</option>
-                    <option value="31-60">31-60 Days</option>
-                    <option value="61-90">61-90 Days</option>
-                    <option value="90plus">90+ Days (Critical)</option>
-                  </select>
-                </div>
               </>
+            )}
+
+            {/* Aging Bucket Filter (both AR Aging & AP Aging) */}
+            {['unpaid', 'vendor_bills'].includes(activeTab) && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted font-medium">Aging:</span>
+                <select
+                  value={agingBucket}
+                  onChange={e => setAgingBucket(e.target.value)}
+                  className="text-xs bg-surface border border-theme rounded-lg px-2.5 py-1.5 text-primary font-medium outline-none focus:ring-1 focus:ring-rex-500"
+                >
+                  <option value="all">All Aging</option>
+                  <option value="current">Current (Not Due)</option>
+                  <option value="1-30">1-30 Days</option>
+                  <option value="31-60">31-60 Days</option>
+                  <option value="61-90">61-90 Days</option>
+                  <option value="90plus">90+ Days (Critical)</option>
+                </select>
+              </div>
             )}
 
             {/* Search Input */}
@@ -1158,8 +1179,8 @@ export const FinancialReports: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* 1. INVOICE SALES & TAX REGISTER / UNPAID INVOICES TABLE */}
-              {['invoices', 'unpaid', 'tax'].includes(activeTab) && (
+              {/* 1. INVOICE SALES & TAX REGISTER TABLE */}
+              {['invoices', 'tax'].includes(activeTab) && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
@@ -1253,6 +1274,131 @@ export const FinancialReports: React.FC = () => {
                 </div>
               )}
 
+              {/* 1.25 ACCOUNTS RECEIVABLE / CUSTOMER AGING REPORT TABLE */}
+              {activeTab === 'unpaid' && (
+                <div className="overflow-x-auto">
+                  {/* AR Aging Schedule Summary Bar */}
+                  {reportData?.summary?.agingBuckets && (
+                    <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded text-xs flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                        AR Aging Schedule (Customer Receivables):
+                      </span>
+                      <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+                        <div>Current: <strong className="text-emerald-700">{formatCurrency(reportData.summary.agingBuckets.current || 0)}</strong></div>
+                        <div>1-30d: <strong className="text-amber-600">{formatCurrency(reportData.summary.agingBuckets.days1_30 || 0)}</strong></div>
+                        <div>31-60d: <strong className="text-amber-700">{formatCurrency(reportData.summary.agingBuckets.days31_60 || 0)}</strong></div>
+                        <div>61-90d: <strong className="text-rose-600">{formatCurrency(reportData.summary.agingBuckets.days61_90 || 0)}</strong></div>
+                        <div>90d+: <strong className="text-rose-700 font-black">{formatCurrency(reportData.summary.agingBuckets.days90plus || 0)}</strong></div>
+                      </div>
+                    </div>
+                  )}
+
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 border-y border-slate-300 text-slate-700 uppercase text-[10px] tracking-wider">
+                        <th className="py-2.5 px-2">Invoice #</th>
+                        <th className="py-2.5 px-2">Inv Date</th>
+                        <th className="py-2.5 px-2">Due Date</th>
+                        <th className="py-2.5 px-3">Customer / Company</th>
+                        <th className="py-2.5 px-2">PO / Ref</th>
+                        <th className="py-2.5 px-2 text-right">Net Subtotal</th>
+                        <th className="py-2.5 px-2 text-right text-amber-700">SSCL</th>
+                        <th className="py-2.5 px-2 text-right text-emerald-700">VAT (18%)</th>
+                        <th className="py-2.5 px-2 text-right font-bold">Gross Total</th>
+                        <th className="py-2.5 px-2 text-right text-emerald-700">Paid</th>
+                        <th className="py-2.5 px-3 text-right font-bold text-rose-700">Balance Due</th>
+                        <th className="py-2.5 px-2 text-center">Aging</th>
+                        <th className="py-2.5 px-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-slate-800">
+                      {filteredRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={13} className="py-12 text-center text-slate-400 font-medium">
+                            No unpaid customer invoices match the selected date range and filter criteria.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRows.map((r: any) => {
+                          const displayCompany = r.customerCompany || r.customerName;
+                          return (
+                            <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-2 px-2 font-mono font-bold text-slate-900">{r.invoiceNo}</td>
+                              <td className="py-2 px-2 text-slate-600 font-mono text-[11px] whitespace-nowrap">
+                                {r.date ? r.date.slice(0, 10) : '—'}
+                              </td>
+                              <td className="py-2 px-2 font-mono text-[11px] whitespace-nowrap">
+                                <span className={r.isOverdue ? 'text-rose-600 font-bold' : 'text-slate-600'}>
+                                  {r.dueDate ? r.dueDate.slice(0, 10) : '—'}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="font-bold text-slate-900">{displayCompany}</div>
+                                {r.customerCompany && r.customerName && r.customerName !== r.customerCompany && (
+                                  <div className="text-[10px] text-slate-500">Attn: {r.customerName}</div>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 font-mono text-[11px] text-slate-600">{r.poNo || '—'}</td>
+                              <td className="py-2 px-2 text-right font-mono">{formatCurrency(r.subtotal, false, r.currency || 'LKR')}</td>
+                              <td className="py-2 px-2 text-right font-mono text-amber-700 font-medium">
+                                {r.ssclAmount > 0 ? formatCurrency(r.ssclAmount, false, r.currency || 'LKR') : '—'}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono text-emerald-700 font-medium">
+                                {r.vatAmount > 0 ? formatCurrency(r.vatAmount, false, r.currency || 'LKR') : '—'}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
+                                {formatCurrency(r.total, false, r.currency || 'LKR')}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono text-emerald-600">
+                                {r.paidAmount > 0 ? formatCurrency(r.paidAmount, false, r.currency || 'LKR') : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-black text-rose-700">
+                                {formatCurrency(r.balanceDue, false, r.currency || 'LKR')}
+                              </td>
+                              <td className="py-2 px-2 text-center text-[10.5px] font-semibold whitespace-nowrap">
+                                <span className={`px-1.5 py-0.5 rounded ${
+                                  r.agingBucket === 'Current' ? 'bg-emerald-100 text-emerald-800' :
+                                  r.agingBucket === '1-30 Days' ? 'bg-amber-100 text-amber-800' :
+                                  'bg-rose-100 text-rose-800 font-bold'
+                                }`}>
+                                  {r.agingBucket}{r.daysOverdue > 0 ? ` (${r.daysOverdue}d)` : ''}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                  r.status === 'paid' ? 'bg-emerald-100 text-emerald-800' :
+                                  r.status === 'partial' ? 'bg-amber-100 text-amber-800' :
+                                  r.status === 'overdue' ? 'bg-rose-100 text-rose-800' :
+                                  'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {r.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+
+                      {/* Summary Totals Row */}
+                      {filteredRows.length > 0 && reportData?.summary && (
+                        <tr className="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-900">
+                          <td className="py-2.5 px-2" colSpan={5}>
+                            TOTAL SUMMARY ({filteredRows.length} Customer Invoices)
+                          </td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold">{formatCurrency(reportData.summary.totalSubtotal)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-amber-700">{formatCurrency(reportData.summary.totalSscl)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(reportData.summary.totalVat)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-black text-slate-900">{formatCurrency(reportData.summary.totalGross)}</td>
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(reportData.summary.totalPaid)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-black text-rose-700 text-sm">{formatCurrency(reportData.summary.totalBalanceDue)}</td>
+                          <td className="py-2.5 px-2 text-center" colSpan={2}>—</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {/* 1.5 VENDOR BILLS REGISTER / AP AGING REPORT TABLE */}
               {activeTab === 'vendor_bills' && (
                 <div className="overflow-x-auto">
@@ -1324,13 +1470,13 @@ export const FinancialReports: React.FC = () => {
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">{formatCurrency(r.totalAmount)}</td>
                             <td className="py-2 px-2 text-right font-mono text-emerald-700">{formatCurrency(r.paidAmount)}</td>
                             <td className="py-2 px-3 text-right font-mono font-black text-amber-700">{formatCurrency(r.balanceDue)}</td>
-                            <td className="py-2 px-2 text-center text-[10.5px] font-semibold">
+                            <td className="py-2 px-2 text-center text-[10.5px] font-semibold whitespace-nowrap">
                               <span className={`px-1.5 py-0.5 rounded ${
                                 r.agingBucket === 'Current' ? 'bg-emerald-100 text-emerald-800' :
                                 r.agingBucket === '1-30 Days' ? 'bg-amber-100 text-amber-800' :
                                 'bg-rose-100 text-rose-800 font-bold'
                               }`}>
-                                {r.agingBucket}
+                                {r.agingBucket}{r.overdueDays > 0 ? ` (${r.overdueDays}d)` : ''}
                               </span>
                             </td>
                             <td className="py-2 px-2 text-center uppercase text-[10px] font-bold">

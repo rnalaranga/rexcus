@@ -9,9 +9,10 @@ import {
   Building2,
   Calendar,
   CreditCard,
-  Hash
+  Hash,
+  Paperclip
 } from "lucide-react";
-import { formatCurrency, formatDate, numberToWords, resolveFileUrl } from "@/lib/utils";
+import { formatCurrency, formatDate, numberToWords, resolveFileUrl, openDataUriOrUrl } from "@/lib/utils";
 // @ts-ignore
 import { printElement } from "@/lib/printElement";
 import { exportPdf } from '@/lib/exportPdf';
@@ -40,6 +41,7 @@ export interface PaymentReceiptData {
   depositAccountId?: string;
   depositAccountName?: string;
   reference?: string;
+  depositSlip?: string | null;
   notes?: string;
   receivedBy?: string;
   totalQuoted?: number;
@@ -138,6 +140,16 @@ export const PaymentReceiptPrintModal: React.FC<Props> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {receipt.depositSlip && (
+              <button
+                type="button"
+                onClick={() => openDataUriOrUrl(resolveFileUrl(receipt.depositSlip!), `Deposit_Slip_${receipt.receiptNo}`)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm"
+                title="View Attached Deposit Slip / Document"
+              >
+                <Paperclip size={14} /> View Attached Slip
+              </button>
+            )}
             <button
               onClick={handleExportPDF}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"

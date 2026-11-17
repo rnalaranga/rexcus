@@ -16255,6 +16255,7 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
     const endDate = (req.query.endDate as string) || '';
     const customerId = (req.query.customerId as string) || '';
     const status = (req.query.status as string) || 'all';
+    const agingBucket = (req.query.agingBucket as string) || 'all';
     const cashAccountId = (req.query.cashAccountId as string) || '';
 
     // 1. INVOICE REGISTER (Invoice-wise Tax Breakdown, Status, Balance Due)
@@ -16309,6 +16310,15 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
       let totalGross = 0;
       let totalPaid = 0;
       let totalBalanceDue = 0;
+      let totalOverdue = 0;
+
+      const agingBuckets = {
+        current: 0,
+        days1_30: 0,
+        days31_60: 0,
+        days61_90: 0,
+        days90plus: 0
+      };
 
       const processed = rows.map((inv: any) => {
         let sub = Number(inv.subtotal || inv.amount || 0);
@@ -16394,11 +16404,27 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         const now = new Date();
         const diffDays = Math.floor((now.getTime() - invDateObj.getTime()) / (1000 * 3600 * 24));
         const daysOverdue = Math.max(0, Math.floor((now.getTime() - dueDateObj.getTime()) / (1000 * 3600 * 24)));
+        const isOverdue = balanceDue > 0.01 && daysOverdue > 0;
 
-        let agingBucket = '0 - 30 Days';
-        if (diffDays > 90) agingBucket = '90+ Days';
-        else if (diffDays > 60) agingBucket = '61 - 90 Days';
-        else if (diffDays > 30) agingBucket = '31 - 60 Days';
+        let bucket = 'Current';
+        if (balanceDue > 0.01) {
+          if (daysOverdue <= 0) {
+            bucket = 'Current';
+            agingBuckets.current += balanceDue;
+          } else if (daysOverdue <= 30) {
+            bucket = '1-30 Days';
+            agingBuckets.days1_30 += balanceDue;
+          } else if (daysOverdue <= 60) {
+            bucket = '31-60 Days';
+            agingBuckets.days31_60 += balanceDue;
+          } else if (daysOverdue <= 90) {
+            bucket = '61-90 Days';
+            agingBuckets.days61_90 += balanceDue;
+          } else {
+            bucket = '90+ Days';
+            agingBuckets.days90plus += balanceDue;
+          }
+        }
 
         const dateStr = !isNaN(invDateObj.getTime()) ? invDateObj.toISOString().slice(0, 10) : '';
         const dueDateStr = inv.dueDate && !isNaN(dueDateObj.getTime()) ? dueDateObj.toISOString().slice(0, 10) : '';
@@ -16410,6 +16436,7 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
         totalGross += gross;
         totalPaid += paid;
         totalBalanceDue += balanceDue;
+        if (isOverdue) totalOverdue += balanceDue;
 
         return {
           id: inv.id,
@@ -16437,24 +16464,38 @@ app.get('/api/finance/reports/advanced', async (req, res) => {
           balanceDue,
           diffDays,
           daysOverdue,
-          agingBucket
+          isOverdue,
+          agingBucket: bucket
         };
       });
 
+      const filteredProcessed = (agingBucket && agingBucket !== 'all')
+        ? processed.filter((r: any) => {
+            if (agingBucket === 'current') return r.agingBucket === 'Current';
+            if (agingBucket === '1-30') return r.agingBucket === '1-30 Days';
+            if (agingBucket === '31-60') return r.agingBucket === '31-60 Days';
+            if (agingBucket === '61-90') return r.agingBucket === '61-90 Days';
+            if (agingBucket === '90plus') return r.agingBucket === '90+ Days';
+            return true;
+          })
+        : processed;
+
       return res.json({
         reportType,
-        filters: { startDate, endDate, customerId, status },
+        filters: { startDate, endDate, customerId, status, agingBucket },
         summary: {
-          totalCount: processed.length,
+          totalCount: filteredProcessed.length,
           totalSubtotal,
           totalSscl,
           totalVat,
           totalTax,
           totalGross,
           totalPaid,
-          totalBalanceDue
+          totalBalanceDue,
+          totalOverdue,
+          agingBuckets
         },
-        rows: processed
+        rows: filteredProcessed
       });
     }
 

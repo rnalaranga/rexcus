@@ -40,7 +40,7 @@ import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
 import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal'
-import { openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl } from '@/lib/utils'
+import { openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl, resolveFileUrl } from '@/lib/utils'
 import { 
   createFinishedGoodsOrder, 
   updateFinishedGoodsOrder, 
@@ -273,7 +273,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [proformaModalOrder, setProformaModalOrder] = useState<any | null>(null)
   const [activePrintProforma, setActivePrintProforma] = useState<any | null>(null)
   const [unpaidProformaPrompt, setUnpaidProformaPrompt] = useState<{ order: any; proforma: any; specificDispatchNo?: string } | null>(null)
-  const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string } | null>(null)
+  const [viewingPoAttachment, setViewingPoAttachment] = useState<{ url: string; orderNo: string; poNo?: string; title?: string; subtitle?: string; fileName?: string } | null>(null)
   const [recordPoOrder, setRecordPoOrder] = useState<any | null>(null)
   const [viewPoOrder, setViewPoOrder] = useState<any | null>(null)
   const [showPoPoolModal, setShowPoPoolModal] = useState(false)
@@ -2764,6 +2764,27 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         <span className="font-bold">{r.receiptNo || r.id}</span>
                         <span className="text-muted text-[10px]">({formatCurrency(Number(r.amount || 0), false, r.currency || order.currency || 'LKR')})</span>
                       </button>
+                      {r.depositSlip && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenActionOrderId(null);
+                            const resolved = resolveFileUrl(r.depositSlip);
+                            setViewingPoAttachment({
+                              url: resolved,
+                              orderNo: order.orderNo,
+                              title: `Advance Deposit Slip - ${r.receiptNo || r.id}`,
+                              subtitle: `Attached payment document for Sales Order ${order.orderNo} (${r.receiptNo || r.id})`,
+                              fileName: `Deposit_Slip_${r.receiptNo || r.id}`
+                            });
+                          }}
+                          className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors ml-1"
+                          title="View Attached Deposit Slip / Document"
+                        >
+                          <Paperclip size={11} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -6384,20 +6405,22 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         <Modal
           isOpen={true}
           onClose={() => setViewingPoAttachment(null)}
-          title={`Customer PO Document - Order #${viewingPoAttachment.orderNo} ${viewingPoAttachment.poNo ? `(PO: ${viewingPoAttachment.poNo})` : ''}`}
+          title={viewingPoAttachment.title || `Customer PO Document - Order #${viewingPoAttachment.orderNo} ${viewingPoAttachment.poNo ? `(PO: ${viewingPoAttachment.poNo})` : ''}`}
           size="4xl"
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-theme-subtle">
               <div className="text-xs text-muted">
-                Official Customer Purchase Order uploaded for order <strong className="text-primary">{viewingPoAttachment.orderNo}</strong>
+                {viewingPoAttachment.subtitle || (
+                  <>Official Customer Purchase Order uploaded for order <strong className="text-primary">{viewingPoAttachment.orderNo}</strong></>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => downloadDataUriOrUrl(viewingPoAttachment.url, `Customer_PO_${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
+                  onClick={() => downloadDataUriOrUrl(viewingPoAttachment.url, viewingPoAttachment.fileName || `Customer_PO_${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
                   className="text-xs flex items-center gap-1.5"
                 >
                   <Download size={13} /> Download File
@@ -6406,7 +6429,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                   type="button"
                   variant="primary"
                   size="sm"
-                  onClick={() => openDataUriOrUrl(viewingPoAttachment.url, `Customer PO - ${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
+                  onClick={() => openDataUriOrUrl(viewingPoAttachment.url, viewingPoAttachment.title || `Customer PO - ${viewingPoAttachment.poNo || viewingPoAttachment.orderNo}`)}
                   className="text-xs flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold"
                 >
                   <ExternalLink size={13} /> Open in Tab
@@ -6418,13 +6441,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               {viewingPoAttachment.url.startsWith('data:image/') || /\.(png|jpe?g|webp|gif|svg)($|\?)/i.test(viewingPoAttachment.url) ? (
                 <img
                   src={dataUriToBlobUrl(viewingPoAttachment.url)}
-                  alt="Customer PO"
+                  alt={viewingPoAttachment.title || 'Document Attachment'}
                   className="max-w-full max-h-[70vh] object-contain shadow-md"
                 />
               ) : (
                 <iframe
                   src={dataUriToBlobUrl(viewingPoAttachment.url)}
-                  title="Customer PO Document"
+                  title={viewingPoAttachment.title || 'Document Attachment'}
                   className="w-full h-[70vh] border-none"
                 />
               )}

@@ -27,7 +27,7 @@ import { formatCurrency, formatDate, relativeTime, toMySQLDate } from '@/lib/uti
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
-import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
+import { findMatchingSamplePhotos, extractPhotosFromGrn } from '@/lib/samplePhotos'
 import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
@@ -347,23 +347,17 @@ export const Leads: React.FC = () => {
       financeContactName: lead.financeContactName || '',
       financeContactPhone: lead.financeContactPhone || '',
       industry: lead.industry || '',
-      grnList: leadGrns.filter((g: any) => g.leadId === lead.id).map((g: any) => {
+      grnList: findMatchingSamplePhotos(
+        { id: lead.id, leadId: lead.id, customerName: lead.name, customerCompany: lead.company, company: lead.company },
+        leadGrns
+      ).grns.map((g: any) => {
         let items: any[] = [];
         try {
           items = typeof g.items === 'string' ? JSON.parse(g.items) : (Array.isArray(g.items) ? g.items : [{ description: g.items || '', qty: 1, unit: 'Nos' }]);
         } catch(e) {
           items = [{ description: g.items || '', qty: 1, unit: 'Nos' }];
         }
-        let photos: any[] = [];
-        try {
-          if (typeof g.photos === 'string' && g.photos.startsWith('[')) {
-            photos = JSON.parse(g.photos);
-          } else if (Array.isArray(g.photos)) {
-            photos = g.photos;
-          }
-        } catch(e) {
-          photos = [];
-        }
+        const photos = extractPhotosFromGrn(g);
         return {
           id: g.id,
           isExisting: true,
@@ -2664,7 +2658,16 @@ export const Leads: React.FC = () => {
       {/* ── 360° COMMAND CENTER DRAWER (SPLIT-PANE DOSSIER) ────────────────────── */}
       {selectedLead && (() => {
         const leadQuotes = getLeadQuotes(selectedLead);
-        const leadSamples = leadGrns.filter((g: any) => g.leadId === selectedLead.id);
+        const leadSamples = findMatchingSamplePhotos(
+          {
+            id: selectedLead.id,
+            leadId: selectedLead.id,
+            customerName: selectedLead.name,
+            customerCompany: selectedLead.company,
+            company: selectedLead.company
+          },
+          leadGrns
+        ).grns;
         const daysInStage = getDaysSinceActivity(selectedLead.lastActivity);
         const cleanPhone = (selectedLead.phone || '').replace(/[^0-9]/g, '');
         const waLink = cleanPhone ? `https://wa.me/${cleanPhone.startsWith('0') ? '94' + cleanPhone.slice(1) : cleanPhone}` : null;
@@ -2987,16 +2990,7 @@ export const Leads: React.FC = () => {
                           parsedItems = [{ description: sample.items || 'Sample Part', qty: 1 }];
                         }
 
-                        let samplePhotos: any[] = [];
-                        try {
-                          if (typeof sample.photos === 'string' && sample.photos.startsWith('[')) {
-                            samplePhotos = JSON.parse(sample.photos);
-                          } else if (Array.isArray(sample.photos)) {
-                            samplePhotos = sample.photos;
-                          }
-                        } catch (e) {
-                          samplePhotos = [];
-                        }
+                        const samplePhotos = extractPhotosFromGrn(sample);
 
                         return (
                           <div key={sample.id} className="p-2.5 bg-surface border border-theme-subtle text-xs space-y-1">

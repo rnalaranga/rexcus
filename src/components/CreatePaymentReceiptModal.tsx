@@ -25,7 +25,7 @@ import {
   Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { formatCurrency, numberToWords } from "@/lib/utils";
+import { formatCurrency, numberToWords, resolveFileUrl, openDataUriOrUrl } from "@/lib/utils";
 import { createPaymentReceipt, fetchPaymentReceipts, uploadFileToStorage, fetchNextDocumentNumber } from "@/lib/api";
 import { useAccounts } from "@/hooks/useFinance";
 import { useDialog } from "@/components/ui/DialogProvider";
@@ -524,8 +524,20 @@ export const CreatePaymentReceiptModal: React.FC<Props> = ({
                             {r.date?.slice(0, 10)} • {r.paymentMethod} {r.reference ? `(${r.reference})` : ""}
                           </div>
                         </div>
-                        <div className="font-mono font-bold text-emerald-600">
-                          {formatCurrency(Number(r.amount), false, receiptCurrency)}
+                        <div className="flex items-center gap-2">
+                          {r.depositSlip && (
+                            <button
+                              type="button"
+                              onClick={() => openDataUriOrUrl(resolveFileUrl(r.depositSlip), `Deposit_Slip_${r.receiptNo}`)}
+                              className="px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 flex items-center gap-1"
+                              title="View Attached Deposit Slip"
+                            >
+                              <FileText size={10} /> Slip
+                            </button>
+                          )}
+                          <div className="font-mono font-bold text-emerald-600">
+                            {formatCurrency(Number(r.amount), false, receiptCurrency)}
+                          </div>
                         </div>
                       </div>
                     ))}

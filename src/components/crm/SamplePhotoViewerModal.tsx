@@ -36,7 +36,7 @@ export const SamplePhotoViewerModal: React.FC<SamplePhotoViewerModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-between p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-between p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       {/* Top Header */}
