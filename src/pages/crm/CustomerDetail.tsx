@@ -1420,40 +1420,54 @@ export const CustomerDetail: React.FC = () => {
             <Button variant="primary" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}`)}>Create Quotation</Button>
           </div>
           <div className="divide-y divide-theme-subtle">
-            {quotations.filter((q: any) => q.leadId === id).length === 0 ? (
-               <div className="p-8 text-center text-muted text-sm">No quotations found for this customer.</div>
-            ) : (
-               quotations.filter((q: any) => q.leadId === id).map((q: any) => {
-                 let quoNo = q.id;
-                 try { const d = JSON.parse(q.data); if(d.quotationNo) quoNo = d.quotationNo; } catch(e) {}
-                 return (
-                   <div key={q.id} className="p-4 hover:bg-surface2/30 transition-colors flex items-center justify-between group">
-                     <div className="flex items-center gap-4">
-                       <div className="w-10 h-10 rounded-lg bg-rex-500/10 text-rex-600 flex items-center justify-center">
-                         <FileText size={18} />
-                       </div>
-                       <div>
-                         <h4 className="text-sm font-bold text-primary">{quoNo}</h4>
-                         <p className="text-xs text-muted flex items-center gap-2 mt-0.5">
-                           <span>{formatDate(q.date)}</span>
-                           <Badge value={q.type || 'Main'} size="sm" />
-                           <span className="font-mono text-[10px]">v{q.version}</span>
-                         </p>
-                       </div>
-                     </div>
-                     <div className="flex items-center gap-6">
-                       <div className="text-right">
-                         <p className="text-[10px] uppercase tracking-wider text-muted font-bold mb-0.5">Amount</p>
-                         <p className="text-sm font-black text-primary font-mono">{formatCurrency(Number(q.totalAmount), false, customer.currency)}</p>
-                       </div>
-                       <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${id}?quoteId=${q.id}`)} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                         Open <ArrowRight size={14} className="ml-1" />
-                       </Button>
-                     </div>
-                   </div>
-                 );
-               })
-            )}
+            {(() => {
+              const matchedQuotations = (quotations || []).filter((q: any) => {
+                if (q.customerId && q.customerId === id) return true;
+                if (q.leadId && q.leadId === id) return true;
+                if (customerLeads.some((l: any) => l.id === q.leadId)) return true;
+                if (customer?.company && q.leadCompany && q.leadCompany.toLowerCase() === customer.company.toLowerCase()) return true;
+                try {
+                  const d = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+                  if (d.customerId === id || d.selectedCustomerId === id) return true;
+                } catch(e) {}
+                return false;
+              });
+
+              if (matchedQuotations.length === 0) {
+                return <div className="p-8 text-center text-muted text-sm">No quotations found for this customer.</div>;
+              }
+
+              return matchedQuotations.map((q: any) => {
+                let quoNo = q.quotationNo || q.docNo || q.id;
+                try { const d = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {}); if(d.quotationNo) quoNo = d.quotationNo; } catch(e) {}
+                return (
+                  <div key={q.id} className="p-4 hover:bg-surface2/30 transition-colors flex items-center justify-between group">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-rex-500/10 text-rex-600 flex items-center justify-center">
+                        <FileText size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-primary">{quoNo}</h4>
+                        <p className="text-xs text-muted flex items-center gap-2 mt-0.5">
+                          <span>{formatDate(q.date || q.createdAt)}</span>
+                          <Badge value={q.status || q.type || 'Main'} size="sm" />
+                          <span className="font-mono text-[10px]">v{q.version || 1}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-muted font-bold mb-0.5">Amount</p>
+                        <p className="text-sm font-black text-primary font-mono">{formatCurrency(Number(q.totalAmount || 0), false, customer.currency)}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => navigate(`/crm/quotations/new/${q.leadId || id}?quoteId=${q.id}`)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        Open <ArrowRight size={14} className="ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </GlassCard>
       )}

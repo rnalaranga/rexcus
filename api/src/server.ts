@@ -4574,7 +4574,13 @@ app.put('/api/leads/:id', async (req, res) => {
 
     if (cleanLeadData.customerId) {
       try {
-        await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [cleanLeadData.customerId, id]);
+        await db.query(`UPDATE quotations SET customerId = ? 
+          WHERE (leadId = ? 
+             OR leadId = REPLACE(?, 'LEAD-', '') 
+             OR leadId = CONCAT('LEAD-', LPAD(REPLACE(?, 'LEAD-', ''), 3, '0')))
+            AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")`, 
+          [cleanLeadData.customerId, id, id, id]
+        );
       } catch (qErr) {
         console.warn('Could not sync quotations customerId:', qErr);
       }
@@ -4603,7 +4609,13 @@ app.post('/api/leads/:id/convert', async (req, res) => {
 
     // Also update any quotations created under this lead
     try {
-      await db.query('UPDATE quotations SET customerId = ? WHERE leadId = ? AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")', [customerId, id]);
+      await db.query(`UPDATE quotations SET customerId = ? 
+        WHERE (leadId = ? 
+           OR leadId = REPLACE(?, 'LEAD-', '') 
+           OR leadId = CONCAT('LEAD-', LPAD(REPLACE(?, 'LEAD-', ''), 3, '0')))
+          AND (customerId IS NULL OR customerId = "" OR customerId = "CUST-DIRECT")`, 
+        [customerId, id, id, id]
+      );
     } catch (qErr) {
       console.warn('Could not sync quotations customerId:', qErr);
     }
@@ -4677,15 +4689,16 @@ app.post('/api/deals', async (req, res) => {
 app.get('/api/quotations', async (req, res) => {
     try {
       const [rows] = await db.query(`SELECT q.*, 
+        COALESCE(q.customerId, l.customerId, c.id) as customerId,
         COALESCE(c.name, l.name, l2.name, '') as leadName, 
         COALESCE(c.company, l.company, l2.company, '') as leadCompany,
         COALESCE(c.address, '') as leadAddress,
         COALESCE(c.vat, l.vat, l2.vat, '') as leadVat,
         COALESCE(c.svat, l.svat, l2.svat, '') as leadSvat
       FROM quotations q 
-      LEFT JOIN customers c ON q.leadId = c.id
       LEFT JOIN leads l ON q.leadId = l.id
-      LEFT JOIN leads l2 ON q.leadId = l2.customerId
+      LEFT JOIN customers c ON (q.customerId = c.id OR q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      LEFT JOIN leads l2 ON (q.leadId = l2.customerId OR q.customerId = l2.customerId)
       ORDER BY q.date DESC`);
       res.json(rows);
     } catch (error) {
@@ -4698,13 +4711,22 @@ app.get('/api/quotations/:leadId', async (req, res) => {
   try {
     const { leadId } = req.params;
     const [rows]: any = await db.query(`
-      SELECT * FROM quotations 
-      WHERE (leadId = ? 
-         OR leadId = REPLACE(?, 'LEAD-', '') 
-         OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0')))
-         AND deletedAt IS NULL
-      ORDER BY type ASC, version DESC
-    `, [leadId, leadId, leadId]);
+      SELECT q.*,
+        COALESCE(q.customerId, l.customerId, c.id) as customerId,
+        COALESCE(c.name, l.name) as leadName,
+        COALESCE(c.company, l.company) as leadCompany
+      FROM quotations q
+      LEFT JOIN leads l ON q.leadId = l.id
+      LEFT JOIN customers c ON (q.customerId = c.id OR q.leadId = c.id OR (l.customerId IS NOT NULL AND l.customerId = c.id))
+      WHERE (q.leadId = ? 
+         OR q.customerId = ?
+         OR q.leadId = REPLACE(?, 'LEAD-', '') 
+         OR q.leadId = CONCAT('LEAD-', LPAD(?, 3, '0'))
+         OR q.leadId IN (SELECT id FROM leads WHERE customerId = ?)
+         OR (l.customerId IS NOT NULL AND l.customerId = ?))
+         AND q.deletedAt IS NULL
+      ORDER BY q.type ASC, q.version DESC
+    `, [leadId, leadId, leadId, leadId, leadId, leadId]);
     if (rows && rows.length > 0) {
       return res.json(rows);
     }

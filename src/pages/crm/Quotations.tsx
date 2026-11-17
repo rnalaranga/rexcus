@@ -955,11 +955,20 @@ export const Quotations: React.FC = () => {
   // Active Drafts (Custom Engineering)
   const activeDrafts = useMemo(() => {
     return groupedQuotations.filter((g: any) => {
-      if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
+      if (customerFilter !== 'all') {
+        const targetCust = customers.find((c: any) => c.id === customerFilter);
+        const targetLead = leads.find((l: any) => l.id === customerFilter);
+        const match = g.leadId === customerFilter ||
+          (g.customerId && g.customerId === customerFilter) ||
+          (targetCust && g.customerId === targetCust.id) ||
+          (targetLead?.customerId && g.customerId === targetLead.customerId) ||
+          (targetCust && targetCust.company && g.leadCompany && g.leadCompany.toLowerCase() === targetCust.company.toLowerCase());
+        if (!match) return false;
+      }
       const main0 = g.main[0];
       return main0?.type === 'draft' || (main0?.status || '').toLowerCase() === 'draft';
     });
-  }, [groupedQuotations, customerFilter]);
+  }, [groupedQuotations, customerFilter, customers, leads]);
 
   // Overall KPI stats
   const kpiStats = useMemo(() => {
@@ -1095,8 +1104,24 @@ export const Quotations: React.FC = () => {
 
     // Customer filter
     if (customerFilter !== "all") {
-      const matchCust = g.leadId === customerFilter ||
+      const targetCustomer = customers.find((c: any) => c.id === customerFilter);
+      const targetLead = leads.find((l: any) => l.id === customerFilter);
+      const linkedCustomerIds = new Set<string>();
+      if (targetCustomer) linkedCustomerIds.add(targetCustomer.id);
+      if (targetLead?.customerId) linkedCustomerIds.add(targetLead.customerId);
+
+      const linkedLeadIds = new Set<string>();
+      if (targetLead) linkedLeadIds.add(targetLead.id);
+      if (targetCustomer) {
+        leads.filter((l: any) => l.customerId === targetCustomer.id).forEach((l: any) => linkedLeadIds.add(l.id));
+      }
+
+      const matchCust = 
+        g.leadId === customerFilter ||
         (g.customerId && g.customerId === customerFilter) ||
+        (g.customerId && linkedCustomerIds.has(g.customerId)) ||
+        (g.leadId && linkedLeadIds.has(g.leadId)) ||
+        (targetCustomer?.company && g.leadCompany && g.leadCompany.toLowerCase() === targetCustomer.company.toLowerCase()) ||
         (g.leadId && customerFilter && (
           String(g.leadId).replace(/^LEAD-0*/i, '') === String(customerFilter).replace(/^LEAD-0*/i, '')
         ));

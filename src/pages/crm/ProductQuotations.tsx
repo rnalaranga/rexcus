@@ -387,11 +387,20 @@ export const ProductQuotations: React.FC = () => {
   // Active Finished Goods Drafts
   const activeDrafts = useMemo(() => {
     return groupedQuotes.filter((g: any) => {
-      if (customerFilter !== 'all' && g.leadId !== customerFilter) return false;
+      if (customerFilter !== 'all') {
+        const targetCust = customers.find((c: any) => c.id === customerFilter);
+        const targetLead = leads.find((l: any) => l.id === customerFilter);
+        const match = g.leadId === customerFilter ||
+          (g.customerId && g.customerId === customerFilter) ||
+          (targetCust && g.customerId === targetCust.id) ||
+          (targetLead?.customerId && g.customerId === targetLead.customerId) ||
+          (targetCust && targetCust.company && g.clientCompany && g.clientCompany.toLowerCase() === targetCust.company.toLowerCase());
+        if (!match) return false;
+      }
       const latest = g.versions[0];
       return latest?.type === 'product_draft' || (latest?.status || '').toLowerCase() === 'draft';
     });
-  }, [groupedQuotes, customerFilter]);
+  }, [groupedQuotes, customerFilter, customers, leads]);
 
   // Overall KPI stats
   const kpiStats = useMemo(() => {
@@ -468,8 +477,24 @@ export const ProductQuotations: React.FC = () => {
 
       // 2. Customer filter
       if (customerFilter !== 'all') {
-        const matchCust = g.leadId === customerFilter ||
+        const targetCustomer = customers.find((c: any) => c.id === customerFilter);
+        const targetLead = leads.find((l: any) => l.id === customerFilter);
+        const linkedCustomerIds = new Set<string>();
+        if (targetCustomer) linkedCustomerIds.add(targetCustomer.id);
+        if (targetLead?.customerId) linkedCustomerIds.add(targetLead.customerId);
+
+        const linkedLeadIds = new Set<string>();
+        if (targetLead) linkedLeadIds.add(targetLead.id);
+        if (targetCustomer) {
+          leads.filter((l: any) => l.customerId === targetCustomer.id).forEach((l: any) => linkedLeadIds.add(l.id));
+        }
+
+        const matchCust = 
+          g.leadId === customerFilter ||
           (g.customerId && g.customerId === customerFilter) ||
+          (g.customerId && linkedCustomerIds.has(g.customerId)) ||
+          (g.leadId && linkedLeadIds.has(g.leadId)) ||
+          (targetCustomer?.company && g.clientCompany && g.clientCompany.toLowerCase() === targetCustomer.company.toLowerCase()) ||
           (g.leadId && customerFilter && (
             String(g.leadId).replace(/^LEAD-0*/i, '') === String(customerFilter).replace(/^LEAD-0*/i, '')
           ));
