@@ -142,7 +142,7 @@ export const FinanceDashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in pb-10 max-w-7xl mx-auto">
+    <div className="space-y-5 animate-fade-in pb-10 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-theme-subtle">
         <div>

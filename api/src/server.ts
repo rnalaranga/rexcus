@@ -21778,8 +21778,88 @@ function formatDbResultsAsMarkdown(results: any[], isEnglish: boolean, userMsg?:
   return header + '\n' + sep + '\n' + rows;
 }
 
-async function executeAITool(name: string, args: any) {
+async function resolveAiUserContext(req: any): Promise<{
+  userId: string | null;
+  username: string;
+  role: string;
+  roleName: string;
+  isAdmin: boolean;
+  permissions: string[];
+}> {
+  const defaultCtx = { userId: null, username: 'guest', role: 'guest', roleName: 'Guest', isAdmin: false, permissions: [] as string[] };
   try {
+    const authHeader = req.headers?.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return defaultCtx;
+    const token = authHeader.split(' ')[1];
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id ? String(decoded.id) : null;
+    const username = String(decoded.username || 'user');
+    let role = String(decoded.role || 'user').toLowerCase();
+    let roleName = String(decoded.roleName || role);
+    let permissions: string[] = [];
+
+    if (userId) {
+      const [uRows]: any = await db.query(
+        'SELECT u.role, r.name as roleName, r.permissions FROM users u LEFT JOIN roles r ON u.role = r.id WHERE u.id = ? LIMIT 1',
+        [userId]
+      );
+      if (uRows && uRows.length > 0) {
+        role = String(uRows[0].role || role).toLowerCase();
+        roleName = String(uRows[0].roleName || roleName);
+        try {
+          const parsed = typeof uRows[0].permissions === 'string' ? JSON.parse(uRows[0].permissions) : uRows[0].permissions;
+          if (Array.isArray(parsed)) permissions = parsed.map((p: any) => String(p).toLowerCase());
+        } catch (e) {}
+      }
+    }
+    const isAdmin = role === 'admin' || username === 'admin' || permissions.includes('*') || permissions.includes('all');
+    return { userId, username, role, roleName, isAdmin, permissions };
+  } catch (e) {
+    return defaultCtx;
+  }
+}
+
+function canAiAccessModule(ctx: { isAdmin: boolean; role: string; permissions: string[] }, requiredModules: string[]): boolean {
+  if (ctx.isAdmin) return true;
+  if (ctx.permissions.length === 0) return false;
+  return requiredModules.some(m => ctx.permissions.some(p => p === m || p.startsWith(`${m}.`) || p.startsWith(`${m}:`)));
+}
+
+async function executeAITool(name: string, args: any, userCtx?: { isAdmin: boolean; role: string; roleName: string; permissions: string[] }) {
+  try {
+    if (userCtx && !userCtx.isAdmin) {
+      const toolModuleMap: Record<string, string[]> = {
+        get_customer_finance_summary: ['finance', 'accounting', 'crm'],
+        get_supplier_history: ['purchasing', 'finance', 'inventory'],
+        get_item_purchase_prices: ['inventory', 'purchasing', 'crm', 'production'],
+        check_inventory_stock: ['inventory', 'production', 'crm'],
+      };
+      const reqMods = toolModuleMap[name];
+      if (reqMods && !canAiAccessModule(userCtx, reqMods)) {
+        return {
+          error: 'ACCESS_DENIED',
+          message: `Access denied: Your role (${userCtx.roleName}) does not have permission to access ${reqMods.join('/')} data.`
+        };
+      }
+      if (name === 'execute_custom_erp_query') {
+        const qLower = String(args?.query || '').toLowerCase();
+        if (/\b(users|roles|settings)\b/.test(qLower)) {
+          return { error: 'ACCESS_DENIED', message: `Access denied: Your role (${userCtx.roleName}) cannot query user or system settings tables.` };
+        }
+        if (/\b(invoices|payment_receipts|supplier_bills|cashbook_entries|journal_entries|journal_lines|chart_of_accounts|cheques)\b/.test(qLower) && !canAiAccessModule(userCtx, ['finance', 'accounting'])) {
+          return { error: 'ACCESS_DENIED', message: `Access denied: Your role (${userCtx.roleName}) does not have Finance/Accounting permission.` };
+        }
+        if (/\b(purchase_orders|suppliers|supplier_ledger)\b/.test(qLower) && !canAiAccessModule(userCtx, ['purchasing', 'finance'])) {
+          return { error: 'ACCESS_DENIED', message: `Access denied: Your role (${userCtx.roleName}) does not have Purchasing permission.` };
+        }
+        if (/\b(leads|quotations|customers|finished_goods_orders)\b/.test(qLower) && !canAiAccessModule(userCtx, ['crm', 'sales'])) {
+          return { error: 'ACCESS_DENIED', message: `Access denied: Your role (${userCtx.roleName}) does not have CRM/Sales permission.` };
+        }
+        if (/\b(work_orders|work_order_operations)\b/.test(qLower) && !canAiAccessModule(userCtx, ['production'])) {
+          return { error: 'ACCESS_DENIED', message: `Access denied: Your role (${userCtx.roleName}) does not have Production permission.` };
+        }
+      }
+    }
     if (name === "get_item_purchase_prices") {
       const rawQ = (args.query || '').trim();
       const cleanedQ = cleanItemSearchTerm(rawQ);
@@ -22718,9 +22798,21 @@ CRITICAL OPERATIONAL RULES:
       ? `${baseSystemPrompt}\n\nADDITIONAL ADMIN INSTRUCTIONS:\n${settingsMap.openai_system_instructions.trim()}`
       : baseSystemPrompt;
 
+    const userCtx = await resolveAiUserContext(req);
+    const allowedSummary = userCtx.isAdmin
+      ? 'ALL MODULES (Admin)'
+      : (userCtx.permissions.length > 0 ? userCtx.permissions.join(', ') : 'NONE (Limited / Unauthenticated)');
+
     const systemMessage = {
       role: 'system',
-      content: `${systemPrompt}\n\nToday's Date: ${new Date().toISOString().split('T')[0]}`
+      content: `${systemPrompt}
+
+USER ROLE & ACCESS LIMITATIONS (STRICTLY ENFORCE):
+- Current User: ${userCtx.username} (Role: ${userCtx.roleName})
+- Allowed Modules/Permissions: ${allowedSummary}
+- You MUST ONLY answer with data from the user's Allowed Modules. If a tool returns ACCESS_DENIED or the user asks for data outside their role permissions (e.g. Finance, Salaries/Users, Purchasing Costs, CRM, Production), politely inform them that their role (${userCtx.roleName}) does not have access to that information.
+
+Today's Date: ${new Date().toISOString().split('T')[0]}`
     };
 
     const conversation: any[] = [systemMessage, ...messages.slice(-10)];
@@ -22729,17 +22821,20 @@ CRITICAL OPERATIONAL RULES:
 
     // Helper for chat completions with timeout safety and repetition penalty
     const callCompletion = async (model: string, msgs: any[], tools?: any[]) => {
+      const isReasoner = model.includes('reasoner');
       const bodyPayload: any = {
         model,
         messages: msgs,
-        temperature: 0.3,
         max_tokens: 1500
       };
-      if (!isGemini) {
+      if (!isReasoner) {
+        bodyPayload.temperature = 0.3;
+      }
+      if (!isGemini && !isReasoner) {
         bodyPayload.frequency_penalty = 0.5;
         bodyPayload.presence_penalty = 0.2;
       }
-      if (tools && tools.length > 0) {
+      if (tools && tools.length > 0 && !isReasoner) {
         bodyPayload.tools = tools;
         bodyPayload.tool_choice = 'auto';
       }
@@ -22760,8 +22855,8 @@ CRITICAL OPERATIONAL RULES:
       aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
     } catch (e: any) {
       console.warn(`[Rex AI Engine] Initial call timed out or failed on '${activeModelName}':`, e.message);
-      // Fallback to gemini-1.5-flash without tools
-      aiRes = await callCompletion('gemini-1.5-flash', conversation).catch(() => null);
+      const fallbackModel = isGemini ? 'gemini-1.5-flash' : activeModelName;
+      aiRes = await callCompletion(fallbackModel, conversation).catch(() => null);
     }
 
     if (!aiRes || !aiRes.ok) {
@@ -22769,7 +22864,7 @@ CRITICAL OPERATIONAL RULES:
       let errMsg = extractApiErrorMessage(errJson).toLowerCase();
 
       // If initial tool-enabled request failed with 400 (e.g. strict schema rejection by Gemini or tool format issue), retry immediately without tools
-      if (aiRes.status === 400 || errMsg.includes('tool') || errMsg.includes('argument') || errMsg.includes('schema') || errMsg.includes('function')) {
+      if (aiRes && (aiRes.status === 400 || errMsg.includes('tool') || errMsg.includes('argument') || errMsg.includes('schema') || errMsg.includes('function'))) {
         console.warn(`[Rex AI Engine] Tool or schema rejection on '${activeModelName}' (HTTP ${aiRes.status}: ${errMsg}). Retrying without tools...`);
         aiRes = await callCompletion(activeModelName, conversation);
         if (aiRes.ok) {
@@ -22805,7 +22900,7 @@ CRITICAL OPERATIONAL RULES:
           const resolvedModel = selectBestModel(liveModels, provider, failedModelsList);
           if (resolvedModel && resolvedModel !== activeModelName) {
             activeModelName = resolvedModel;
-            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : (isDeepSeek ? 'deepseek_model' : 'openai_model'));
             db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
             aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
           }
@@ -22825,7 +22920,7 @@ CRITICAL OPERATIONAL RULES:
             if (resolvedModel && resolvedModel !== activeModelName) {
               console.log(`[Rex AI Engine] Auto-switching from rate-limited model '${activeModelName}' to available alternative '${resolvedModel}'...`);
               activeModelName = resolvedModel;
-              const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+              const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : (isDeepSeek ? 'deepseek_model' : 'openai_model'));
               db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
               aiRes = await callCompletion(activeModelName, conversation, AI_TOOLS);
             }
@@ -22944,7 +23039,7 @@ CRITICAL OPERATIONAL RULES:
         const sqlMatch = contentText.match(/\b(SELECT\s+[\s\S]+?\bFROM\b[\s\S]+?)(?:;|\n\n|```|$)/i);
         const queryToExec = (sqlMatch ? sqlMatch[1] : contentText).replace(/```sql|```/gi, '').trim();
         console.log(`[Rex AI Engine] Intercepted raw SQL query in model text: "${queryToExec}". Auto-executing on database...`);
-        const toolResult = await executeAITool('execute_custom_erp_query', { query: queryToExec });
+        const toolResult = await executeAITool('execute_custom_erp_query', { query: queryToExec }, userCtx);
         lastExecutedToolResult = toolResult;
 
         let synthesized = false;
@@ -22973,7 +23068,7 @@ CRITICAL OPERATIONAL RULES:
             };
           } else {
             const itemSearch = cleanItemSearchTerm(lastUserMsg);
-            const priceRes = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample' });
+            const priceRes = await executeAITool('get_item_purchase_prices', { query: itemSearch || 'sample' }, userCtx);
             lastExecutedToolResult = priceRes;
             const invRows = priceRes.matchedInventory || [];
             responseMsg = {
@@ -23098,7 +23193,7 @@ CRITICAL OPERATIONAL RULES:
           if (resolvedModel && resolvedModel !== activeModelName) {
             console.log(`[Rex AI Engine] Auto-switching follow-up from '${activeModelName}' to '${resolvedModel}'...`);
             activeModelName = resolvedModel;
-            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : 'openai_model');
+            const modelSettingKey = isGemini ? 'gemini_model' : (isGroq ? 'groq_model' : (isDeepSeek ? 'deepseek_model' : 'openai_model'));
             db.query(`UPDATE settings SET val = ? WHERE id = ?`, [activeModelName, modelSettingKey]).catch(() => {});
             followUpRes = await callCompletion(activeModelName, conversation, undefined).catch(() => null);
           }
