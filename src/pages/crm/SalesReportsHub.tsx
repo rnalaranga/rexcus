@@ -13,6 +13,21 @@ import { Badge } from '@/components/ui/Badge';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LineChart,
+  Line,
+  Legend
+} from 'recharts';
 import { useQuotations, useFinishedGoodsOrders, useCustomers, useLeads } from '@/hooks/useData';
 import { useSettings } from '@/contexts/SettingsContext';
 import { printElement } from '@/lib/printElement';
@@ -364,6 +379,18 @@ export const SalesReportsHub: React.FC = () => {
       pendingValueLKR
     };
   }, [filteredQuotes]);
+
+  const orderTrendData = useMemo(() => {
+    const map = new Map<string, { date: string; totalLKR: number; dispatchedLKR: number }>();
+    filteredOrders.forEach(o => {
+      const d = String(o.orderDate || '').slice(0, 10) || 'Unknown';
+      const prev = map.get(d) || { date: d, totalLKR: 0, dispatchedLKR: 0 };
+      prev.totalLKR += o.orderTotalLKR;
+      if (o.isDispatched) prev.dispatchedLKR += o.orderTotalLKR;
+      map.set(d, prev);
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredOrders]);
 
   // ─────────────────────────────────────────────────────────────
   // 5. EXPORT TO EXCEL (.xlsx)
@@ -807,6 +834,47 @@ export const SalesReportsHub: React.FC = () => {
             </div>
           )}
         </GlassCard>
+      )}
+
+      {/* Orders Graphs */}
+      {activeTab === 'orders' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <GlassCard className="p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-primary mb-3">
+              Sales Orders Value Trend (Line Graph)
+            </h3>
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={orderTrendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} width={48} tickFormatter={(v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}k` : String(v))} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v || 0))} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  <Line type="monotone" dataKey="totalLKR" name="Total Value" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="dispatchedLKR" name="Dispatched Value" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-primary mb-3">
+              Top Customers by Order Value (LKR)
+            </h3>
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={customerSummary.slice(0, 6)} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 12)}…` : v)} />
+                  <YAxis tick={{ fontSize: 10 }} width={48} tickFormatter={(v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}k` : String(v))} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v || 0))} />
+                  <Bar dataKey="totalOrdersLKR" name="Order Value" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+        </div>
       )}
 
       {activeTab === 'quotes' && (
