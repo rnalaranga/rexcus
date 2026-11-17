@@ -170,6 +170,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [createWoPriority, setCreateWoPriority] = useState<string>('Normal')
   const [createWoJobTitle, setCreateWoJobTitle] = useState<string>('')
   const [createWoNotes, setCreateWoNotes] = useState<string>('')
+  const [createWoRouting, setCreateWoRouting] = useState<'Design Department' | 'Direct Production'>('Direct Production')
   const [createWoSubmitting, setCreateWoSubmitting] = useState<boolean>(false)
   const [allCustomerGrns, setAllCustomerGrns] = useState<any[]>([])
   const [activeViewingPhotos, setActiveViewingPhotos] = useState<{ photos: any[], title?: string } | null>(null)
@@ -2133,6 +2134,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       setCreateWoJobTitle(`WO: ${order.orderNo} - ${order.customerName}`);
       setCreateWoPriority('Normal');
       setCreateWoNotes(order.notes || '');
+      setCreateWoRouting('Direct Production');
     } catch (err: any) {
       toast(err?.message || 'Error preparing Work Order', 'error');
     }
@@ -2157,7 +2159,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         sourceQuoteId: order.quoteId || null,
         priority: createWoPriority || 'Normal',
         jobQty,
-        notes: createWoNotes || null,
+        notes: `[Route: ${createWoRouting}]${createWoNotes ? `\n${createWoNotes}` : ''}`,
         operations: [
           {
             operationName: 'Precision Fabrication & Machining',
@@ -6622,6 +6624,39 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* Department Routing Selection */}
+              <div>
+                <label className="text-[11px] font-bold text-secondary uppercase tracking-wider block mb-1.5">
+                  Send Work Order To
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCreateWoRouting('Design Department')}
+                    className={`p-2.5 text-left border rounded-none transition-all ${
+                      createWoRouting === 'Design Department'
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold'
+                        : 'border-theme-subtle bg-surface text-secondary hover:bg-surface2'
+                    }`}
+                  >
+                    <div className="text-xs">To Design Department</div>
+                    <div className="text-[10px] text-muted font-normal mt-0.5">CAD / Drawing &amp; Engineering review first</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateWoRouting('Direct Production')}
+                    className={`p-2.5 text-left border rounded-none transition-all ${
+                      createWoRouting === 'Direct Production'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold'
+                        : 'border-theme-subtle bg-surface text-secondary hover:bg-surface2'
+                    }`}
+                  >
+                    <div className="text-xs">Direct Production</div>
+                    <div className="text-[10px] text-muted font-normal mt-0.5">Release straight to workshop floor</div>
+                  </button>
                 </div>
               </div>
 
