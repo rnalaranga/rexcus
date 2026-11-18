@@ -12793,8 +12793,11 @@ async function enrichLedgerLinesWithChequeInfo(lines: any[]): Promise<any[]> {
   const entryIds = Array.from(new Set(lines.map(l => l.entryId).filter(Boolean)));
   if (entryIds.length === 0) return lines;
 
+  const refs = Array.from(new Set(lines.map(l => l.reference).filter(Boolean)));
   const chequeMap = new Map<string, { chequeNo?: string; chequeDate?: string | null; realizedDate?: string | null; chequeStatus?: string | null; attachmentUrl?: string | null; attachmentName?: string | null }>();
+  const refMap = new Map<string, { chequeNo?: string; chequeDate?: string | null; realizedDate?: string | null; chequeStatus?: string | null; attachmentUrl?: string | null; attachmentName?: string | null }>();
 
+  // 1. From payment_receipts (by journalEntryId)
   try {
     const [prRows]: any = await db.query(
       `SELECT journalEntryId, chequeNo, chequeDate, realizedDate, chequeStatus, depositSlip
@@ -12815,80 +12818,84 @@ async function enrichLedgerLinesWithChequeInfo(lines: any[]): Promise<any[]> {
         });
       }
     }
+  } catch (e) {}
 
-    const [pvRows]: any = await db.query(
-      `SELECT journalEntryId, chequeNo, chequeDate, realizedDate, chequeStatus, depositSlip
-       FROM payment_vouchers
-       WHERE journalEntryId IN (?) AND ((chequeNo IS NOT NULL AND chequeNo != '') OR (depositSlip IS NOT NULL AND depositSlip != ''))`,
-      [entryIds]
-    );
-    for (const v of (pvRows || [])) {
-      if (v.journalEntryId) {
-        const existing = chequeMap.get(v.journalEntryId) || {};
-        chequeMap.set(v.journalEntryId, {
-          ...existing,
-          ...(!existing.chequeNo && v.chequeNo ? {
-            chequeNo: v.chequeNo,
-            chequeDate: v.chequeDate ? String(v.chequeDate).slice(0, 10) : null,
-            realizedDate: v.realizedDate ? String(v.realizedDate).slice(0, 10) : null,
-            chequeStatus: v.chequeStatus || null,
-          } : {}),
-          ...(!existing.attachmentUrl && v.depositSlip ? { attachmentUrl: v.depositSlip, attachmentName: 'Payment_Slip' } : {})
-        });
+  // 2. From payment_vouchers (by voucherNo matching journal_entries.reference)
+  if (refs.length > 0) {
+    try {
+      const [pvRows]: any = await db.query(
+        `SELECT voucherNo, chequeNo, chequeDate, realizedDate, chequeStatus, depositSlip
+         FROM payment_vouchers
+         WHERE voucherNo IN (?) AND ((chequeNo IS NOT NULL AND chequeNo != '') OR (depositSlip IS NOT NULL AND depositSlip != ''))`,
+        [refs]
+      );
+      for (const v of (pvRows || [])) {
+        if (v.voucherNo) {
+          refMap.set(v.voucherNo, {
+            ...(v.chequeNo ? {
+              chequeNo: v.chequeNo,
+              chequeDate: v.chequeDate ? String(v.chequeDate).slice(0, 10) : null,
+              realizedDate: v.realizedDate ? String(v.realizedDate).slice(0, 10) : null,
+              chequeStatus: v.chequeStatus || null,
+            } : {}),
+            ...(v.depositSlip ? { attachmentUrl: v.depositSlip, attachmentName: 'Payment_Slip' } : {})
+          });
+        }
       }
-    }
+    } catch (e) {}
+  }
 
+  // 3. From cheques_register (by realizedJournalEntryId or sourceRef)
+  try {
     const [crRows]: any = await db.query(
-      `SELECT realizedJournalEntryId, chequeNo, chequeDate, realizedDate, status
+      `SELECT realizedJournalEntryId, sourceRef, chequeNo, chequeDate, realizedDate, status
        FROM cheques_register
-       WHERE realizedJournalEntryId IN (?) AND chequeNo IS NOT NULL AND chequeNo != ''`,
-      [entryIds]
+       WHERE (realizedJournalEntryId IN (?) ${refs.length > 0 ? 'OR sourceRef IN (?)' : ''}) AND chequeNo IS NOT NULL AND chequeNo != ''`,
+      refs.length > 0 ? [entryIds, refs] : [entryIds]
     );
     for (const c of (crRows || [])) {
+      const info = {
+        chequeNo: c.chequeNo,
+        chequeDate: c.chequeDate ? String(c.chequeDate).slice(0, 10) : null,
+        realizedDate: c.realizedDate ? String(c.realizedDate).slice(0, 10) : null,
+        chequeStatus: c.status || null
+      };
       if (c.realizedJournalEntryId) {
         const existing = chequeMap.get(c.realizedJournalEntryId) || {};
-        chequeMap.set(c.realizedJournalEntryId, {
-          ...existing,
-          chequeNo: c.chequeNo,
-          chequeDate: c.chequeDate ? String(c.chequeDate).slice(0, 10) : null,
-          realizedDate: c.realizedDate ? String(c.realizedDate).slice(0, 10) : null,
-          chequeStatus: c.status || null
-        });
+        chequeMap.set(c.realizedJournalEntryId, { ...existing, ...info });
+      }
+      if (c.sourceRef) {
+        const existing = refMap.get(c.sourceRef) || {};
+        refMap.set(c.sourceRef, { ...existing, ...info });
       }
     }
+  } catch (e) {}
 
-    // Check supplier_bills attachments via reference (bill id)
-    const refs = Array.from(new Set(lines.map(l => l.reference).filter(Boolean)));
-    if (refs.length > 0) {
+  // 4. From supplier_bills attachments (by id matching reference)
+  if (refs.length > 0) {
+    try {
       const [billRows]: any = await db.query(
         `SELECT id, billAttachment, billAttachmentName
          FROM supplier_bills
          WHERE id IN (?) AND billAttachment IS NOT NULL AND billAttachment != ''`,
         [refs]
       );
-      const billAttMap = new Map<string, { url: string; name: string }>();
       for (const b of (billRows || [])) {
         if (b.id && b.billAttachment) {
-          billAttMap.set(b.id, { url: b.billAttachment, name: b.billAttachmentName || `Bill_${b.id}` });
-        }
-      }
-      for (const l of lines) {
-        if (l.entryId && l.reference && billAttMap.has(l.reference)) {
-          const existing = chequeMap.get(l.entryId) || {};
+          const existing = refMap.get(b.id) || {};
           if (!existing.attachmentUrl) {
-            const att = billAttMap.get(l.reference)!;
-            chequeMap.set(l.entryId, { ...existing, attachmentUrl: att.url, attachmentName: att.name });
+            refMap.set(b.id, { ...existing, attachmentUrl: b.billAttachment, attachmentName: b.billAttachmentName || `Bill_${b.id}` });
           }
         }
       }
-    }
-  } catch (e) {
-    console.warn('Cheque/attachment enrichment warning (non-fatal):', e);
+    } catch (e) {}
   }
 
   return lines.map(l => {
-    const chq = l.entryId ? chequeMap.get(l.entryId) : undefined;
-    return chq ? { ...l, ...chq } : l;
+    const byEntry = l.entryId ? chequeMap.get(l.entryId) : undefined;
+    const byRef = l.reference ? refMap.get(l.reference) : undefined;
+    if (!byEntry && !byRef) return l;
+    return { ...l, ...byRef, ...byEntry };
   });
 }
 
