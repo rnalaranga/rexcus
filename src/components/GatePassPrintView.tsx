@@ -304,7 +304,13 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   const formattedQty = Number.isInteger(qtyVal) ? qtyVal.toString() : qtyVal.toFixed(2);
                   const desc = item.description || item.items || item.desc || item.productName || 'Sample Item';
                   const unit = item.unit || item.uom || 'Nos';
-                  const remarks = item.remarks || item.notes || gatePass.notes || '-';
+                  const rawRemarks = String(item.remarks || item.notes || gatePass.notes || '').trim();
+                  const firstLine = rawRemarks.split(/\r?\n/)[0].trim();
+                  const remarks = !firstLine
+                    ? '-'
+                    : firstLine.length > 55
+                      ? `${firstLine.slice(0, 52).trim()}...`
+                      : firstLine;
 
                   return (
                     <tr key={idx} className="border-b border-black text-[10px] leading-snug">
