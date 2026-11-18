@@ -574,6 +574,188 @@ export const PayablesHub: React.FC = () => {
         </GlassCard>
       )}
 
+      {/* TAB 2: SUPPLIER BILLS & PAYABLES */}
+      {activeTab === 'bills' && (
+        <GlassCard className="p-0 overflow-hidden">
+          {loadingBills ? (
+            <div className="p-12 text-center text-muted animate-pulse">Loading supplier bills...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-surface2/70 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                    <th className="py-3 px-4">Bill #</th>
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Supplier</th>
+                    <th className="py-3 px-4">Invoice Ref</th>
+                    <th className="py-3 px-4 text-right">Amount</th>
+                    <th className="py-3 px-4 text-right">Paid</th>
+                    <th className="py-3 px-4 text-right">Balance</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle/50">
+                  {filteredAndSortedBills.map((b: any) => {
+                    const total = Number(b.amount || 0);
+                    const paid = Number(b.paidAmount || 0);
+                    const bal = Math.max(0, total - paid);
+                    return (
+                      <tr key={b.id} className="hover:bg-surface2/40 transition-colors">
+                        <td className="py-3 px-4 font-mono font-bold text-primary">{b.billNo || b.id}</td>
+                        <td className="py-3 px-4 font-mono text-muted">{formatDate(b.date)}</td>
+                        <td className="py-3 px-4 font-semibold text-primary">{b.supplierName || b.supplierCompany || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-secondary">{b.invoiceNo || '—'}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(total)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-emerald-600">{formatCurrency(paid)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-rose-600">{formatCurrency(bal)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge variant={bal <= 0.01 ? 'success' : paid > 0 ? 'warning' : 'danger'}>
+                            {bal <= 0.01 ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {bal > 0.01 ? (
+                            <Button variant="primary" size="sm" onClick={() => setPaymentBill(b)} className="h-7 text-[11px]">
+                              Pay Bill
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-emerald-600 font-semibold">Settled</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredAndSortedBills.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="py-10 text-center text-muted">No supplier bills found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlassCard>
+      )}
+
+      {/* TAB 3: PURCHASE ORDERS */}
+      {activeTab === 'pos' && (
+        <GlassCard className="p-0 overflow-hidden">
+          {loadingPOs ? (
+            <div className="p-12 text-center text-muted animate-pulse">Loading purchase orders...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-surface2/70 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                    <th className="py-3 px-4">PO #</th>
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Supplier</th>
+                    <th className="py-3 px-4 text-right">Total</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle/50">
+                  {filteredAndSortedPOs.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-surface2/40 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-primary">{p.poNo || p.id}</td>
+                      <td className="py-3 px-4 font-mono text-muted">{formatDate(p.date)}</td>
+                      <td className="py-3 px-4 font-semibold text-primary">{p.supplierName || p.supplier || '—'}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(Number(p.totalAmount || p.total || 0))}</td>
+                      <td className="py-3 px-4 text-center">
+                        <Badge variant={p.status === 'Received' || p.status === 'Completed' ? 'success' : 'warning'}>
+                          {p.status || 'Pending'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredAndSortedPOs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-muted">No purchase orders found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlassCard>
+      )}
+
+      {/* TAB 4: PAYMENT RECEIPTS (VOUCHERS) */}
+      {activeTab === 'vouchers' && (
+        <GlassCard className="p-0 overflow-hidden">
+          {loadingVouchers ? (
+            <div className="p-12 text-center text-muted animate-pulse">Loading payment receipts...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-surface2/70 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted tracking-wider">
+                    <th className="py-3 px-4">Voucher #</th>
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Supplier / Payee</th>
+                    <th className="py-3 px-4">Bill / Ref</th>
+                    <th className="py-3 px-4">Method</th>
+                    <th className="py-3 px-4 text-right">Amount</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-subtle/50">
+                  {vouchers
+                    .filter((v: any) => {
+                      if (!search) return true;
+                      const q = search.toLowerCase();
+                      return (
+                        (v.voucherNo || v.id || '').toLowerCase().includes(q) ||
+                        (v.payeeName || v.supplierName || '').toLowerCase().includes(q) ||
+                        (v.relatedBillNo || v.relatedBillId || '').toLowerCase().includes(q) ||
+                        (v.chequeNo || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((v: any) => (
+                      <tr key={v.id || v.voucherNo} className="hover:bg-surface2/40 transition-colors">
+                        <td className="py-3 px-4 font-mono font-bold text-primary">{v.voucherNo || v.id}</td>
+                        <td className="py-3 px-4 font-mono text-muted">{formatDate(v.date)}</td>
+                        <td className="py-3 px-4 font-semibold text-primary">{v.payeeName || v.supplierName || '—'}</td>
+                        <td className="py-3 px-4 font-mono text-secondary">{v.relatedBillNo || v.relatedBillId || v.transactionRef || '—'}</td>
+                        <td className="py-3 px-4">
+                          <span className="font-medium text-secondary">{v.paymentMethod || 'Bank Transfer'}</span>
+                          {v.chequeNo && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                              CHQ #{v.chequeNo}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
+                          {formatCurrency(Number(v.amount || 0))}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Printer}
+                            onClick={() => setPrintVoucher(v)}
+                            className="h-7 text-[11px]"
+                          >
+                            View / Print
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  {vouchers.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-muted">
+                        No payment receipts / vouchers found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlassCard>
+      )}
+
       {/* Direct Bill Payment Modal */}
       {paymentBill && (
         <RecordBillPaymentModal
