@@ -667,6 +667,27 @@ export const WorkOrders: React.FC = () => {
           customerName: row.customerName
         }, allCustomerGrns)
 
+        // Extract Quotation images/attachments if linked
+        const linkedQuote = quotations.find((q: any) =>
+          (row.sourceQuoteId && String(q.id) === String(row.sourceQuoteId)) ||
+          (row.quotationId && String(q.id) === String(row.quotationId)) ||
+          (row.quotationNo && (q.quotationNo === row.quotationNo || q.docNo === row.quotationNo))
+        )
+        let qPhotos: any[] = []
+        if (linkedQuote) {
+          let qData: any = {}
+          try { qData = typeof linkedQuote.data === 'string' ? JSON.parse(linkedQuote.data) : (linkedQuote.data || {}) } catch {}
+          const rawAtts = linkedQuote.attachments || qData.attachments || qData.images || qData.photos || []
+          const arr = Array.isArray(rawAtts) ? rawAtts : (typeof rawAtts === 'string' && rawAtts.startsWith('[') ? (() => { try { return JSON.parse(rawAtts) } catch { return [] } })() : [])
+          qPhotos = arr
+            .map((a: any, idx: number) => ({
+              id: a.id || `qimg-${idx}`,
+              name: a.name || a.fileName || `Quotation Image ${idx + 1}`,
+              url: typeof a === 'string' ? a : (a.url || a.dataUrl || a.fileUrl || '')
+            }))
+            .filter((p: any) => Boolean(p.url))
+        }
+
         return (
           <div className="flex items-center justify-end gap-1.5 relative" onClick={e => e.stopPropagation()}>
             {/* Separate Assign Button */}
@@ -717,6 +738,22 @@ export const WorkOrders: React.FC = () => {
                       className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-amber-600 dark:text-amber-400 font-semibold"
                     >
                       <Camera size={12} /> Samples ({sPhotos.length})
+                    </button>
+                  )}
+
+                  {qPhotos.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenActionWoId(null)
+                        setActiveViewingPhotos({
+                          photos: qPhotos,
+                          title: `Quotation Images - ${linkedQuote?.docNo || linkedQuote?.quotationNo || row.quotationNo || row.orderNo}`
+                        })
+                      }}
+                      className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-purple-600 dark:text-purple-400 font-semibold"
+                    >
+                      <Camera size={12} /> Quotation Images ({qPhotos.length})
                     </button>
                   )}
 

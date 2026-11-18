@@ -146,8 +146,8 @@ export const WorkOrderPrintView: React.FC<WorkOrderPrintViewProps> = ({ workOrde
   const rawDate = workOrder.createdAt || workOrder.orderDate || linkedOrder?.createdAt || new Date();
   const orderDate = formatDate(rawDate);
 
-  // Target Work Order Batch Quantity (Authoritative from linked Sales Order or Work Order)
-  const targetWoQty = Math.max(1, Number(linkedOrder?.qty || workOrder.jobQty || workOrder.quantity || workOrder.qty || 0));
+  // Target Work Order Batch Quantity (Prioritize Work Order's own jobQty, fallback to linked Sales Order)
+  const targetWoQty = Math.max(1, Number(workOrder.jobQty || workOrder.quantity || workOrder.qty || linkedOrder?.qty || 0));
 
   // 2. Extract item descriptions (Sales Order is primary authoritative commercial contract!)
   let displayItems: Array<{ sNo: number; desc: string; qty: number | string; uom?: string }> = [];
