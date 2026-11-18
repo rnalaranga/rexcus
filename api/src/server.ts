@@ -6692,7 +6692,7 @@ app.get('/api/gate-passes', async (req, res) => {
              g.items as grnItems,
              o.items as orderItems,
              o.productName as orderProductName,
-             o.quantity as orderQty,
+             o.qty as orderQty,
              q.docNo as quotationDocNo,
              COALESCE(gp.quoNo, q.docNo, q.id) as displayQuoNo,
              COALESCE(
