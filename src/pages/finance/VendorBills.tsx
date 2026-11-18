@@ -475,9 +475,15 @@ export const VendorBills: React.FC = () => {
                   {paid > 0 && (() => {
                     const matchedVoucher = vouchers.find((v: any) =>
                       v.relatedBillId === row.id ||
-                      v.relatedBillNo === row.id ||
-                      (row.invoiceNo && v.relatedBillNo === row.invoiceNo) ||
-                      (v.description && v.description.includes(row.id))
+                      (v.relatedBillNo && (
+                        v.relatedBillNo === row.id ||
+                        v.relatedBillNo.includes(row.id) ||
+                        (row.invoiceNo && v.relatedBillNo.includes(row.invoiceNo))
+                      )) ||
+                      (v.description && (
+                        v.description.includes(row.id) ||
+                        (row.invoiceNo && v.description.includes(row.invoiceNo))
+                      ))
                     );
                     if (!matchedVoucher) return null;
                     return (
