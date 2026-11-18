@@ -6689,6 +6689,10 @@ app.get('/api/gate-passes', async (req, res) => {
       SELECT gp.*, 
              g.receivedAt as grnReceivedAt, 
              g.receivedBy as grnReceivedBy,
+             g.items as grnItems,
+             o.items as orderItems,
+             o.productName as orderProductName,
+             o.quantity as orderQty,
              q.docNo as quotationDocNo,
              COALESCE(gp.quoNo, q.docNo, q.id) as displayQuoNo,
              COALESCE(
@@ -6700,6 +6704,7 @@ app.get('/api/gate-passes', async (req, res) => {
              ) as resolvedCustomerCompany
       FROM gate_passes gp
       LEFT JOIN customer_grns g ON gp.grnId = g.id
+      LEFT JOIN finished_goods_orders o ON (gp.orderId = o.id OR (gp.orderNo IS NOT NULL AND gp.orderNo != '' AND gp.orderNo = o.orderNo))
       LEFT JOIN quotations q ON gp.quoteId = q.id
       LEFT JOIN customers c ON gp.customerId = c.id
       LEFT JOIN leads l ON gp.customerId = l.id
@@ -6708,9 +6713,21 @@ app.get('/api/gate-passes', async (req, res) => {
       ORDER BY gp.createdAt DESC
     `);
     const mapped = (rows as any[]).map((r: any) => {
-      const { resolvedCustomerCompany, ...rest } = r;
+      const { resolvedCustomerCompany, grnItems, orderItems, orderProductName, orderQty, ...rest } = r;
+      let resolvedItems = r.items;
+      const isEmptyItems = !resolvedItems || resolvedItems === '[]' || resolvedItems === 'null' || (Array.isArray(resolvedItems) && resolvedItems.length === 0);
+      if (isEmptyItems) {
+        if (orderItems && orderItems !== '[]' && orderItems !== 'null') {
+          resolvedItems = orderItems;
+        } else if (orderProductName) {
+          resolvedItems = JSON.stringify([{ description: orderProductName, qty: Number(orderQty) || 1, unit: 'Nos' }]);
+        } else if (grnItems && grnItems !== '[]' && grnItems !== 'null') {
+          resolvedItems = grnItems;
+        }
+      }
       return {
         ...rest,
+        items: resolvedItems,
         customerCompany: resolvedCustomerCompany || r.customerCompany || r.customerName || null
       };
     });
