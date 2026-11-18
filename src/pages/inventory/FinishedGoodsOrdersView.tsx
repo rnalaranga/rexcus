@@ -5869,8 +5869,8 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                       max={itemRem}
                                       value={it.dispatchQty !== undefined ? it.dispatchQty : itemRem}
                                       onChange={e => {
-                                        const rawVal = Math.max(0, Number(e.target.value));
-                                        const val = Math.min(itemRem, rawVal);
+                                        const rawStr = e.target.value;
+                                        const val = rawStr === '' ? '' : Math.min(itemRem, Math.max(0, Number(rawStr)));
                                         const updatedItems = dispatchForm.dispatchItems.map((item: any, i: number) =>
                                           i === itIdx ? { ...item, dispatchQty: val } : item
                                         );
