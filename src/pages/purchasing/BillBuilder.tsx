@@ -155,12 +155,13 @@ export const BillBuilder: React.FC = () => {
         const loadedAmount = Number(existing.amount || 0);
 
         let hasParsedItems = false;
+        let parsedItemsSum = 0;
         if (existing.items) {
           try {
             const parsed = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items;
             if (Array.isArray(parsed) && parsed.length > 0) {
               hasParsedItems = true;
-              setLineItems(parsed.map((it: any, idx: number) => ({
+              const mapped = parsed.map((it: any, idx: number) => ({
                 id: it.id || `line-${Date.now()}-${idx}`,
                 description: it.description || it.desc || it.name || '',
                 qty: Number(it.qty !== undefined ? it.qty : (it.qtyReceived || 1)),
@@ -168,12 +169,21 @@ export const BillBuilder: React.FC = () => {
                 total: Number(it.total || (Number(it.qty || 1) * Number(it.unitCost || 0))),
                 accountId: it.accountId || existing.expenseAccountId || '',
                 inventoryId: it.inventoryId || ''
-              })));
+              }));
+              parsedItemsSum = mapped.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+              setLineItems(mapped);
             }
           } catch (e) {}
         }
+        // If items total already equals gross amount (when taxAmount > 0), treat as tax-inclusive so VAT is not added twice
+        const effectiveIsInclusive = loadedIsInclusive || (
+          Number(existing.taxAmount || 0) > 0 &&
+          hasParsedItems &&
+          Math.abs(parsedItemsSum - loadedAmount) < 0.1 &&
+          loadedAmount > loadedSubtotal + 0.05
+        );
         // If no line items, use subtotal as base amount when tax was added on top (not inclusive)
-        if (!hasParsedItems && hasTax && !loadedIsInclusive && loadedSubtotal > 0) {
+        if (!hasParsedItems && hasTax && !effectiveIsInclusive && loadedSubtotal > 0) {
           setAmount(loadedSubtotal);
         } else {
           setAmount(loadedAmount);
@@ -204,8 +214,8 @@ export const BillBuilder: React.FC = () => {
             setTaxProfileId('tp_vat18');
           }
         }
-        if (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null) {
-          setIsTaxInclusive(loadedIsInclusive);
+        if (effectiveIsInclusive || (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null)) {
+          setIsTaxInclusive(effectiveIsInclusive);
         }
         if (existing.hideVatSeparately !== undefined && existing.hideVatSeparately !== null) {
           setHideVatSeparately(Boolean(Number(existing.hideVatSeparately) === 1));
