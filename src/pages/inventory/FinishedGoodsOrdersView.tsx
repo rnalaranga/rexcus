@@ -1922,12 +1922,16 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               try { dpItems = JSON.parse(dpItems); } catch (e) { dpItems = []; }
             }
             if (Array.isArray(dpItems)) {
-              const matched = dpItems.find((dpi: any) =>
-                (it.id && dpi.id && it.id === dpi.id) ||
-                (it.productId && dpi.productId && it.productId === dpi.productId) ||
-                (it.inventoryId && dpi.inventoryId && it.inventoryId === dpi.inventoryId) ||
-                (it.description && dpi.description && it.description === dpi.description)
-              );
+              const matched = dpItems.find((dpi: any) => {
+                if (it.id && dpi.id && it.id === dpi.id) return true;
+                if (it.description && dpi.description) {
+                  return it.description.trim() === dpi.description.trim();
+                }
+                return (
+                  (it.productId && dpi.productId && it.productId === dpi.productId) ||
+                  (it.inventoryId && dpi.inventoryId && it.inventoryId === dpi.inventoryId)
+                );
+              });
               if (matched) {
                 alreadyDispatched += Number(matched.qty || matched.dispatchQty || 0);
               }
