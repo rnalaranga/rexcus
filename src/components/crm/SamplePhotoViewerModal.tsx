@@ -128,18 +128,26 @@ export const SamplePhotoViewerModal: React.FC<SamplePhotoViewerModalProps> = ({
           onClick={e => e.stopPropagation()}
         >
           {photos.map((p, idx) => {
-            const thumbSrc = typeof p === 'string' ? p : (p?.url || p?.dataUrl || '');
+            const rawThumb = typeof p === 'string' ? p : (p?.url || p?.dataUrl || '');
+            const thumbSrc = resolveFileUrl(rawThumb);
             const thumbName = typeof p === 'string' ? `Thumb ${idx + 1}` : (p?.name || '');
+            const isPdf = thumbName.toLowerCase().endsWith('.pdf') || thumbSrc.toLowerCase().includes('.pdf') || thumbSrc.startsWith('data:application/pdf');
             return (
               <button
                 key={idx}
                 type="button"
                 onClick={() => setCurrentIndex(idx)}
-                className={`relative shrink-0 w-14 h-14 rounded overflow-hidden border-2 transition-all cursor-pointer ${
-                  idx === currentIndex ? 'border-amber-400 scale-105 shadow-md' : 'border-white/20 opacity-60 hover:opacity-100'
+                className={`relative shrink-0 w-14 h-14 rounded overflow-hidden border-2 transition-all cursor-pointer bg-white ${
+                  idx === currentIndex ? 'border-amber-400 scale-105 shadow-md' : 'border-slate-300/60 opacity-70 hover:opacity-100'
                 }`}
               >
-                <img src={thumbSrc} alt={thumbName} className="w-full h-full object-cover" />
+                {isPdf ? (
+                  <div className="w-full h-full flex items-center justify-center bg-rose-50 text-rose-600 text-[10px] font-black">
+                    PDF
+                  </div>
+                ) : (
+                  <img src={thumbSrc} alt={thumbName} className="w-full h-full object-cover" />
+                )}
               </button>
             );
           })}
