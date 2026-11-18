@@ -8390,8 +8390,10 @@ app.post('/api/finished-goods-orders/:id/dispatch', async (req, res) => {
     let currentDispatchQty = 0;
     if (customDispatchItems) {
       currentDispatchQty = customDispatchItems.reduce((acc: number, it: any) => acc + Math.max(0, Number(it.dispatchQty || 0)), 0);
-    }
-    if (currentDispatchQty <= 0) {
+      if (currentDispatchQty <= 0) {
+        return res.status(400).json({ error: 'Please enter a dispatch quantity greater than 0 for at least one item.' });
+      }
+    } else {
       currentDispatchQty = Math.max(1, Math.min(
         totalOrderQty - prevDispatched,
         Number(dispatchDetails.dispatchQty || (totalOrderQty - prevDispatched))
