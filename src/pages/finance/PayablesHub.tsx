@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Download, Plus, Filter, ArrowDownRight, FileText, ShoppingCart, 
   Truck, CheckCircle2, Clock, AlertCircle, RefreshCw, ExternalLink,
-  Building2, Search, DollarSign, CreditCard, BarChart3
+  Building2, Search, DollarSign, CreditCard, BarChart3, Receipt, Printer
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -16,9 +16,11 @@ import { useSuppliers, useWorkOrders } from '@/hooks/useData';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
 import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
+import { getPaymentVouchers } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 
-type ActiveTab = 'aging' | 'bills' | 'pos';
+type ActiveTab = 'aging' | 'bills' | 'pos' | 'vouchers';
 type SortDir = 'asc' | 'desc';
 
 export const PayablesHub: React.FC = () => {
@@ -32,6 +34,17 @@ export const PayablesHub: React.FC = () => {
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
   const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
   const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
+  const [vouchers, setVouchers] = useState<any[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null);
+
+  useEffect(() => {
+    setLoadingVouchers(true);
+    getPaymentVouchers()
+      .then((res: any) => setVouchers(Array.isArray(res) ? res : []))
+      .catch(() => setVouchers([]))
+      .finally(() => setLoadingVouchers(false));
+  }, []);
 
   // Purchasing hooks
   const { data: bills = [], loading: loadingBills, refetch: refetchBills } = useBills();
@@ -509,6 +522,17 @@ export const PayablesHub: React.FC = () => {
             <ShoppingCart size={13} />
             Purchase Orders ({pos.length})
           </button>
+          <button
+            onClick={() => setActiveTab('vouchers')}
+            className={`px-4 py-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
+              activeTab === 'vouchers'
+                ? 'border-emerald-500 text-emerald-600 bg-emerald-500/5'
+                : 'border-transparent text-secondary hover:text-primary hover:bg-surface2/50'
+            }`}
+          >
+            <Receipt size={13} />
+            Payment Receipts ({vouchers.length})
+          </button>
         </div>
 
         {/* Filter controls */}
@@ -550,256 +574,6 @@ export const PayablesHub: React.FC = () => {
         </GlassCard>
       )}
 
-      {/* TAB 2: SUPPLIER BILLS & TRACEABILITY */}
-      {activeTab === 'bills' && (
-        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-          {loadingBills ? (
-            <div className="p-12 text-center text-muted animate-pulse">Loading supplier bills...</div>
-          ) : filteredAndSortedBills.length === 0 ? (
-            <div className="p-12 text-center">
-              <FileText size={36} className="text-muted mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-semibold text-primary">No Supplier Bills Recorded</p>
-              <p className="text-xs text-muted mt-1">Click "+ New Supplier Bill" to enter incoming vendor invoices against POs or direct expenses.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse min-w-[950px]">
-                <thead>
-                  <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
-                    <th 
-                      onClick={() => handleBillSort('invoiceNo')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Bill / Invoice # {billSortField === 'invoiceNo' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handleBillSort('supplier')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Supplier {billSortField === 'supplier' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handleBillSort('poId')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      PO Reference {billSortField === 'poId' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handleBillSort('date')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Bill Date {billSortField === 'date' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handleBillSort('dueDate')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Due Date {billSortField === 'dueDate' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handleBillSort('totalAmount')} 
-                      className="px-4 py-3 text-right cursor-pointer hover:text-primary select-none"
-                    >
-                      Total Amount {billSortField === 'totalAmount' ? (billSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th className="px-4 py-3 text-center">Payment Status</th>
-                    <th className="px-4 py-3 text-center">Traceability</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-theme-subtle text-xs">
-                  {filteredAndSortedBills.map((b: any) => {
-                    const traces = getBillTraces(b);
-                    const suppName = getSupplierName(b.supplierId);
-                    const tot = Number(b.totalAmount || 0);
-
-                    return (
-                      <tr key={b.id} className="hover:bg-surface2/30 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-amber-600 dark:text-amber-400">
-                          {b.invoiceNo || b.id}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-primary">
-                          <button
-                            onClick={() => navigate(`/inventory/suppliers/${b.supplierId}`)}
-                            className="hover:text-amber-600 hover:underline text-left"
-                          >
-                            {suppName}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 font-mono">
-                          {b.poId ? (
-                            <button
-                              onClick={() => navigate(`/purchasing/po-builder/${b.poId}`)}
-                              className="text-blue-600 hover:underline"
-                            >
-                              PO: {b.poId}
-                            </button>
-                          ) : (
-                            <span className="text-muted">Direct Bill</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-muted font-mono">
-                          {formatDate(b.date || b.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 text-muted font-mono">
-                          {b.dueDate ? formatDate(b.dueDate) : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                          {formatCurrency(tot)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge variant={b.status === 'paid' ? 'success' : 'warning'} size="sm">
-                            {b.status === 'paid' ? 'Paid' : 'Unpaid'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex justify-center">
-                            <TraceabilityDropdown 
-                              title={`Traceability for Bill ${b.invoiceNo || b.id}`}
-                              traces={traces}
-                              compact
-                            />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs border border-theme-subtle hover:bg-surface2"
-                              onClick={() => navigate(`/purchasing/bill-builder/${b.id}`)}
-                            >
-                              View
-                            </Button>
-                            {b.status !== 'paid' && (
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 py-1 px-2.5 rounded-none"
-                                onClick={() => setPaymentBill(b)}
-                              >
-                                <CreditCard size={12} />
-                                <span>Pay</span>
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </GlassCard>
-      )}
-
-      {/* TAB 3: PURCHASE ORDERS WITH TRACEABILITY */}
-      {activeTab === 'pos' && (
-        <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
-          {loadingPOs ? (
-            <div className="p-12 text-center text-muted animate-pulse">Loading purchase orders...</div>
-          ) : filteredAndSortedPOs.length === 0 ? (
-            <div className="p-12 text-center">
-              <ShoppingCart size={36} className="text-muted mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-semibold text-primary">No Purchase Orders Found</p>
-              <p className="text-xs text-muted mt-1">Purchase orders issued to vendors will appear here with live billing and delivery status.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse min-w-[950px]">
-                <thead>
-                  <tr className="border-b border-theme-subtle bg-surface2/50 text-[10.5px] uppercase tracking-wider text-muted font-bold">
-                    <th 
-                      onClick={() => handlePoSort('id')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      PO # {poSortField === 'id' ? (poSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handlePoSort('supplier')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Supplier {poSortField === 'supplier' ? (poSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handlePoSort('date')} 
-                      className="px-4 py-3 cursor-pointer hover:text-primary select-none"
-                    >
-                      Order Date {poSortField === 'date' ? (poSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th 
-                      onClick={() => handlePoSort('totalAmount')} 
-                      className="px-4 py-3 text-right cursor-pointer hover:text-primary select-none"
-                    >
-                      PO Value {poSortField === 'totalAmount' ? (poSortDir === 'asc' ? '▲' : '▼') : '↕'}
-                    </th>
-                    <th className="px-4 py-3 text-center">Receipt Status</th>
-                    <th className="px-4 py-3 text-center">Invoicing</th>
-                    <th className="px-4 py-3 text-center">Traceability</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-theme-subtle text-xs">
-                  {filteredAndSortedPOs.map((p: any) => {
-                    const traces = getPoTraces(p);
-                    const suppName = getSupplierName(p.supplierId);
-                    const tot = Number(p.totalAmount || 0);
-
-                    return (
-                      <tr key={p.id} className="hover:bg-surface2/30 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                          {p.id}
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-primary">
-                          <button
-                            onClick={() => navigate(`/inventory/suppliers/${p.supplierId}`)}
-                            className="hover:text-blue-600 hover:underline text-left"
-                          >
-                            {suppName}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-muted font-mono">
-                          {formatDate(p.date || p.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                          {formatCurrency(tot)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge value={p.status || 'Active'} size="sm" />
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge value={p.billingStatus || 'Unbilled'} size="sm" />
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex justify-center">
-                            <TraceabilityDropdown 
-                              title={`Traceability for PO #${p.id}`}
-                              traces={traces}
-                              compact
-                            />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs border border-theme-subtle hover:bg-surface2"
-                            onClick={() => navigate(`/purchasing/po-builder/${p.id}`)}
-                          >
-                            View PO
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </GlassCard>
-      )}
-
       {/* Direct Bill Payment Modal */}
       {paymentBill && (
         <RecordBillPaymentModal
@@ -832,6 +606,12 @@ export const PayablesHub: React.FC = () => {
           }}
         />
       )}
+
+      <PaymentVoucherPrintModal
+        isOpen={!!printVoucher}
+        onClose={() => setPrintVoucher(null)}
+        voucher={printVoucher}
+      />
     </div>
   );
 };
