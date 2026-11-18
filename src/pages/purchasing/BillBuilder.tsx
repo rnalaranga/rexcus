@@ -179,8 +179,7 @@ export const BillBuilder: React.FC = () => {
         const effectiveIsInclusive = loadedIsInclusive || (
           Number(existing.taxAmount || 0) > 0 &&
           hasParsedItems &&
-          Math.abs(parsedItemsSum - loadedAmount) < 0.1 &&
-          loadedAmount > loadedSubtotal + 0.05
+          Math.abs(parsedItemsSum - loadedAmount) < 0.1
         );
         // If no line items, use subtotal as base amount when tax was added on top (not inclusive)
         if (!hasParsedItems && hasTax && !effectiveIsInclusive && loadedSubtotal > 0) {
@@ -195,7 +194,9 @@ export const BillBuilder: React.FC = () => {
         setBillAttachmentName(existing.billAttachmentName || '');
         if (existing.taxProfileId) {
           setTaxProfileId(existing.taxProfileId);
-          setTaxEnabled(true);
+          if (Number(existing.taxAmount || 0) > 0 || Boolean(existing.taxBreakdown) || effectiveIsInclusive) {
+            setTaxEnabled(true);
+          }
         } else if (Number(existing.taxAmount || 0) > 0 || existing.taxBreakdown) {
           // If tax amount or breakdown was recorded previously, enable tax mode and detect profile
           setTaxEnabled(true);

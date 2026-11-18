@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2, Wallet, RefreshCw } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, Plus, Filter, Settings2, Trash2, BookOpen, TrendingUp, TrendingDown, X, Receipt, CheckCircle, ChevronDown, ChevronUp, ChevronRight, Edit2, Wallet, RefreshCw, Paperclip } from 'lucide-react';
+import { AttachmentPreviewModal } from '@/components/finance/AttachmentPreviewModal';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -46,6 +47,7 @@ export const AccountingHub: React.FC = () => {
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
   const [ledgerData, setLedgerData] = useState<any>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<{ url: string; title: string } | null>(null);
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editTax, setEditTax] = useState<any>(null);
@@ -680,6 +682,33 @@ export const AccountingHub: React.FC = () => {
                         {line.partyName && (
                           <span className="block text-[10px] text-muted truncate">Party: {line.partyName}</span>
                         )}
+                        {line.chequeNo && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              CHQ #{line.chequeNo}
+                            </span>
+                            {line.chequeDate && (
+                              <span className="text-[9.5px] font-mono text-muted">
+                                Chq: {line.chequeDate}
+                              </span>
+                            )}
+                            {line.realizedDate && (
+                              <span className="text-[9.5px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                                Realized: {line.realizedDate}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {line.attachmentUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewAttachment({ url: line.attachmentUrl, title: line.attachmentName || line.reference || line.entryId })}
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                            title="View attached slip / document"
+                          >
+                            <Paperclip size={10} /> View Slip
+                          </button>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right font-mono">
                         {Number(line.debit) > 0 ? (
@@ -823,6 +852,12 @@ export const AccountingHub: React.FC = () => {
 
       {/* Tax Modal */}
 
+      <AttachmentPreviewModal
+        isOpen={!!previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+        url={previewAttachment?.url || ''}
+        title={previewAttachment?.title}
+      />
     </div>
   );
 };

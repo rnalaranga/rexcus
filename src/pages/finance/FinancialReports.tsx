@@ -4,8 +4,9 @@ import {
   Calendar, Search, Filter, ArrowDownLeft, ArrowUpRight, Clock,
   Printer, FileSpreadsheet, CheckCircle, AlertTriangle, ChevronRight,
   TrendingUp, TrendingDown, Building2, User, Hash, Layers, BookOpen,
-  ArrowRight, Receipt
+  ArrowRight, Receipt, Paperclip
 } from 'lucide-react';
+import { AttachmentPreviewModal } from '@/components/finance/AttachmentPreviewModal';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -46,6 +47,7 @@ export const FinancialReports: React.FC = () => {
 
   // Data states
   const [reportData, setReportData] = useState<any>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<{ url: string; title: string } | null>(null);
   const [financialStatementData, setFinancialStatementData] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -1679,6 +1681,33 @@ export const FinancialReports: React.FC = () => {
                                     {l.lineDescription && l.entryDescription && l.lineDescription !== l.entryDescription && (
                                       <span className="block text-[10px] text-slate-500 font-normal mt-0.5">{l.lineDescription}</span>
                                     )}
+                                    {l.chequeNo && (
+                                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                          CHQ #{l.chequeNo}
+                                        </span>
+                                        {l.chequeDate && (
+                                          <span className="text-[9.5px] font-mono text-slate-500">
+                                            Chq Date: {l.chequeDate}
+                                          </span>
+                                        )}
+                                        {l.realizedDate && (
+                                          <span className="text-[9.5px] font-mono text-emerald-700 font-semibold">
+                                            Realized: {l.realizedDate}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {l.attachmentUrl && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewAttachment({ url: l.attachmentUrl, title: l.attachmentName || ref })}
+                                        className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors print:hidden"
+                                        title="View attached slip / document"
+                                      >
+                                        <Paperclip size={10} /> View Slip / Attachment
+                                      </button>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-3 text-slate-600">{l.partyName || (l.partyId ? `${l.partyType || 'Party'}: ${l.partyId}` : '—')}</td>
                                   <td className="py-2.5 px-3 text-right font-mono text-emerald-700 font-medium">
@@ -1955,6 +1984,13 @@ export const FinancialReports: React.FC = () => {
           </div>
         </div>
       </GlassCard>
+
+      <AttachmentPreviewModal
+        isOpen={!!previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+        url={previewAttachment?.url || ''}
+        title={previewAttachment?.title}
+      />
     </div>
   );
 };

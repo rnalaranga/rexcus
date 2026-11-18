@@ -12096,7 +12096,7 @@ app.post('/api/finance/payables/settle', async (req, res) => {
     const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const isOffset = (paymentMethod || '').toLowerCase().includes('setoff') || (paymentMethod || '').toLowerCase().includes('set off') || (paymentMethod || '').toLowerCase().includes('advance offset') || (paymentMethod || '').toLowerCase().includes('prior advance');
-    const voucherRef = referenceNo || (isOffset ? `SOFF-${Date.now().toString().slice(-6)}` : `PV-${Date.now().toString().slice(-6)}`);
+    const voucherRef = referenceNo || (isOffset ? `SOFF-${Date.now().toString().slice(-6)}` : await getNextPaymentVoucherNumber(conn));
     const journalId = `JE-${voucherRef}`;
 
     // 1. Resolve Credit Account (Cash, Bank, or Offset Account e.g. Supplier Advance)
@@ -12788,6 +12788,110 @@ app.delete('/api/finance/accounts/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+async function enrichLedgerLinesWithChequeInfo(lines: any[]): Promise<any[]> {
+  if (!Array.isArray(lines) || lines.length === 0) return lines;
+  const entryIds = Array.from(new Set(lines.map(l => l.entryId).filter(Boolean)));
+  if (entryIds.length === 0) return lines;
+
+  const chequeMap = new Map<string, { chequeNo?: string; chequeDate?: string | null; realizedDate?: string | null; chequeStatus?: string | null; attachmentUrl?: string | null; attachmentName?: string | null }>();
+
+  try {
+    const [prRows]: any = await db.query(
+      `SELECT journalEntryId, chequeNo, chequeDate, realizedDate, chequeStatus, depositSlip
+       FROM payment_receipts
+       WHERE journalEntryId IN (?) AND ((chequeNo IS NOT NULL AND chequeNo != '') OR (depositSlip IS NOT NULL AND depositSlip != ''))`,
+      [entryIds]
+    );
+    for (const r of (prRows || [])) {
+      if (r.journalEntryId) {
+        chequeMap.set(r.journalEntryId, {
+          ...(r.chequeNo ? {
+            chequeNo: r.chequeNo,
+            chequeDate: r.chequeDate ? String(r.chequeDate).slice(0, 10) : null,
+            realizedDate: r.realizedDate ? String(r.realizedDate).slice(0, 10) : null,
+            chequeStatus: r.chequeStatus || null,
+          } : {}),
+          ...(r.depositSlip ? { attachmentUrl: r.depositSlip, attachmentName: 'Bank_Deposit_Slip' } : {})
+        });
+      }
+    }
+
+    const [pvRows]: any = await db.query(
+      `SELECT journalEntryId, chequeNo, chequeDate, realizedDate, chequeStatus, depositSlip
+       FROM payment_vouchers
+       WHERE journalEntryId IN (?) AND ((chequeNo IS NOT NULL AND chequeNo != '') OR (depositSlip IS NOT NULL AND depositSlip != ''))`,
+      [entryIds]
+    );
+    for (const v of (pvRows || [])) {
+      if (v.journalEntryId) {
+        const existing = chequeMap.get(v.journalEntryId) || {};
+        chequeMap.set(v.journalEntryId, {
+          ...existing,
+          ...(!existing.chequeNo && v.chequeNo ? {
+            chequeNo: v.chequeNo,
+            chequeDate: v.chequeDate ? String(v.chequeDate).slice(0, 10) : null,
+            realizedDate: v.realizedDate ? String(v.realizedDate).slice(0, 10) : null,
+            chequeStatus: v.chequeStatus || null,
+          } : {}),
+          ...(!existing.attachmentUrl && v.depositSlip ? { attachmentUrl: v.depositSlip, attachmentName: 'Payment_Slip' } : {})
+        });
+      }
+    }
+
+    const [crRows]: any = await db.query(
+      `SELECT realizedJournalEntryId, chequeNo, chequeDate, realizedDate, status
+       FROM cheques_register
+       WHERE realizedJournalEntryId IN (?) AND chequeNo IS NOT NULL AND chequeNo != ''`,
+      [entryIds]
+    );
+    for (const c of (crRows || [])) {
+      if (c.realizedJournalEntryId) {
+        const existing = chequeMap.get(c.realizedJournalEntryId) || {};
+        chequeMap.set(c.realizedJournalEntryId, {
+          ...existing,
+          chequeNo: c.chequeNo,
+          chequeDate: c.chequeDate ? String(c.chequeDate).slice(0, 10) : null,
+          realizedDate: c.realizedDate ? String(c.realizedDate).slice(0, 10) : null,
+          chequeStatus: c.status || null
+        });
+      }
+    }
+
+    // Check supplier_bills attachments via reference (bill id)
+    const refs = Array.from(new Set(lines.map(l => l.reference).filter(Boolean)));
+    if (refs.length > 0) {
+      const [billRows]: any = await db.query(
+        `SELECT id, billAttachment, billAttachmentName
+         FROM supplier_bills
+         WHERE id IN (?) AND billAttachment IS NOT NULL AND billAttachment != ''`,
+        [refs]
+      );
+      const billAttMap = new Map<string, { url: string; name: string }>();
+      for (const b of (billRows || [])) {
+        if (b.id && b.billAttachment) {
+          billAttMap.set(b.id, { url: b.billAttachment, name: b.billAttachmentName || `Bill_${b.id}` });
+        }
+      }
+      for (const l of lines) {
+        if (l.entryId && l.reference && billAttMap.has(l.reference)) {
+          const existing = chequeMap.get(l.entryId) || {};
+          if (!existing.attachmentUrl) {
+            const att = billAttMap.get(l.reference)!;
+            chequeMap.set(l.entryId, { ...existing, attachmentUrl: att.url, attachmentName: att.name });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Cheque/attachment enrichment warning (non-fatal):', e);
+  }
+
+  return lines.map(l => {
+    const chq = l.entryId ? chequeMap.get(l.entryId) : undefined;
+    return chq ? { ...l, ...chq } : l;
+  });
+}
+
 app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
   try {
     const { id } = req.params;
@@ -12837,7 +12941,8 @@ app.get('/api/finance/accounts/:id/ledger', async (req, res) => {
     }
     query += ` ORDER BY je.date ASC, je.id ASC, jl.id ASC`;
 
-    const [lines]: any = await db.query(query, params);
+    const [rawLines]: any = await db.query(query, params);
+    const lines = await enrichLedgerLinesWithChequeInfo(rawLines);
 
     // Calculate running balance starting from opening balance
     let runningBalance = openingBalance;
@@ -15368,6 +15473,46 @@ app.delete('/api/finance/cheques/:id', async (req, res) => {
 
 
 
+// Helper function to generate sequential Payment Voucher numbers (PV-XXXX)
+export async function getNextPaymentVoucherNumber(customConn?: any): Promise<string> {
+  const executor = customConn || db;
+  const [seqRows]: any = await executor.query(
+    "SELECT prefix, next_number, padding FROM document_sequences WHERE id = 'payment_voucher' FOR UPDATE"
+  );
+  let nextNum = 1001;
+  let pfx = 'PV-';
+  let pad = 4;
+  if (seqRows && seqRows.length > 0) {
+    nextNum = Math.max(1001, Number(seqRows[0].next_number) || 1001);
+    pfx = seqRows[0].prefix || 'PV-';
+    pad = Number(seqRows[0].padding) || 4;
+  } else {
+    await executor.query(
+      "INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) VALUES ('payment_voucher', 'Payment Vouchers', 'PV-', 1001, 4, NOW())"
+    );
+  }
+
+  let candidateNum = nextNum;
+  let candidateNo = `${pfx}${String(candidateNum).padStart(pad, '0')}`;
+
+  while (true) {
+    const [coll]: any = await executor.query(
+      "SELECT id FROM payment_vouchers WHERE id = ? OR voucherNo = ? LIMIT 1",
+      [candidateNo, candidateNo]
+    );
+    if (!coll || coll.length === 0) break;
+    candidateNum++;
+    candidateNo = `${pfx}${String(candidateNum).padStart(pad, '0')}`;
+  }
+
+  await executor.query(
+    "UPDATE document_sequences SET next_number = ?, updated_at = NOW() WHERE id = 'payment_voucher'",
+    [candidateNum + 1]
+  );
+
+  return candidateNo;
+}
+
 // Helper function to generate sequential Payment Receipt numbers starting from REC-1000
 export async function getNextReceiptNumber(customConn?: any): Promise<string> {
   const executor = customConn || db;
@@ -15952,7 +16097,8 @@ app.get('/api/finance/reports/account-ledger', async (req, res) => {
     }
     linesQuery += ` ORDER BY je.date ASC, je.id ASC, jl.id ASC`;
 
-    const [lines]: any = await db.query(linesQuery, params);
+    const [rawLines]: any = await db.query(linesQuery, params);
+    const lines = await enrichLedgerLinesWithChequeInfo(rawLines);
 
     let runningBalance = openingBalance;
     let totalDebit = 0;

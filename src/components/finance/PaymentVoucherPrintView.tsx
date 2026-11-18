@@ -56,8 +56,8 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
         #payment-voucher-print-section .print-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
         @media print {
           @page {
-            size: A4 portrait;
-            margin: 6mm 8mm;
+            size: A5 landscape;
+            margin: 4mm 6mm;
           }
           html, body {
             margin: 0 !important;
