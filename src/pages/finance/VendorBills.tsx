@@ -18,7 +18,8 @@ import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
 import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
 import { ViewVendorBillModal } from '@/components/purchasing/ViewVendorBillModal';
-import { deleteBill } from '@/lib/api';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
+import { deleteBill, getPaymentVouchers } from '@/lib/api';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +50,14 @@ export const VendorBills: React.FC = () => {
 
   const { data: bills = [], loading, refetch } = useBills();
   const { data: suppliers = [] } = useSuppliers();
+  const [vouchers, setVouchers] = useState<any[]>([]);
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null);
+
+  useEffect(() => {
+    getPaymentVouchers()
+      .then((res: any) => setVouchers(Array.isArray(res) ? res : []))
+      .catch(() => setVouchers([]));
+  }, []);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -463,6 +472,73 @@ export const VendorBills: React.FC = () => {
                     </button>
                   )}
 
+                  {paid > 0 && (() => {
+                    const matchedVoucher = vouchers.find((v: any) =>
+                      v.relatedBillId === row.id ||
+                      v.relatedBillNo === row.id ||
+                      (row.invoiceNo && v.relatedBillNo === row.invoiceNo) ||
+                      (v.description && v.description.includes(row.id))
+                    );
+                    if (!matchedVoucher) return null;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          data-no-row-click="true"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            closeDropdown();
+                            setPrintVoucher(matchedVoucher);
+                          }}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-semibold"
+                        >
+                          <Receipt size={13} className="text-emerald-500" />
+                          <span>View Payment Receipt ({matchedVoucher.voucherNo || matchedVoucher.id})</span>
+                        </button>
+                        {matchedVoucher.depositSlip && (
+                          <button
+                            type="button"
+                            data-no-row-click="true"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              closeDropdown();
+                              openDataUriOrUrl(matchedVoucher.depositSlip, `Payment Slip - ${matchedVoucher.voucherNo || matchedVoucher.id}`);
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors"
+                          >
+                            <Paperclip size={13} className="text-blue-500" />
+                            <span>View Payment Slip</span>
+                          </button>
+                        )}
+                        {matchedVoucher.chequeNo && (
+                          <div className="mx-2 my-1 px-2.5 py-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[10.5px] space-y-0.5">
+                            <div className="font-bold text-amber-700 dark:text-amber-400 font-mono">
+                              Cheque #{matchedVoucher.chequeNo}
+                            </div>
+                            {matchedVoucher.chequeDate && (
+                              <div className="text-zinc-600 dark:text-zinc-400">
+                                Chq Date: <span className="font-mono">{formatDate(matchedVoucher.chequeDate)}</span>
+                              </div>
+                            )}
+                            {matchedVoucher.bankName && (
+                              <div className="text-zinc-600 dark:text-zinc-400">
+                                Bank: {matchedVoucher.bankName}
+                              </div>
+                            )}
+                            {matchedVoucher.chequeStatus && (
+                              <div className="text-zinc-600 dark:text-zinc-400">
+                                Status: <span className="font-semibold">{matchedVoucher.chequeStatus}</span>
+                                {matchedVoucher.realizedDate && ` (${formatDate(matchedVoucher.realizedDate)})`}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
                   {due > 0 && (
                     <button
                       type="button"
@@ -776,6 +852,12 @@ export const VendorBills: React.FC = () => {
           onPayBill={(b) => setPaymentBill(b)}
         />
       )}
+
+      <PaymentVoucherPrintModal
+        isOpen={!!printVoucher}
+        onClose={() => setPrintVoucher(null)}
+        voucher={printVoucher}
+      />
     </div>
   );
 };
