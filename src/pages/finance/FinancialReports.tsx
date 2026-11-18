@@ -323,6 +323,7 @@ export const FinancialReports: React.FC = () => {
           'Company': r.customerCompany || '',
           'Phone': r.customerPhone || '',
           'Customer VAT No': r.customerVat || '',
+          'Sales Order No': r.orderNo || '',
           'PO No': r.poNo || '',
           'Tax Type': r.taxType,
           'Status': r.status.toUpperCase(),
@@ -347,6 +348,7 @@ export const FinancialReports: React.FC = () => {
           'Company': '',
           'Phone': '',
           'Customer VAT No': '',
+          'Sales Order No': '',
           'PO No': '',
           'Tax Type': '',
           'Status': `${reportData?.summary?.totalCount || 0} Invoices`,
@@ -1253,6 +1255,7 @@ export const FinancialReports: React.FC = () => {
                         <th className="py-2.5 px-2">Date</th>
                         <th className="py-2.5 px-3">Customer / Company</th>
                         <th className="py-2.5 px-2">Customer VAT</th>
+                        <th className="py-2.5 px-2">Sales Order #</th>
                         <th className="py-2.5 px-2">PO / Ref</th>
                         <th className="py-2.5 px-2 text-right">Net Subtotal</th>
                         <th className="py-2.5 px-2 text-right text-amber-700">SSCL (2.56%)</th>
@@ -1267,7 +1270,7 @@ export const FinancialReports: React.FC = () => {
                     <tbody className="divide-y divide-slate-200 text-slate-800">
                       {filteredRows.length === 0 ? (
                         <tr>
-                          <td colSpan={13} className="py-12 text-center text-slate-400 font-medium">
+                          <td colSpan={14} className="py-12 text-center text-slate-400 font-medium">
                             No invoices match the selected date range and filter criteria.
                           </td>
                         </tr>
@@ -1283,6 +1286,7 @@ export const FinancialReports: React.FC = () => {
                               )}
                             </td>
                             <td className="py-2 px-2 font-mono text-[11px] text-slate-600">{r.customerVat || '—'}</td>
+                            <td className="py-2 px-2 font-mono text-[11px] text-slate-700 font-semibold">{r.orderNo || '—'}</td>
                             <td className="py-2 px-2 font-mono text-[11px] text-slate-600">{r.poNo || '—'}</td>
                             <td className="py-2 px-2 text-right font-mono">{formatCurrency(r.subtotal, false, r.currency || 'LKR')}</td>
                             <td className="py-2 px-2 text-right font-mono text-amber-700 font-medium">
@@ -1320,7 +1324,7 @@ export const FinancialReports: React.FC = () => {
                       {/* Summary Totals Row */}
                       {filteredRows.length > 0 && reportData?.summary && (
                         <tr className="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-900">
-                          <td className="py-2.5 px-2" colSpan={5}>
+                          <td className="py-2.5 px-2" colSpan={6}>
                             TOTAL SUMMARY ({reportData.summary.totalCount} Invoices)
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono font-bold">{formatCurrency(reportData.summary.totalSubtotal)}</td>

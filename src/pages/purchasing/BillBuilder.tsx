@@ -147,12 +147,19 @@ export const BillBuilder: React.FC = () => {
         }
 
         setGrnId(existing.grnId || '');
-        setAmount(Number(existing.amount || 0));
+        const hasTax = Boolean(existing.taxProfileId) || Number(existing.taxAmount || 0) > 0 || Boolean(existing.taxBreakdown);
+        const loadedIsInclusive = existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null
+          ? Boolean(Number(existing.isTaxInclusive) === 1)
+          : false;
+        const loadedSubtotal = Number(existing.subtotal || 0);
+        const loadedAmount = Number(existing.amount || 0);
 
+        let hasParsedItems = false;
         if (existing.items) {
           try {
             const parsed = typeof existing.items === 'string' ? JSON.parse(existing.items) : existing.items;
             if (Array.isArray(parsed) && parsed.length > 0) {
+              hasParsedItems = true;
               setLineItems(parsed.map((it: any, idx: number) => ({
                 id: it.id || `line-${Date.now()}-${idx}`,
                 description: it.description || it.desc || it.name || '',
@@ -164,6 +171,12 @@ export const BillBuilder: React.FC = () => {
               })));
             }
           } catch (e) {}
+        }
+        // If no line items, use subtotal as base amount when tax was added on top (not inclusive)
+        if (!hasParsedItems && hasTax && !loadedIsInclusive && loadedSubtotal > 0) {
+          setAmount(loadedSubtotal);
+        } else {
+          setAmount(loadedAmount);
         }
         if (existing.date) setDate(formatYMD(existing.date) || new Date().toISOString().split('T')[0]);
         if (existing.dueDate) setDueDate(formatYMD(existing.dueDate));
@@ -192,7 +205,7 @@ export const BillBuilder: React.FC = () => {
           }
         }
         if (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null) {
-          setIsTaxInclusive(Boolean(Number(existing.isTaxInclusive) === 1));
+          setIsTaxInclusive(loadedIsInclusive);
         }
         if (existing.hideVatSeparately !== undefined && existing.hideVatSeparately !== null) {
           setHideVatSeparately(Boolean(Number(existing.hideVatSeparately) === 1));
@@ -1442,8 +1455,15 @@ export const BillBuilder: React.FC = () => {
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
                           />
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-primary align-top pt-4">
-                          {formatCurrency(item.total)}
+                        <td className="py-2.5 px-3 text-right align-top pt-3.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.total}
+                            onChange={e => updateLineItem(item.id, 'total', e.target.value)}
+                            className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-bold text-primary focus:border-rex-500 outline-none"
+                          />
                         </td>
                         <td className="py-2.5 px-3 align-top pt-3.5">
                           <AccountAutocomplete
