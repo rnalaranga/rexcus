@@ -690,6 +690,25 @@ export const WorkOrders: React.FC = () => {
 
         return (
           <div className="flex items-center justify-end gap-1.5 relative" onClick={e => e.stopPropagation()}>
+            {/* Small direct image/attachment icon if samples or quotation images exist */}
+            {(sPhotos.length > 0 || qPhotos.length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionWoId(null)
+                  const combined = [...sPhotos, ...qPhotos]
+                  setActiveViewingPhotos({
+                    photos: combined,
+                    title: `Images & Drawings - Work Order #${row.orderNo || row.id}`
+                  })
+                }}
+                className="p-1.5 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-none transition-colors cursor-pointer"
+                title={`View ${sPhotos.length + qPhotos.length} Sample / Quotation Image(s)`}
+              >
+                <Camera size={13} />
+              </button>
+            )}
+
             {/* Separate Assign Button */}
             <Button
               variant="outline"

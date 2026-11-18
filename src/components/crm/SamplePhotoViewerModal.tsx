@@ -95,11 +95,19 @@ export const SamplePhotoViewerModal: React.FC<SamplePhotoViewerModalProps> = ({
           </button>
         )}
 
-        <img
-          src={currentSrc}
-          alt={currentName}
-          className="max-h-[76vh] max-w-full object-contain rounded-xl shadow-2xl border border-slate-200/80 bg-white"
-        />
+        {currentSrc && (currentName.toLowerCase().endsWith('.pdf') || currentSrc.toLowerCase().includes('.pdf') || currentSrc.startsWith('data:application/pdf')) ? (
+          <iframe
+            src={currentSrc}
+            title={currentName}
+            className="w-full h-[76vh] rounded-xl shadow-2xl border border-slate-200/80 bg-white"
+          />
+        ) : (
+          <img
+            src={currentSrc}
+            alt={currentName}
+            className="max-h-[76vh] max-w-full object-contain rounded-xl shadow-2xl border border-slate-200/80 bg-white"
+          />
+        )}
 
         {photos.length > 1 && (
           <button
