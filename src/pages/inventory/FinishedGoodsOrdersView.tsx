@@ -1922,11 +1922,10 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               try { dpItems = JSON.parse(dpItems); } catch (e) { dpItems = []; }
             }
             if (Array.isArray(dpItems)) {
-              const matched = dpItems.find((dpi: any, dpiIdx: number) =>
+              const matched = dpItems.find((dpi: any) =>
                 (it.id && dpi.id && it.id === dpi.id) ||
                 (it.productId && dpi.productId && it.productId === dpi.productId) ||
                 (it.inventoryId && dpi.inventoryId && it.inventoryId === dpi.inventoryId) ||
-                (dpiIdx === itIdx) ||
                 (it.description && dpi.description && it.description === dpi.description)
               );
               if (matched) {
