@@ -52,11 +52,17 @@ export const VendorBills: React.FC = () => {
   const { data: suppliers = [] } = useSuppliers();
   const [vouchers, setVouchers] = useState<any[]>([]);
   const [printVoucher, setPrintVoucher] = useState<any | null>(null);
+  const [linkBill, setLinkBill] = useState<any | null>(null);
+  const [linkingVoucherId, setLinkingVoucherId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadVouchers = () => {
     getPaymentVouchers()
       .then((res: any) => setVouchers(Array.isArray(res) ? res : []))
       .catch(() => setVouchers([]));
+  };
+
+  useEffect(() => {
+    loadVouchers();
   }, []);
 
   const [search, setSearch] = useState('');
@@ -485,7 +491,52 @@ export const VendorBills: React.FC = () => {
                         (row.invoiceNo && v.description.includes(row.invoiceNo))
                       ))
                     );
-                    if (!matchedVoucher) return null;
+                    if (!matchedVoucher) {
+                      const fallbackVoucher = {
+                        id: row.id,
+                        voucherNo: `PV-${row.id}`,
+                        date: row.updatedAt || row.date,
+                        payeeName: row.supplierName || row.supplierCompany || 'Supplier',
+                        supplierName: row.supplierName || row.supplierCompany || 'Supplier',
+                        amount: paid,
+                        paymentMethod: 'Bank Transfer / Cash',
+                        relatedBillId: row.id,
+                        relatedBillNo: row.invoiceNo || row.id,
+                        description: `Payment against Vendor Bill ${row.invoiceNo || row.id}`
+                      };
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            data-no-row-click="true"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              closeDropdown();
+                              setPrintVoucher(fallbackVoucher);
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-semibold"
+                          >
+                            <Receipt size={13} className="text-emerald-500" />
+                            <span>Print Receipt</span>
+                          </button>
+                          <button
+                            type="button"
+                            data-no-row-click="true"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              closeDropdown();
+                              setLinkBill(row);
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-semibold"
+                          >
+                            <Receipt size={13} className="text-amber-500" />
+                            <span>Link Payment Voucher</span>
+                          </button>
+                        </>
+                      );
+                    }
                     return (
                       <>
                         <button
@@ -500,7 +551,7 @@ export const VendorBills: React.FC = () => {
                           className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-semibold"
                         >
                           <Receipt size={13} className="text-emerald-500" />
-                          <span>View Payment Receipt ({matchedVoucher.voucherNo || matchedVoucher.id})</span>
+                          <span>Print Receipt ({matchedVoucher.voucherNo || matchedVoucher.id})</span>
                         </button>
                         {matchedVoucher.depositSlip && (
                           <button
@@ -864,6 +915,96 @@ export const VendorBills: React.FC = () => {
         onClose={() => setPrintVoucher(null)}
         voucher={printVoucher}
       />
+
+      {linkBill && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setLinkBill(null)}
+        >
+          <div
+            className="bg-surface border border-theme rounded-xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-theme-subtle bg-surface2/70">
+              <div>
+                <h3 className="text-sm font-bold text-primary">
+                  Link Payment Voucher to {linkBill.invoiceNo || linkBill.id}
+                </h3>
+                <p className="text-[11px] text-muted">
+                  {linkBill.supplierName || linkBill.supplierCompany || 'Supplier'} • Paid: {formatCurrency(Number(linkBill.paidAmount || linkBill.amount || 0))}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkBill(null)}
+                className="p-1 text-muted hover:text-primary rounded"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {vouchers
+                .slice()
+                .sort((a: any, b: any) => {
+                  const sup = (linkBill.supplierName || linkBill.supplierCompany || '').toLowerCase();
+                  const aMatch = sup && (a.payeeName || a.supplierName || '').toLowerCase().includes(sup) ? 1 : 0;
+                  const bMatch = sup && (b.payeeName || b.supplierName || '').toLowerCase().includes(sup) ? 1 : 0;
+                  return bMatch - aMatch;
+                })
+                .map((v: any) => (
+                  <div key={v.id || v.voucherNo} className="flex items-center justify-between p-2.5 rounded-lg border border-theme-subtle bg-surface2/30 hover:bg-surface2/60 transition-colors text-xs">
+                    <div className="min-w-0 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-primary">{v.voucherNo || v.id}</span>
+                        <span className="text-muted font-mono text-[10px]">{formatDate(v.date)}</span>
+                        {v.chequeNo && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                            CHQ #{v.chequeNo}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-secondary font-medium truncate">{v.payeeName || v.supplierName || '—'}</div>
+                      {v.description && <div className="text-[10px] text-muted truncate">{v.description}</div>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-mono font-bold text-emerald-600">{formatCurrency(Number(v.amount || 0))}</span>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={linkingVoucherId === v.id}
+                        onClick={async () => {
+                          try {
+                            setLinkingVoucherId(v.id);
+                            const res = await fetch(`/api/finance/payment-vouchers/${encodeURIComponent(v.id)}/link-bill`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ billId: linkBill.id, billNo: linkBill.invoiceNo || linkBill.id })
+                            });
+                            if (!res.ok) throw new Error('Failed to link voucher');
+                            toast(`Linked ${v.voucherNo || v.id} to ${linkBill.invoiceNo || linkBill.id}`, 'success');
+                            loadVouchers();
+                            setLinkBill(null);
+                          } catch (err: any) {
+                            toast(err?.message || 'Failed to link voucher', 'error');
+                          } finally {
+                            setLinkingVoucherId(null);
+                          }
+                        }}
+                        className="h-7 text-[11px]"
+                      >
+                        {linkingVoucherId === v.id ? 'Linking...' : 'Link'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              {vouchers.length === 0 && (
+                <div className="py-8 text-center text-muted text-xs">No payment vouchers found.</div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

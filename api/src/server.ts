@@ -14611,6 +14611,40 @@ app.get('/api/finance/payment-vouchers', async (req, res) => {
   }
 });
 
+// 2b. POST /api/finance/payment-vouchers/:id/link-bill (Link existing voucher to a vendor bill)
+app.post('/api/finance/payment-vouchers/:id/link-bill', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { billId, billNo } = req.body;
+    if (!billId && !billNo) {
+      return res.status(400).json({ error: 'billId or billNo is required' });
+    }
+    const [rows]: any = await db.query(
+      'SELECT id, voucherNo, relatedBillId, relatedBillNo FROM payment_vouchers WHERE id = ? OR voucherNo = ? LIMIT 1',
+      [id, id]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Payment voucher not found' });
+    }
+    const pv = rows[0];
+    const existingNos = (pv.relatedBillNo || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    const targetNo = billNo || billId;
+    if (targetNo && !existingNos.includes(targetNo)) {
+      existingNos.push(targetNo);
+    }
+    const newRelatedBillNo = existingNos.join(', ');
+    const newRelatedBillId = pv.relatedBillId || billId || null;
+
+    await db.query(
+      'UPDATE payment_vouchers SET relatedBillId = ?, relatedBillNo = ? WHERE id = ?',
+      [newRelatedBillId, newRelatedBillNo, pv.id]
+    );
+    res.json({ success: true, id: pv.id, relatedBillId: newRelatedBillId, relatedBillNo: newRelatedBillNo });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to link payment voucher' });
+  }
+});
+
 // 3. POST /api/finance/payment-vouchers
 app.post('/api/finance/payment-vouchers', async (req, res) => {
   const conn = await db.getConnection();
