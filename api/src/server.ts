@@ -12503,6 +12503,45 @@ app.post('/api/supplier-ledger', async (req, res) => {
 
     await db.query('INSERT INTO supplier_ledger SET ?', item);
 
+    // Sync payment to payment_vouchers so Vendor Bills & Payables Hub show receipts, slips & cheque details
+    if (item.type === 'payment' || item.credit > 0) {
+      try {
+        let supplierName = data.supplierName || 'Supplier';
+        if (item.supplierId && !data.supplierName) {
+          const [supRows]: any = await db.query('SELECT name FROM suppliers WHERE id = ? LIMIT 1', [item.supplierId]);
+          if (supRows && supRows[0]?.name) supplierName = supRows[0].name;
+        }
+        const voucherNo = item.voucherNo || item.referenceNo || `PV-${Date.now().toString().slice(-6)}`;
+        const voucherId = `VOU-${item.id}`;
+        await db.query('INSERT IGNORE INTO payment_vouchers SET ?', {
+          id: voucherId,
+          voucherNo,
+          date: String(item.date).slice(0, 10),
+          payeeType: 'supplier',
+          payeeId: item.supplierId || null,
+          payeeName: supplierName,
+          category: 'Vendor Bill Payment',
+          amount: item.amount || item.credit || 0,
+          paymentMethod: item.paymentMethod || 'Bank Transfer',
+          chequeNo: item.chequeNo || null,
+          chequeDate: item.chequeDate || null,
+          bankName: item.bankName || null,
+          chequeStatus: item.chequeStatus || (item.chequeNo ? 'Pending' : null),
+          transactionRef: item.transactionRef || null,
+          bankAccountId: item.bankAccountId || item.creditAccountId || null,
+          accountId: item.debitAccountId || null,
+          relatedBillId: data.billId || data.relatedBillId || null,
+          relatedBillNo: data.billNo || data.relatedBillNo || null,
+          description: item.description || null,
+          preparedBy: data.preparedBy || 'Accounts Officer',
+          depositSlip: item.depositSlip || null,
+          status: 'Paid'
+        });
+      } catch (ePv) {
+        console.error('Failed to sync supplier_ledger payment to payment_vouchers:', ePv);
+      }
+    }
+
     // Auto GL Integration: Create Journal Entry & Lines
     try {
       let debitAccId = item.debitAccountId;
@@ -14623,6 +14662,55 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
 // 2. GET /api/finance/payment-vouchers
 app.get('/api/finance/payment-vouchers', async (req, res) => {
   try {
+    // Backfill any supplier_ledger payment records that don't yet have a payment_vouchers entry
+    try {
+      await db.query(`
+        INSERT IGNORE INTO payment_vouchers (
+          id, voucherNo, date, payeeType, payeeId, payeeName, category, amount,
+          paymentMethod, chequeNo, chequeDate, bankName, chequeStatus, transactionRef,
+          bankAccountId, accountId, description, preparedBy, depositSlip, status
+        )
+        SELECT
+          CONCAT('VOU-', sl.id),
+          COALESCE(NULLIF(sl.voucherNo, ''), NULLIF(sl.referenceNo, ''), sl.id),
+          DATE(sl.date),
+          'supplier',
+          sl.supplierId,
+          COALESCE(s.name, 'Supplier'),
+          'Vendor Bill Payment',
+          COALESCE(NULLIF(sl.amount, 0), sl.credit, 0),
+          COALESCE(NULLIF(sl.paymentMethod, ''), 'Bank Transfer'),
+          sl.chequeNo,
+          sl.chequeDate,
+          sl.bankName,
+          sl.chequeStatus,
+          sl.transactionRef,
+          COALESCE(sl.bankAccountId, sl.creditAccountId),
+          sl.debitAccountId,
+          sl.description,
+          'Accounts Officer',
+          sl.depositSlip,
+          'Paid'
+        FROM supplier_ledger sl
+        LEFT JOIN suppliers s ON s.id = sl.supplierId
+        WHERE (sl.type = 'payment' OR sl.credit > 0)
+          AND COALESCE(NULLIF(sl.amount, 0), sl.credit, 0) > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM payment_vouchers pv
+            WHERE pv.id = CONCAT('VOU-', sl.id)
+              OR (sl.voucherNo IS NOT NULL AND sl.voucherNo != '' AND pv.voucherNo = sl.voucherNo)
+              OR (
+                pv.payeeId = sl.supplierId
+                AND ABS(pv.amount - COALESCE(NULLIF(sl.amount, 0), sl.credit, 0)) < 0.01
+                AND DATE(pv.date) = DATE(sl.date)
+                AND COALESCE(pv.chequeNo, '') = COALESCE(sl.chequeNo, '')
+              )
+          )
+      `);
+    } catch (eBackfill) {
+      console.error('Backfill supplier_ledger -> payment_vouchers failed:', eBackfill);
+    }
+
     const [rows]: any = await db.query('SELECT * FROM payment_vouchers ORDER BY date DESC, id DESC LIMIT 200');
     res.json(rows);
   } catch (err: any) {
