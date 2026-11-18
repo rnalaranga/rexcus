@@ -122,20 +122,20 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
           style={{ width: '100%', maxWidth: '794px', minHeight: 'auto', color: '#000', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '10.5px', boxSizing: 'border-box' }}
         >
           {/* Header Row (Compact Letterhead matching Quotation & Invoice) */}
-          <div className="flex border-b border-black items-center p-1.5 print-no-break">
-            <div className="w-[26%] flex items-center justify-center p-1 border-r border-black bg-white">
+          <div className="flex border-b border-black items-center p-2.5 print-no-break">
+            <div className="w-[28%] flex items-center justify-center p-1.5 border-r border-black bg-white">
               <img 
                 src={resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png'} 
                 alt="Logo" 
-                className="max-h-9 max-w-full object-contain" 
+                className="max-h-12 max-w-full object-contain" 
                 crossOrigin="anonymous" 
               />
             </div>
-            <div className="w-[74%] pl-2.5 text-[9px] leading-tight bg-white">
-              <h1 className="text-[13px] font-black uppercase text-black mb-0.5 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>
+            <div className="w-[72%] pl-3 text-[10px] leading-tight bg-white">
+              <h1 className="text-[16px] font-black uppercase text-black mb-0.5 leading-tight" style={{ fontFamily: 'Arial Black, Impact, sans-serif' }}>
                 {settings?.company_name || settings?.companyName || 'REX INDUSTRIES (PVT) LTD'}
               </h1>
-              <table className="w-full text-[9px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+              <table className="w-full text-[10px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
                 <tbody>
                   <tr>
                     <td className="font-bold align-top w-12 pb-0.5 whitespace-nowrap">Office</td>
@@ -179,7 +179,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
           </div>
 
           {/* Title Bar */}
-          <div className="bg-gray-50 border-b border-black text-center py-0.5 font-bold text-[11px] uppercase tracking-wider print-no-break">
+          <div className="bg-gray-50 border-b border-black text-center py-1 font-bold text-[12px] uppercase tracking-wider print-no-break">
             {gatePass.type === 'goods_delivery' || gatePass.type === 'sales_delivery' 
               ? 'GATE PASS / GOODS DISPATCH NOTE' 
               : 'SAMPLE GATE PASS (OUTWARD)'}
@@ -304,17 +304,7 @@ export const GatePassPrintView: React.FC<GatePassPrintProps> = ({ gatePass, sett
                   const formattedQty = Number.isInteger(qtyVal) ? qtyVal.toString() : qtyVal.toFixed(2);
                   const desc = item.description || item.items || item.desc || item.productName || 'Sample Item';
                   const unit = item.unit || item.uom || 'Nos';
-                  const rawNote = String(item.remarks || item.notes || gatePass.notes || '').trim();
-                  const isBoilerplate = /^Commercial Sales Order generated/i.test(rawNote);
-                  const rawRemarks = (!rawNote || isBoilerplate)
-                    ? String(gatePass.reason || (gatePass.orderNo ? `Order ${gatePass.orderNo}` : '')).trim()
-                    : rawNote;
-                  const firstLine = rawRemarks.split(/\r?\n/)[0].trim();
-                  const remarks = !firstLine
-                    ? '-'
-                    : firstLine.length > 55
-                      ? `${firstLine.slice(0, 52).trim()}...`
-                      : firstLine;
+                  const remarks = item.remarks || item.notes || gatePass.notes || '-';
 
                   return (
                     <tr key={idx} className="border-b border-black text-[10px] leading-snug">
