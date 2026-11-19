@@ -18,6 +18,7 @@ import {
   rejectCashbookEntry, setCashbookFloat, CashbookEntry, uploadFileToStorage 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -44,6 +45,7 @@ export const DailyCashbook: React.FC = () => {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [viewReceiptModal, setViewReceiptModal] = useState<string | null>(null);
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null);
 
   // Float modal state
   const [floatAmount, setFloatAmount] = useState('');
@@ -994,15 +996,37 @@ export const DailyCashbook: React.FC = () => {
                       {formatCurrency(entry.runningBalance || 0)}
                     </td>
 
-                    {/* Delete Action */}
+                    {/* Actions */}
                     <td className="py-3 px-3 text-center">
-                      <button
-                        onClick={() => handleDeleteEntry(entry)}
-                        title="Delete entry (reverts GL journal)"
-                        className="p-1 rounded text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        {entry.entryType === 'OUT' && (
+                          <button
+                            type="button"
+                            onClick={() => setPrintVoucher({
+                              id: entry.id,
+                              voucherNo: entry.referenceNo || (entry as any).reference || entry.id,
+                              date: entry.date || entry.createdAt,
+                              payeeName: entry.partyName || entry.particulars || (entry as any).description || 'Petty Cash Payee',
+                              amount: Number(entry.amount || 0),
+                              paymentMethod: (entry as any).paymentMethod || 'Petty Cash',
+                              category: (entry as any).category || 'Petty Cash Expense',
+                              description: entry.particulars || (entry as any).description || 'Petty Cash Disbursement',
+                              transactionRef: entry.referenceNo || (entry as any).reference || entry.id
+                            })}
+                            title="Print Voucher Receipt"
+                            className="p-1 rounded text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+                          >
+                            <Printer size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteEntry(entry)}
+                          title="Delete entry (reverts GL journal)"
+                          className="p-1 rounded text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1798,6 +1822,12 @@ export const DailyCashbook: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      <PaymentVoucherPrintModal
+        isOpen={!!printVoucher}
+        onClose={() => setPrintVoucher(null)}
+        voucher={printVoucher}
+      />
     </div>
   );
 };

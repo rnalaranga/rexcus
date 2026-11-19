@@ -40,7 +40,7 @@ import {
 } from 'recharts';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { useFinanceDashboard } from '@/hooks/useFinance';
+import { useFinanceDashboard, useAccounts } from '@/hooks/useFinance';
 import { formatCurrency } from '@/lib/utils';
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
@@ -57,7 +57,34 @@ const compactLkr = (v: number) => {
 export const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { data: dashboard, loading, refetch } = useFinanceDashboard();
+  const { data: accounts = [] } = useAccounts();
   const [scenario, setScenario] = useState<ForecastScenario>('base');
+
+  const topCoaData = useMemo(() => {
+    const rev = (accounts || [])
+      .filter((a: any) => a.type === 'Revenue' || a.type === 'Income')
+      .map((a: any) => ({
+        name: `${a.code ? `${a.code} ` : ''}${a.name}`.slice(0, 26),
+        amount: Math.abs(Number(a.balance || 0)),
+        category: 'Income',
+      }))
+      .filter((a: any) => a.amount > 0)
+      .sort((a: any, b: any) => b.amount - a.amount)
+      .slice(0, 5);
+
+    const exp = (accounts || [])
+      .filter((a: any) => a.type === 'Expense')
+      .map((a: any) => ({
+        name: `${a.code ? `${a.code} ` : ''}${a.name}`.slice(0, 26),
+        amount: Math.abs(Number(a.balance || 0)),
+        category: 'Expense',
+      }))
+      .filter((a: any) => a.amount > 0)
+      .sort((a: any, b: any) => b.amount - a.amount)
+      .slice(0, 5);
+
+    return [...rev, ...exp];
+  }, [accounts]);
   const [currencies, setCurrencies] = useState<any[]>([]);
 
   React.useEffect(() => {
@@ -672,6 +699,59 @@ export const FinanceDashboard: React.FC = () => {
           </div>
         </GlassCard>
       </div>
+
+      {/* Top Chart of Accounts: Income vs Expenses */}
+      <GlassCard className="p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+              <Landmark size={16} className="text-amber-500" />
+              Top Chart of Accounts: Income vs Expenses
+            </h2>
+            <p className="text-xs text-muted">
+              Highest-balance Revenue/Income accounts compared against top Expense accounts
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" /> Income
+            </span>
+            <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+              <span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" /> Expenses
+            </span>
+          </div>
+        </div>
+        {topCoaData.length === 0 ? (
+          <div className="h-56 flex items-center justify-center text-xs text-muted">
+            No Income or Expense account balances recorded yet.
+          </div>
+        ) : (
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topCoaData} layout="vertical" margin={{ top: 5, right: 24, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" horizontal={false} />
+                <XAxis type="number" tickFormatter={compactLkr} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <Tooltip
+                  formatter={(value: any) => [formatCurrency(Number(value || 0)), 'Balance']}
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderColor: 'rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    color: '#f8fafc',
+                  }}
+                />
+                <Bar dataKey="amount" radius={[0, 4, 4, 0]} barSize={18}>
+                  {topCoaData.map((entry: any, index: number) => (
+                    <Cell key={`coa-cell-${index}`} fill={entry.category === 'Income' ? '#10b981' : '#f43f5e'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </GlassCard>
     </div>
   );
 };

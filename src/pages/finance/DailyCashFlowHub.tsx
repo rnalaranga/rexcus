@@ -1635,6 +1635,34 @@ export const DailyCashFlowHub: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Debit & Credit Account Selection (Always Visible) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-surface2/40 border border-theme-subtle rounded-lg">
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
+                    Debit Account (Expense / Payable)
+                  </label>
+                  <AccountAutocomplete
+                    value={voucherForm.accountId}
+                    onChange={val => setVoucherForm({ ...voucherForm, accountId: val })}
+                    accounts={accounts}
+                    placeholder="Select Debit Account..."
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
+                    Credit Account (Paid From Bank / Cash)
+                  </label>
+                  <AccountAutocomplete
+                    value={voucherForm.bankAccountId}
+                    onChange={val => setVoucherForm({ ...voucherForm, bankAccountId: val })}
+                    accounts={accounts}
+                    placeholder="Select Credit Account..."
+                    className="text-xs"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -1673,6 +1701,34 @@ export const DailyCashFlowHub: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Debit & Credit Account Selection (Always Visible) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-surface2/40 border border-theme-subtle rounded-lg">
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
+                    Debit Account (Expense / Payable)
+                  </label>
+                  <AccountAutocomplete
+                    value={voucherForm.accountId}
+                    onChange={val => setVoucherForm({ ...voucherForm, accountId: val })}
+                    accounts={accounts}
+                    placeholder="Select Debit Account..."
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-secondary uppercase tracking-wider block mb-1">
+                    Credit Account (Paid From Bank / Cash)
+                  </label>
+                  <AccountAutocomplete
+                    value={voucherForm.bankAccountId}
+                    onChange={val => setVoucherForm({ ...voucherForm, bankAccountId: val })}
+                    accounts={accounts}
+                    placeholder="Select Credit Account..."
+                    className="text-xs"
+                  />
                 </div>
               </div>
 
