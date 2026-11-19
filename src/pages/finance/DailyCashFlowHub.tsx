@@ -1058,6 +1058,19 @@ export const DailyCashFlowHub: React.FC = () => {
                                 Print
                               </Button>
 
+                              {(ch.invoiceId || ch.invoiceNo) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(`/finance/invoices?search=${encodeURIComponent(ch.invoiceNo || ch.invoiceId)}`, '_blank')}
+                                  className="h-7 px-2 text-[10px] text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+                                  title={`Preview Invoice ${ch.invoiceNo || ch.invoiceId}`}
+                                >
+                                  <FileText size={11} className="mr-1" />
+                                  Invoice
+                                </Button>
+                              )}
+
                               {/* Realize Cheque into GL on Realization Date */}
                               {!isCleared && (
                                 <Button
