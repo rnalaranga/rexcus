@@ -14575,6 +14575,33 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
       return dateB.localeCompare(dateA);
     });
 
+    // Attach linked GL Journal Entry IDs
+    const candidateRefs = Array.from(new Set(
+      allTransactions.flatMap((t: any) => [t.refNo, t.voucherNo, t.id].filter(Boolean).map(String))
+    ));
+    if (candidateRefs.length > 0) {
+      try {
+        const [jeRows]: any = await db.query(
+          'SELECT id, reference FROM journal_entries WHERE reference IN (?)',
+          [candidateRefs]
+        );
+        const refToJournalId = new Map<string, string>();
+        for (const je of (jeRows || [])) {
+          if (je.reference) refToJournalId.set(String(je.reference), String(je.id));
+        }
+        allTransactions = allTransactions.map((t: any) => ({
+          ...t,
+          journalId:
+            (t.refNo && refToJournalId.get(String(t.refNo))) ||
+            (t.voucherNo && refToJournalId.get(String(t.voucherNo))) ||
+            (t.id && refToJournalId.get(String(t.id))) ||
+            null
+        }));
+      } catch (jeErr) {
+        console.warn('Failed to lookup linked journal entries for cash flow:', jeErr);
+      }
+    }
+
     // Compute Summaries
     let totalInflow = 0;
     let totalOutflow = 0;
