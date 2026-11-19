@@ -733,13 +733,16 @@ export const FinanceDashboard: React.FC = () => {
                 <XAxis type="number" tickFormatter={compactLkr} tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <Tooltip
+                  cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
                   formatter={(value: any) => [formatCurrency(Number(value || 0)), 'Balance']}
                   contentStyle={{
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                    borderColor: 'rgba(148, 163, 184, 0.2)',
-                    borderRadius: '8px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+                    backdropFilter: 'blur(12px)',
+                    borderColor: 'rgba(226, 232, 240, 0.9)',
+                    borderRadius: '10px',
+                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
                     fontSize: '12px',
-                    color: '#f8fafc',
+                    color: '#0f172a',
                   }}
                 />
                 <Bar dataKey="amount" radius={[0, 4, 4, 0]} barSize={18}>

@@ -67,6 +67,8 @@ export const DailyCashFlowHub: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'ledger' | 'cheques' | 'transfers' | 'vouchers'>('ledger');
   const [chequeDirectionFilter, setChequeDirectionFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [chequePage, setChequePage] = useState(1);
+  const CHEQUES_PER_PAGE = 20;
   const [chequeStatusFilter, setChequeStatusFilter] = useState<string>('ALL');
 
   // Data State
@@ -978,8 +980,10 @@ export const DailyCashFlowHub: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredCheques.map((ch: any, idx: number) => {
-                      const isInward = ch.direction === 'IN' || String(ch.direction || '').toLowerCase().includes('inward');
+                    filteredCheques
+                      .slice((chequePage - 1) * CHEQUES_PER_PAGE, chequePage * CHEQUES_PER_PAGE)
+                      .map((ch: any, idx: number) => {
+                      const isInward = ch.sourceTable !== 'cashbook_entries' && (ch.direction === 'IN' || String(ch.direction || '').toLowerCase().includes('inward'));
                       const isPending = (ch.status || 'Pending').toLowerCase() === 'pending';
                       const isDeposited = (ch.status || '').toLowerCase() === 'deposited';
                       const isCleared = (ch.status || '').toLowerCase() === 'cleared';
@@ -1119,6 +1123,34 @@ export const DailyCashFlowHub: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            {filteredCheques.length > CHEQUES_PER_PAGE && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-theme-subtle bg-surface2/40 text-xs">
+                <span className="text-muted">
+                  Showing {(chequePage - 1) * CHEQUES_PER_PAGE + 1}–{Math.min(chequePage * CHEQUES_PER_PAGE, filteredCheques.length)} of {filteredCheques.length} cheques
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={chequePage <= 1}
+                    onClick={() => setChequePage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 font-mono text-secondary">
+                    {chequePage} / {Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={chequePage >= Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                    onClick={() => setChequePage(p => Math.min(Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE), p + 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
           </GlassCard>
         </div>
@@ -1323,6 +1355,34 @@ export const DailyCashFlowHub: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            {filteredCheques.length > CHEQUES_PER_PAGE && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-theme-subtle bg-surface2/40 text-xs">
+                <span className="text-muted">
+                  Showing {(chequePage - 1) * CHEQUES_PER_PAGE + 1}–{Math.min(chequePage * CHEQUES_PER_PAGE, filteredCheques.length)} of {filteredCheques.length} cheques
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={chequePage <= 1}
+                    onClick={() => setChequePage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 font-mono text-secondary">
+                    {chequePage} / {Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={chequePage >= Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                    onClick={() => setChequePage(p => Math.min(Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE), p + 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
           </GlassCard>
         </div>
@@ -1939,6 +1999,34 @@ export const DailyCashFlowHub: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            {filteredCheques.length > CHEQUES_PER_PAGE && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-theme-subtle bg-surface2/40 text-xs">
+                <span className="text-muted">
+                  Showing {(chequePage - 1) * CHEQUES_PER_PAGE + 1}–{Math.min(chequePage * CHEQUES_PER_PAGE, filteredCheques.length)} of {filteredCheques.length} cheques
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={chequePage <= 1}
+                    onClick={() => setChequePage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 font-mono text-secondary">
+                    {chequePage} / {Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={chequePage >= Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE)}
+                    onClick={() => setChequePage(p => Math.min(Math.ceil(filteredCheques.length / CHEQUES_PER_PAGE), p + 1))}
+                    className="px-2.5 py-1 rounded border border-theme-subtle bg-surface text-primary disabled:opacity-40 hover:bg-surface2"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
 
             {/* Certification Signatures */}
