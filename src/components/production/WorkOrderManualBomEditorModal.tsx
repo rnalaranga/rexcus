@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Plus, Trash2, CheckCircle2, Wrench, Package } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Wrench, Package, History, Layers } from 'lucide-react';
 import { fetchInventory, updateWorkOrder } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
@@ -13,6 +13,13 @@ interface WorkOrderManualBomEditorModalProps {
   onSuccess: () => void;
 }
 
+interface BomPart {
+  partName: string;
+  qty: number;
+  materials: any[];
+  operations: any[];
+}
+
 export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorModalProps> = ({
   isOpen,
   onClose,
@@ -22,93 +29,117 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
 }) => {
   const [inventory, setInventory] = useState<any[]>([]);
   const [machines, setMachines] = useState<any[]>([]);
-  const [materials, setMaterials] = useState<any[]>([]);
-  const [operations, setOperations] = useState<any[]>([]);
+  const [parts, setParts] = useState<BomPart[]>([]);
+  const [snapshotParts, setSnapshotParts] = useState<BomPart[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchInventory().then((res: any) => setInventory(Array.isArray(res) ? res : [])).catch(() => {});
-    fetch('/api/machines').then((r) => r.json()).then((res: any) => setMachines(Array.isArray(res) ? res : [])).catch(() => {});
+    fetchInventory()
+      .then((res: any) => setInventory(Array.isArray(res) ? res : []))
+      .catch(() => {});
+    fetch('/api/machines')
+      .then((r) => r.json())
+      .then((res: any) => setMachines(Array.isArray(res) ? res : []))
+      .catch(() => {});
 
-    // Flatten initial materials & operations from BOMs
-    const flatMats: any[] = [];
-    const flatOps: any[] = [];
-    (initialBoms || []).forEach((b: any) => {
-      (b.materials || b.items || []).forEach((m: any) => {
-        flatMats.push({
-          itemId: m.itemId || m.id || '',
-          name: m.name || m.itemName || '',
-          qty: Number(m.qty || m.quantity || 1),
-          unit: m.unit || 'pcs',
-          unitCost: Number(m.unitCost || m.cost || 0),
-        });
-      });
-      (b.operations || b.machining || []).forEach((op: any) => {
-        flatOps.push({
-          operationName: op.operationName || op.name || '',
-          machineId: op.machineId || '',
-          machineName: op.machineName || op.workCenter || '',
-          plannedHours: Number(op.plannedHours || op.hours || 1),
-          hourlyRate: Number(op.hourlyRate || op.rate || 0),
-        });
-      });
-    });
+    const normalized: BomPart[] = (initialBoms && initialBoms.length > 0 ? initialBoms : [{ partName: workOrder?.productName || workOrder?.title || 'Main Assembly', qty: workOrder?.qty || 1 }]).map((b: any) => ({
+      partName: b.partName || b.name || workOrder?.productName || 'Part',
+      qty: Number(b.qty || b.quantity || 1),
+      materials: (b.materials || b.items || []).map((m: any) => ({
+        itemId: m.itemId || m.id || '',
+        name: m.name || m.itemName || '',
+        qty: Number(m.qty || m.quantity || 1),
+        unit: m.unit || 'pcs',
+        unitCost: Number(m.unitCost || m.cost || 0),
+      })),
+      operations: (b.operations || b.machining || []).map((op: any) => ({
+        operationName: op.operationName || op.name || '',
+        machineId: op.machineId || '',
+        machineName: op.machineName || op.workCenter || '',
+        plannedHours: Number(op.plannedHours || op.hours || 1),
+        hourlyRate: Number(op.hourlyRate || op.rate || 0),
+      })),
+    }));
 
-    setMaterials(flatMats.length > 0 ? flatMats : [{ itemId: '', name: '', qty: 1, unit: 'pcs', unitCost: 0 }]);
-    setOperations(flatOps.length > 0 ? flatOps : [{ operationName: '', machineId: '', machineName: '', plannedHours: 1, hourlyRate: 0 }]);
-  }, [isOpen, initialBoms]);
+    setSnapshotParts(JSON.parse(JSON.stringify(normalized)));
+    setParts(JSON.parse(JSON.stringify(normalized)));
+  }, [isOpen, initialBoms, workOrder]);
 
-  const handleMaterialChange = (idx: number, field: string, value: any) => {
-    setMaterials((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      if (field === 'itemId') {
-        const inv = inventory.find((i) => i.id === value);
-        if (inv) {
-          next[idx].name = inv.name;
-          next[idx].unit = inv.unit || 'pcs';
-          next[idx].unitCost = Number(inv.costPrice || inv.unitCost || inv.price || 0);
-        }
-      }
-      return next;
-    });
+  const updatePartField = (pIdx: number, field: keyof BomPart, val: any) => {
+    setParts((prev) => prev.map((p, i) => (i === pIdx ? { ...p, [field]: val } : p)));
   };
 
-  const handleOpChange = (idx: number, field: string, value: any) => {
-    setOperations((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      if (field === 'machineId') {
-        const m = machines.find((x) => x.id === value);
-        if (m) {
-          next[idx].machineName = m.name;
-          next[idx].hourlyRate = Number(m.hourlyRate || m.ratePerHour || 0);
+  const handleMaterialChange = (pIdx: number, mIdx: number, field: string, value: any) => {
+    setParts((prev) =>
+      prev.map((p, i) => {
+        if (i !== pIdx) return p;
+        const nextMats = [...p.materials];
+        nextMats[mIdx] = { ...nextMats[mIdx], [field]: value };
+        if (field === 'itemId') {
+          const inv = inventory.find((x) => x.id === value);
+          if (inv) {
+            nextMats[mIdx].name = inv.name;
+            nextMats[mIdx].unit = inv.unit || 'pcs';
+            nextMats[mIdx].unitCost = Number(inv.costPrice || inv.unitCost || inv.price || 0);
+          }
         }
-      }
-      return next;
-    });
+        return { ...p, materials: nextMats };
+      })
+    );
   };
 
-  const totalMatCost = materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitCost) || 0), 0);
-  const totalOpCost = operations.reduce((s, o) => s + (Number(o.plannedHours) || 0) * (Number(o.hourlyRate) || 0), 0);
+  const handleOpChange = (pIdx: number, oIdx: number, field: string, value: any) => {
+    setParts((prev) =>
+      prev.map((p, i) => {
+        if (i !== pIdx) return p;
+        const nextOps = [...p.operations];
+        nextOps[oIdx] = { ...nextOps[oIdx], [field]: value };
+        if (field === 'machineId') {
+          const mc = machines.find((x) => x.id === value);
+          if (mc) {
+            nextOps[oIdx].machineName = mc.name;
+            nextOps[oIdx].hourlyRate = Number(mc.hourlyRate || mc.ratePerHour || 0);
+          }
+        }
+        return { ...p, operations: nextOps };
+      })
+    );
+  };
+
+  const totalMatCost = parts.reduce(
+    (sum, p) => sum + p.materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitCost) || 0), 0),
+    0
+  );
+  const totalOpCost = parts.reduce(
+    (sum, p) => sum + p.operations.reduce((s, o) => s + (Number(o.plannedHours) || 0) * (Number(o.hourlyRate) || 0), 0),
+    0
+  );
+  const totalHours = parts.reduce(
+    (sum, p) => sum + p.operations.reduce((s, o) => s + (Number(o.plannedHours) || 0), 0),
+    0
+  );
+
+  const snapshotTotalCost = snapshotParts.reduce(
+    (sum, p) =>
+      sum +
+      p.materials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitCost) || 0), 0) +
+      p.operations.reduce((s, o) => s + (Number(o.plannedHours) || 0) * (Number(o.hourlyRate) || 0), 0),
+    0
+  );
 
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      const cleanMats = materials.filter((m) => m.name || m.itemId);
-      const cleanOps = operations.filter((o) => o.operationName || o.machineName);
-
-      const updatedBom = [
-        {
-          partName: workOrder?.productName || workOrder?.title || 'Manual BOM',
-          materials: cleanMats,
-          operations: cleanOps,
-        },
-      ];
+      const cleanedParts = parts.map((p) => ({
+        partName: p.partName || 'Part',
+        qty: Number(p.qty) || 1,
+        materials: p.materials.filter((m) => m.name || m.itemId),
+        operations: p.operations.filter((o) => o.operationName || o.machineName),
+      }));
 
       await updateWorkOrder(workOrder.id, {
-        bom: JSON.stringify(updatedBom),
+        bom: JSON.stringify(cleanedParts),
         bomSubmitted: true,
         estimatedCost: totalMatCost + totalOpCost,
       });
@@ -123,149 +154,317 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Manual BOM & Machine Hours (Quotation Style)" size="xl">
-      <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
-        {/* Materials Section */}
-        <div className="border border-theme-subtle rounded-lg p-3 bg-surface2/20">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-              <Package size={14} className="text-blue-500" /> Required Materials
-            </h4>
-            <Button
-              variant="outline"
-              size="sm"
-              icon={Plus}
-              onClick={() => setMaterials((p) => [...p, { itemId: '', name: '', qty: 1, unit: 'pcs', unitCost: 0 }])}
-              className="h-7 text-[11px]"
-            >
-              Add Material
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            {materials.map((m, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-center text-xs">
-                <select
-                  className="col-span-5 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary"
-                  value={m.itemId}
-                  onChange={(e) => handleMaterialChange(idx, 'itemId', e.target.value)}
-                >
-                  <option value="">-- Select Inventory Item --</option>
-                  {inventory.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name} ({inv.sku || inv.code || 'No SKU'})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="Qty"
-                  className="col-span-2 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary font-mono"
-                  value={m.qty}
-                  onChange={(e) => handleMaterialChange(idx, 'qty', Number(e.target.value))}
-                />
-                <input
-                  type="text"
-                  placeholder="Unit"
-                  className="col-span-2 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary"
-                  value={m.unit}
-                  onChange={(e) => handleMaterialChange(idx, 'unit', e.target.value)}
-                />
-                <div className="col-span-2 text-right font-mono font-semibold text-secondary">
-                  {formatCurrency((Number(m.qty) || 0) * (Number(m.unitCost) || 0))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMaterials((p) => p.filter((_, i) => i !== idx))}
-                  className="col-span-1 flex justify-center text-rose-500 hover:text-rose-600"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Machine Hours / Operations Section */}
-        <div className="border border-theme-subtle rounded-lg p-3 bg-surface2/20">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-              <Wrench size={14} className="text-amber-500" /> Machine Hours & Operations
-            </h4>
+    <Modal isOpen={isOpen} onClose={onClose} title="Quotation-Style Manual BOM & Machine Hours Studio" size="full">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 max-h-[78vh]">
+        {/* LEFT: Editable Quotation-Style BOM */}
+        <div className="lg:col-span-8 space-y-4 overflow-y-auto pr-1">
+          <div className="flex items-center justify-between bg-surface2/40 px-3 py-2 rounded-lg border border-theme-subtle">
+            <div className="text-xs font-bold text-primary flex items-center gap-1.5">
+              <Layers size={14} className="text-blue-500" />
+              Editable BOM & Machine Hours ({parts.length} {parts.length === 1 ? 'Part' : 'Parts'})
+            </div>
             <Button
               variant="outline"
               size="sm"
               icon={Plus}
               onClick={() =>
-                setOperations((p) => [...p, { operationName: '', machineId: '', machineName: '', plannedHours: 1, hourlyRate: 0 }])
+                setParts((p) => [...p, { partName: `Part ${p.length + 1}`, qty: 1, materials: [], operations: [] }])
               }
               className="h-7 text-[11px]"
             >
-              Add Operation
+              Add Part / Assembly
             </Button>
           </div>
 
-          <div className="space-y-2">
-            {operations.map((op, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-center text-xs">
-                <input
-                  type="text"
-                  placeholder="Operation (e.g. Turning, Milling)"
-                  className="col-span-4 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary"
-                  value={op.operationName}
-                  onChange={(e) => handleOpChange(idx, 'operationName', e.target.value)}
-                />
-                <select
-                  className="col-span-3 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary"
-                  value={op.machineId}
-                  onChange={(e) => handleOpChange(idx, 'machineId', e.target.value)}
-                >
-                  <option value="">-- Select Machine --</option>
-                  {machines.map((mc) => (
-                    <option key={mc.id} value={mc.id}>
-                      {mc.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  placeholder="Hours"
-                  className="col-span-2 px-2 py-1.5 rounded border border-theme-subtle bg-surface text-primary font-mono"
-                  value={op.plannedHours}
-                  onChange={(e) => handleOpChange(idx, 'plannedHours', Number(e.target.value))}
-                />
-                <div className="col-span-2 text-right font-mono font-semibold text-secondary">
-                  {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
+          {parts.map((part, pIdx) => (
+            <div key={pIdx} className="border border-theme-subtle rounded-lg bg-surface p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-theme-subtle">
+                <div className="flex items-center gap-2 flex-1">
+                  <input
+                    type="text"
+                    value={part.partName}
+                    onChange={(e) => updatePartField(pIdx, 'partName', e.target.value)}
+                    placeholder="Part / Assembly Name"
+                    className="px-2.5 py-1 text-xs font-bold rounded border border-theme-subtle bg-surface2/30 text-primary flex-1"
+                  />
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="text-muted">Qty:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={part.qty}
+                      onChange={(e) => updatePartField(pIdx, 'qty', Number(e.target.value))}
+                      className="w-16 px-2 py-1 text-xs font-mono rounded border border-theme-subtle bg-surface2/30 text-primary"
+                    />
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOperations((p) => p.filter((_, i) => i !== idx))}
-                  className="col-span-1 flex justify-center text-rose-500 hover:text-rose-600"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {parts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setParts((prev) => prev.filter((_, i) => i !== pIdx))}
+                    className="text-rose-500 hover:text-rose-600 p-1"
+                    title="Remove Part"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
+
+              {/* Materials Table */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-secondary flex items-center gap-1">
+                    <Package size={12} className="text-blue-500" /> Materials
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Plus}
+                    onClick={() =>
+                      updatePartField(pIdx, 'materials', [
+                        ...part.materials,
+                        { itemId: '', name: '', qty: 1, unit: 'pcs', unitCost: 0 },
+                      ])
+                    }
+                    className="h-6 text-[10px] px-2"
+                  >
+                    Add Material
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  {part.materials.map((m, mIdx) => (
+                    <div key={mIdx} className="grid grid-cols-12 gap-1.5 items-center text-xs">
+                      <select
+                        className="col-span-4 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
+                        value={m.itemId}
+                        onChange={(e) => handleMaterialChange(pIdx, mIdx, 'itemId', e.target.value)}
+                      >
+                        <option value="">-- Select Item --</option>
+                        {inventory.map((inv) => (
+                          <option key={inv.id} value={inv.id}>
+                            {inv.name} ({inv.sku || inv.code || 'No SKU'})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="Qty"
+                        className="col-span-2 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
+                        value={m.qty}
+                        onChange={(e) => handleMaterialChange(pIdx, mIdx, 'qty', Number(e.target.value))}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Unit"
+                        className="col-span-1 px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary text-center"
+                        value={m.unit}
+                        onChange={(e) => handleMaterialChange(pIdx, mIdx, 'unit', e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="Unit Cost"
+                        className="col-span-2 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
+                        value={m.unitCost}
+                        onChange={(e) => handleMaterialChange(pIdx, mIdx, 'unitCost', Number(e.target.value))}
+                      />
+                      <div className="col-span-2 text-right font-mono font-semibold text-secondary">
+                        {formatCurrency((Number(m.qty) || 0) * (Number(m.unitCost) || 0))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePartField(
+                            pIdx,
+                            'materials',
+                            part.materials.filter((_, i) => i !== mIdx)
+                          )
+                        }
+                        className="col-span-1 flex justify-center text-rose-500 hover:text-rose-600"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  {part.materials.length === 0 && (
+                    <div className="text-[11px] text-muted italic py-2 text-center border border-dashed border-theme-subtle rounded">
+                      No materials added for this part.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Machining / Operations Table */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-secondary flex items-center gap-1">
+                    <Wrench size={12} className="text-amber-500" /> Machine Hours & Operations
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Plus}
+                    onClick={() =>
+                      updatePartField(pIdx, 'operations', [
+                        ...part.operations,
+                        { operationName: '', machineId: '', machineName: '', plannedHours: 1, hourlyRate: 0 },
+                      ])
+                    }
+                    className="h-6 text-[10px] px-2"
+                  >
+                    Add Operation
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  {part.operations.map((op, oIdx) => (
+                    <div key={oIdx} className="grid grid-cols-12 gap-1.5 items-center text-xs">
+                      <input
+                        type="text"
+                        placeholder="Operation (e.g. Turning)"
+                        className="col-span-3 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
+                        value={op.operationName}
+                        onChange={(e) => handleOpChange(pIdx, oIdx, 'operationName', e.target.value)}
+                      />
+                      <select
+                        className="col-span-3 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
+                        value={op.machineId}
+                        onChange={(e) => handleOpChange(pIdx, oIdx, 'machineId', e.target.value)}
+                      >
+                        <option value="">-- Select Machine --</option>
+                        {machines.map((mc) => (
+                          <option key={mc.id} value={mc.id}>
+                            {mc.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        placeholder="Hrs"
+                        className="col-span-1 px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
+                        value={op.plannedHours}
+                        onChange={(e) => handleOpChange(pIdx, oIdx, 'plannedHours', Number(e.target.value))}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="Rate/Hr"
+                        className="col-span-2 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
+                        value={op.hourlyRate}
+                        onChange={(e) => handleOpChange(pIdx, oIdx, 'hourlyRate', Number(e.target.value))}
+                      />
+                      <div className="col-span-2 text-right font-mono font-semibold text-secondary">
+                        {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updatePartField(
+                            pIdx,
+                            'operations',
+                            part.operations.filter((_, i) => i !== oIdx)
+                          )
+                        }
+                        className="col-span-1 flex justify-center text-rose-500 hover:text-rose-600"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  {part.operations.length === 0 && (
+                    <div className="text-[11px] text-muted italic py-2 text-center border border-dashed border-theme-subtle rounded">
+                      No machining operations added for this part.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Summary & Submit */}
-        <div className="flex items-center justify-between pt-2 border-t border-theme-subtle">
-          <div className="text-xs text-muted">
-            Est. Total: <span className="font-mono font-bold text-primary">{formatCurrency(totalMatCost + totalOpCost)}</span>
+        {/* RIGHT: Current BOM Snapshot (Read-Only) */}
+        <div className="lg:col-span-4 border border-theme-subtle rounded-lg bg-surface2/20 p-3 overflow-y-auto space-y-3">
+          <div className="flex items-center justify-between border-b border-theme-subtle pb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+              <History size={14} className="text-emerald-500" /> Current BOM Snapshot
+            </h4>
+            <span className="text-[11px] font-mono font-bold text-emerald-600">
+              {formatCurrency(snapshotTotalCost)}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button variant="primary" icon={CheckCircle2} onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Submitting...' : 'Submit Manual BOM to Stores'}
-            </Button>
-          </div>
+
+          {snapshotParts.map((sp, idx) => (
+            <div key={idx} className="border border-theme-subtle rounded bg-surface p-2.5 space-y-2 text-xs">
+              <div className="font-bold text-primary flex justify-between">
+                <span>{sp.partName}</span>
+                <span className="font-mono text-muted">Qty: {sp.qty}</span>
+              </div>
+
+              {sp.materials.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase text-muted mb-1">Materials</div>
+                  <div className="space-y-1">
+                    {sp.materials.map((m, i) => (
+                      <div key={i} className="flex justify-between text-[11px] text-secondary">
+                        <span className="truncate pr-2">
+                          {m.name || 'Unnamed'} ({m.qty} {m.unit})
+                        </span>
+                        <span className="font-mono shrink-0">
+                          {formatCurrency((Number(m.qty) || 0) * (Number(m.unitCost) || 0))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sp.operations.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase text-muted mb-1">Machine Hours</div>
+                  <div className="space-y-1">
+                    {sp.operations.map((op, i) => (
+                      <div key={i} className="flex justify-between text-[11px] text-secondary">
+                        <span className="truncate pr-2">
+                          {op.operationName || 'Op'} ({op.plannedHours}h)
+                        </span>
+                        <span className="font-mono shrink-0">
+                          {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer Cost Summary & Submit */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-3 border-t border-theme-subtle">
+        <div className="flex items-center gap-4 text-xs">
+          <span>
+            Materials: <strong className="font-mono text-primary">{formatCurrency(totalMatCost)}</strong>
+          </span>
+          <span>
+            Machining ({totalHours}h): <strong className="font-mono text-primary">{formatCurrency(totalOpCost)}</strong>
+          </span>
+          <span>
+            New Total: <strong className="font-mono text-emerald-600 text-sm">{formatCurrency(totalMatCost + totalOpCost)}</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button variant="primary" icon={CheckCircle2} onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Submitting...' : 'Submit Manual BOM to Stores'}
+          </Button>
         </div>
       </div>
     </Modal>

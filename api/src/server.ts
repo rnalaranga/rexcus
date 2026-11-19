@@ -1934,6 +1934,10 @@ async function runDatabaseSync() {
     "ALTER TABLE work_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE work_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE work_orders ADD COLUMN salesOrderNo VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN bomSubmitted TINYINT(1) DEFAULT 0",
+    "ALTER TABLE work_orders ADD COLUMN bomSubmittedAt DATETIME DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN bomSubmittedBy VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE work_orders ADD COLUMN originalBomSnapshot LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatchedQty INT DEFAULT 0",
     "ALTER TABLE finished_goods_orders ADD COLUMN dispatches LONGTEXT DEFAULT NULL",
     "ALTER TABLE finished_goods_orders ADD COLUMN soChangeInfo LONGTEXT DEFAULT NULL",
@@ -17865,7 +17869,17 @@ app.get('/api/production/work-orders', async (req, res) => {
         bomItems = typeof wo.bom === 'string' ? JSON.parse(wo.bom || '[]') : (wo.bom || []);
       } catch (e) {}
 
-      const estBomCost = bomItems.reduce((acc: number, b: any) => acc + (Number(b.qty || 1) * Number(b.unitCost || 0)), 0);
+      let estBomCost = 0;
+      if (Array.isArray(bomItems)) {
+        bomItems.forEach((b: any) => {
+          if (b.allMaterials || b.autoMats || b.manualMats) {
+            const mats = b.allMaterials || [...(b.autoMats || []), ...(b.manualMats || [])];
+            estBomCost += mats.reduce((s: number, m: any) => s + Number(m.totalPrice || (Number(m.qty || 1) * Number(m.unitPrice || m.unitCost || 0))), 0);
+          } else {
+            estBomCost += Number(b.qty || 1) * Number(b.unitCost || b.unitPrice || 0);
+          }
+        });
+      }
       const estMachLabor = woOps.reduce((acc: number, o: any) => {
         const hrs = Number(o.plannedHours || 0);
         return acc + (hrs * o.employeeHourlyRate) + (hrs * o.machineHourlyCost);
@@ -17901,6 +17915,7 @@ app.get('/api/production/work-orders', async (req, res) => {
       const resolvedQuoNo = (wo.quoteId && quoteNoMap[wo.quoteId]) || (wo.quoteId && quoteNoMap[wo.quoteId.toLowerCase()]) || (wo.quoteId && wo.quoteId.startsWith('QT-') ? wo.quoteId : null);
       return {
         ...wo,
+        bomSubmitted: Boolean(wo.bomSubmitted === 1 || wo.bomSubmitted === true),
         quotationNo: resolvedQuoNo,
         customerCompany: resolvedCompany || resolvedCust,
         customer: resolvedCompany || resolvedCust,
@@ -18138,8 +18153,21 @@ app.get('/api/production/work-orders/:id', async (req, res) => {
       } catch(e) {}
     }
 
+    let parsedOriginalBomSnapshot: any = null;
+    if (wo.originalBomSnapshot) {
+      try {
+        parsedOriginalBomSnapshot = typeof wo.originalBomSnapshot === 'string' ? JSON.parse(wo.originalBomSnapshot) : wo.originalBomSnapshot;
+      } catch (e) {
+        parsedOriginalBomSnapshot = null;
+      }
+    }
+
     res.json({
       ...wo,
+      bomSubmitted: Boolean(wo.bomSubmitted === 1 || wo.bomSubmitted === true),
+      bomSubmittedAt: wo.bomSubmittedAt || null,
+      bomSubmittedBy: wo.bomSubmittedBy || null,
+      originalBomSnapshot: parsedOriginalBomSnapshot,
       customer: woCustomerCompany || woCustomerName || wo.customer,
       customerCompany: woCustomerCompany || woCustomerName || wo.customer,
       customerName: woCustomerCompany || woCustomerName || wo.customer,
@@ -18962,7 +18990,7 @@ app.post('/api/production/work-orders/:id/change-bom-material', async (req, res)
 app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => {
   try {
     const { id } = req.params;
-    const { boms, overheadPct = 15, syncRouting = true } = req.body;
+    const { boms, overheadPct = 15, syncRouting = true, submittedBy, originalBomSnapshot } = req.body;
 
     const [wos]: any = await db.query('SELECT * FROM work_orders WHERE id = ?', [id]);
     if (!wos.length) return res.status(404).json({ error: 'Work order not found' });
@@ -18976,50 +19004,96 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
     let grandMachiningLaborCost = 0;
     let grandQuotedHours = 0;
 
-    // Process and enrich each BOM part
+    // Process and enrich each BOM part (QuotationBuilder parity)
     const processedBoms = boms.map((b: any, bIdx: number) => {
       const autoMats = (b.autoMats || []).map((m: any, mIdx: number) => {
-        const qty = Number(m.qty || 1);
+        const qty = Number(m.qty || 0);
         const unitPrice = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0));
-        const totalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (qty * unitPrice));
+        const matName = m.material || 'Raw Stock Material';
+        const isRod = matName.toLowerCase().includes('rod') || matName.toLowerCase().includes('shaft') || Boolean(m.dia);
+        const existingMatTotal = Number(m.platePrice || 0) + Number(m.shaftPrice || 0);
+        const lineTotal = Number((existingMatTotal > 0 ? existingMatTotal : (qty * unitPrice)).toFixed(2));
+        const shaftPrice = isRod ? lineTotal : 0;
+        const platePrice = !isRod ? lineTotal : 0;
+        const derivedSpec = [
+          m.dia ? `Ø${m.dia}mm` : '',
+          m.thick ? `Thick: ${m.thick}mm` : '',
+          m.width ? `W: ${m.width}mm` : '',
+          m.length ? `L: ${m.length}mm` : ''
+        ].filter(Boolean).join(' | ');
+
         return {
           ...m,
           id: m.id || `auto-${bIdx}-${mIdx}`,
-          material: m.material || 'Raw Stock Material',
-          spec: m.spec || '',
-          profile: m.profile || (m.dia ? 'Round Bar' : 'Plate / Sheet'),
+          material: matName,
+          width: m.width || '',
+          length: m.length || '',
+          supplier: m.supplier || '',
+          thick: m.thick || '',
+          dia: m.dia || '',
+          spec: m.spec || derivedSpec,
+          profile: m.profile || (m.dia ? 'Round Bar' : (m.thick ? 'Plate / Sheet' : 'Raw Stock')),
           qty,
-          unit: m.unit || 'pcs',
+          unit: m.unit || (m.dia ? 'rods' : (m.thick ? 'plates' : 'pcs')),
           unitPrice,
-          totalPrice
+          platePrice,
+          shaftPrice,
+          totalPrice: lineTotal
         };
       });
 
       const manualMats = (b.manualMats || []).map((m: any, mIdx: number) => {
-        const qty = Number(m.qty || 1);
+        const qty = Number(m.qty || 0);
         const unitPrice = Number(m.unitPrice !== undefined ? m.unitPrice : (m.unitCost || 0));
-        const totalPrice = Number(m.totalPrice !== undefined ? m.totalPrice : (qty * unitPrice));
+        const totalPrice = Number((qty * unitPrice).toFixed(2));
         return {
           ...m,
           id: m.id || `manual-${bIdx}-${mIdx}`,
           material: m.material || 'Bought-out Component',
-          spec: m.spec || 'Standard Hardware',
+          supplier: m.supplier || '',
+          priceMode: m.priceMode || '-',
+          spec: m.spec || (m.supplier ? `Supplier: ${m.supplier}` : 'Standard Hardware'),
           profile: m.profile || 'Bought-out',
           qty,
-          unit: m.unit || 'pcs',
+          unit: m.unit || (m.priceMode === 'per kg' ? 'kg' : 'pcs'),
           unitPrice,
           totalPrice
         };
       });
 
-      const machiningOps = (b.machiningOps || []).map((op: any, oIdx: number) => {
+      // Derive machiningOps from b.machiningOps or fallback to active entries in b.procState
+      let rawOps: any[] = Array.isArray(b.machiningOps) ? b.machiningOps : [];
+      if (rawOps.length === 0 && b.procState && typeof b.procState === 'object') {
+        rawOps = Object.keys(b.procState)
+          .map((procName, oIdx) => {
+            const st = b.procState[procName];
+            const quoHr = Number(st?.quoHr || 0);
+            const estHr = Number(st?.estHr || 0);
+            const setTime = Number(st?.setTime || 0);
+            if (quoHr <= 0 && estHr <= 0 && setTime <= 0) return null;
+            return {
+              id: `proc-${bIdx}-${oIdx}`,
+              procName,
+              quoHr,
+              estHr,
+              setTime,
+              hrRate: Number(st?.hrRate !== undefined ? st.hrRate : (st?.rate || 0)),
+              machineRate: Number(st?.machineRate || 0),
+              setTimeRate: Number(st?.setTimeRate || 0),
+              machineId: st?.machineId || null
+            };
+          })
+          .filter(Boolean);
+      }
+
+      const machiningOps = rawOps.map((op: any, oIdx: number) => {
         const quoHr = Number(op.quoHr || op.plannedHours || 0);
         const estHr = Number(op.estHr !== undefined ? op.estHr : quoHr);
         const setTime = Number(op.setTime || 0);
-        const hrRate = Number(op.hrRate || op.hourlyLaborRate || 750);
-        const machineRate = Number(op.machineRate || op.hourlyMachineRate || 1200);
-        const setTimeRate = Number(op.setTimeRate || hrRate);
-        const effectiveHours = estHr > 0 ? estHr : quoHr;
+        const hrRate = Number(op.hrRate !== undefined ? op.hrRate : (op.rate !== undefined ? op.rate : (op.hourlyLaborRate || 0)));
+        const machineRate = Number(op.machineRate !== undefined ? op.machineRate : (op.hourlyMachineRate !== undefined ? op.hourlyMachineRate : 0));
+        const setTimeRate = Number(op.setTimeRate || 0);
+        const effectiveHours = quoHr > 0 ? quoHr : estHr;
         const opCost = Number(op.cost !== undefined ? op.cost : ((effectiveHours * (hrRate + machineRate)) + (setTime * setTimeRate)));
 
         return {
@@ -19032,6 +19106,7 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
           hrRate,
           machineRate,
           setTimeRate,
+          machineId: op.machineId || null,
           cost: Math.round(opCost)
         };
       });
@@ -19040,6 +19115,7 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
                        manualMats.reduce((s: number, m: any) => s + m.totalPrice, 0);
       const machTotal = machiningOps.reduce((s: number, op: any) => s + op.cost, 0);
       const totalQuotedHours = machiningOps.reduce((s: number, op: any) => s + op.quoHr, 0);
+      const totalEstHours = machiningOps.reduce((s: number, op: any) => s + op.estHr, 0);
 
       grandMaterialCost += matTotal;
       grandMachiningLaborCost += machTotal;
@@ -19053,6 +19129,8 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
         description: b.description || '',
         drawingNo: b.drawingNo || '',
         partNo: b.partNo || '',
+        isCustomAdjusted: true,
+        procState: b.procState || {},
         autoMats,
         manualMats,
         allMaterials: [...autoMats, ...manualMats],
@@ -19060,7 +19138,8 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
         matTotal,
         machTotal,
         bomTotal: matTotal + machTotal,
-        totalQuotedHours
+        totalQuotedHours,
+        totalEstHours
       };
     });
 
@@ -19068,10 +19147,25 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
     const overheadCost = Math.round((grandMaterialCost + grandMachiningLaborCost) * (numOverheadPct / 100));
     const totalEstimatedCost = Math.round(grandMaterialCost + grandMachiningLaborCost + overheadCost);
 
-    // Save to database
+    // Preserve first-time original snapshot without overwriting if already stored
+    let snapshotToStore: string | null = null;
+    if (!wo.originalBomSnapshot) {
+      if (Array.isArray(originalBomSnapshot) && originalBomSnapshot.length > 0) {
+        snapshotToStore = JSON.stringify(originalBomSnapshot);
+      } else if (wo.bom) {
+        snapshotToStore = typeof wo.bom === 'string' ? wo.bom : JSON.stringify(wo.bom);
+      }
+    }
+
+    const finalSubmittedBy = submittedBy || 'Production User';
+
+    // Save to database and mark Manual BOM as submitted to release required materials to Stores
     await db.query(
-      'UPDATE work_orders SET bom = ?, estimatedCost = ?, overheadPct = ?, updatedAt = NOW() WHERE id = ?',
-      [JSON.stringify(processedBoms), totalEstimatedCost, numOverheadPct, id]
+      `UPDATE work_orders
+       SET bom = ?, estimatedCost = ?, overheadPct = ?, bomSubmitted = 1, bomSubmittedAt = NOW(),
+           bomSubmittedBy = ?, originalBomSnapshot = COALESCE(originalBomSnapshot, ?), updatedAt = NOW()
+       WHERE id = ?`,
+      [JSON.stringify(processedBoms), totalEstimatedCost, numOverheadPct, finalSubmittedBy, snapshotToStore, id]
     );
 
     // Sync operations to floor table if requested
@@ -19086,62 +19180,85 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
         });
       });
 
-      if (allOps.length > 0) {
-        const [existingOps]: any = await db.query(
-          'SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC',
-          [id]
+      const [existingOps]: any = await db.query(
+        'SELECT * FROM work_order_operations WHERE workOrderId = ? ORDER BY stepNumber ASC',
+        [id]
+      );
+
+      const activeOpIds: string[] = [];
+      let stepNum = 1;
+
+      for (const op of allOps) {
+        const matched = existingOps.find((ex: any) =>
+          (op.id && ex.id === op.id) ||
+          ex.operationName.toLowerCase() === op.procName.toLowerCase() ||
+          ex.operationName.toLowerCase().includes(op.procName.toLowerCase()) ||
+          op.procName.toLowerCase().includes(ex.operationName.toLowerCase())
         );
 
-        let stepNum = 1;
-        for (const op of allOps) {
-          const matched = existingOps.find((ex: any) => 
-            (op.id && ex.id === op.id) ||
-            ex.operationName.toLowerCase() === op.procName.toLowerCase() ||
-            ex.operationName.toLowerCase().includes(op.procName.toLowerCase()) ||
-            op.procName.toLowerCase().includes(ex.operationName.toLowerCase())
-          );
+        const plannedHrs = op.estHr > 0 ? op.estHr : (op.quoHr || 1);
 
-          if (matched) {
-            await db.query(
-              `UPDATE work_order_operations 
-               SET plannedHours = ?, hourlyLaborRate = ?, hourlyMachineRate = ?, notes = ? 
-               WHERE id = ?`,
-              [
-                op.estHr || op.quoHr || 1,
-                op.hrRate || 750,
-                op.machineRate || 1200,
-                `Adjusted from BOM: ${op.partTitle || ''}`,
-                matched.id
-              ]
-            );
-          } else {
-            const newOpId = `op-${Date.now()}-${stepNum}`;
-            const opName = processedBoms.length > 1 ? `${op.partTitle}: ${op.procName}` : op.procName;
-            await db.query(
-              `INSERT INTO work_order_operations 
-               (id, workOrderId, stepNumber, operationName, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes)
-               VALUES (?, ?, ?, ?, ?, 0, 'Pending', ?, ?, ?)`,
-              [
-                newOpId,
-                id,
-                existingOps.length + stepNum,
-                opName,
-                op.estHr || op.quoHr || 1,
-                op.hrRate || 750,
-                op.machineRate || 1200,
-                `Added from Adjusted BOM: ${op.partTitle || ''}`
-              ]
-            );
-            stepNum++;
-          }
+        if (matched) {
+          activeOpIds.push(matched.id);
+          await db.query(
+            `UPDATE work_order_operations 
+             SET plannedHours = ?, hourlyLaborRate = ?, hourlyMachineRate = ?, machineId = COALESCE(?, machineId), notes = ? 
+             WHERE id = ?`,
+            [
+              plannedHrs,
+              op.hrRate || 0,
+              op.machineRate || 0,
+              op.machineId || null,
+              `Adjusted from BOM: ${op.partTitle || ''}`,
+              matched.id
+            ]
+          );
+        } else {
+          const newOpId = `op-${Date.now()}-${stepNum}-${Math.random().toString(36).slice(2, 5)}`;
+          const opName = processedBoms.length > 1 ? `${op.partTitle}: ${op.procName}` : op.procName;
+          activeOpIds.push(newOpId);
+          await db.query(
+            `INSERT INTO work_order_operations 
+             (id, workOrderId, stepNumber, operationName, machineId, plannedHours, actualHours, status, hourlyLaborRate, hourlyMachineRate, notes)
+             VALUES (?, ?, ?, ?, ?, ?, 0, 'Pending', ?, ?, ?)`,
+            [
+              newOpId,
+              id,
+              existingOps.length + stepNum,
+              opName,
+              op.machineId || null,
+              plannedHrs,
+              op.hrRate || 0,
+              op.machineRate || 0,
+              `Added from Adjusted BOM: ${op.partTitle || ''}`
+            ]
+          );
+          stepNum++;
         }
+      }
+
+      // Remove stale unstarted Pending operations that were removed/zeroed out in Manual BOM
+      const staleOps = existingOps.filter(
+        (ex: any) =>
+          ex.status === 'Pending' &&
+          Number(ex.actualHours || 0) === 0 &&
+          !activeOpIds.includes(ex.id)
+      );
+      if (staleOps.length > 0) {
+        const staleIds = staleOps.map((s: any) => s.id);
+        await db.query(
+          `DELETE FROM work_order_operations WHERE workOrderId = ? AND id IN (?) AND status = 'Pending' AND IFNULL(actualHours, 0) = 0`,
+          [id, staleIds]
+        );
       }
     }
 
     res.json({
       success: true,
-      message: 'Work Order Full BOM and Internal Job Costing updated successfully',
+      message: 'Work Order Manual BOM submitted and released to Stores successfully',
       boms: processedBoms,
+      bomSubmitted: true,
+      bomSubmittedBy: finalSubmittedBy,
       estimatedCost: totalEstimatedCost,
       costSummary: {
         materialCost: grandMaterialCost,
