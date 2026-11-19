@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Plus, Trash2, CheckCircle2, Wrench, Package } from 'lucide-react';
-import { getInventory, getMachines, updateWorkOrder } from '@/lib/api';
+import { fetchInventory, updateWorkOrder } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 interface WorkOrderManualBomEditorModalProps {
@@ -28,8 +28,8 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
 
   useEffect(() => {
     if (!isOpen) return;
-    getInventory().then((res) => setInventory(Array.isArray(res) ? res : [])).catch(() => {});
-    getMachines().then((res) => setMachines(Array.isArray(res) ? res : [])).catch(() => {});
+    fetchInventory().then((res: any) => setInventory(Array.isArray(res) ? res : [])).catch(() => {});
+    fetch('/api/machines').then((r) => r.json()).then((res: any) => setMachines(Array.isArray(res) ? res : [])).catch(() => {});
 
     // Flatten initial materials & operations from BOMs
     const flatMats: any[] = [];
