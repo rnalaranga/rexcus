@@ -1016,9 +1016,15 @@ export const DailyCashFlowHub: React.FC = () => {
                             {ch.branchName && <div className="text-[10px] text-muted">{ch.branchName}</div>}
                           </td>
                           <td className="py-2.5 px-3">
-                            <Badge variant={isInward ? 'success' : 'info'}>
-                              {isInward ? 'Inward (Received)' : 'Outward (Issued)'}
-                            </Badge>
+                            {ch.sourceTable === 'cashbook_entries' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                                Petty Cash
+                              </span>
+                            ) : (
+                              <Badge variant={isInward ? 'success' : 'info'}>
+                                {isInward ? 'Inward (Received)' : 'Outward (Issued)'}
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 font-semibold text-primary">
                             {ch.partyName || '-'}

@@ -14373,7 +14373,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
                     paymentMethod: p.method || 'Bank Transfer',
                     amount: Number(p.amount || 0),
                     currency: p.currency || inv.currency || 'LKR',
-                    chequeNo: p.chequeNo || null,
+                    chequeNo: p.chequeNo || (p.method === 'Cheque' ? p.reference : null) || null,
                     chequeDate: p.chequeDate ? String(p.chequeDate).slice(0, 10) : null,
                     bankName: p.bankName || null,
                     chequeStatus: p.chequeStatus || (p.chequeNo ? 'Pending' : null),
