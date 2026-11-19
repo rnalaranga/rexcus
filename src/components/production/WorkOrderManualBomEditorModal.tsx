@@ -155,7 +155,8 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Quotation-Style Manual BOM & Machine Hours Studio" size="full">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 max-h-[78vh]">
+      <div className="p-4 sm:p-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-h-[75vh]">
         {/* LEFT: Editable Quotation-Style BOM */}
         <div className="lg:col-span-8 space-y-4 overflow-y-auto pr-1">
           <div className="flex items-center justify-between bg-surface2/40 px-3 py-2 rounded-lg border border-theme-subtle">
@@ -318,69 +319,95 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
                     Add Operation
                   </Button>
                 </div>
-                <div className="space-y-1.5">
-                  {part.operations.map((op, oIdx) => (
-                    <div key={oIdx} className="grid grid-cols-12 gap-1.5 items-center text-xs">
-                      <input
-                        type="text"
-                        placeholder="Operation (e.g. Turning)"
-                        className="col-span-3 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
-                        value={op.operationName}
-                        onChange={(e) => handleOpChange(pIdx, oIdx, 'operationName', e.target.value)}
-                      />
-                      <select
-                        className="col-span-3 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
-                        value={op.machineId}
-                        onChange={(e) => handleOpChange(pIdx, oIdx, 'machineId', e.target.value)}
-                      >
-                        <option value="">-- Select Machine --</option>
-                        {machines.map((mc) => (
-                          <option key={mc.id} value={mc.id}>
-                            {mc.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.5"
-                        placeholder="Hrs"
-                        className="col-span-1 px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
-                        value={op.plannedHours}
-                        onChange={(e) => handleOpChange(pIdx, oIdx, 'plannedHours', Number(e.target.value))}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        placeholder="Rate/Hr"
-                        className="col-span-2 px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono"
-                        value={op.hourlyRate}
-                        onChange={(e) => handleOpChange(pIdx, oIdx, 'hourlyRate', Number(e.target.value))}
-                      />
-                      <div className="col-span-2 text-right font-mono font-semibold text-secondary">
-                        {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updatePartField(
-                            pIdx,
-                            'operations',
-                            part.operations.filter((_, i) => i !== oIdx)
-                          )
-                        }
-                        className="col-span-1 flex justify-center text-rose-500 hover:text-rose-600"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                  {part.operations.length === 0 && (
-                    <div className="text-[11px] text-muted italic py-2 text-center border border-dashed border-theme-subtle rounded">
-                      No machining operations added for this part.
-                    </div>
-                  )}
+                <div className="overflow-x-auto border border-theme-subtle rounded">
+                  <table className="w-full text-xs">
+                    <thead className="bg-surface2/50 text-[10px] uppercase text-muted border-b border-theme-subtle">
+                      <tr>
+                        <th className="py-1.5 px-2 text-left">Operation</th>
+                        <th className="py-1.5 px-2 text-left">Machine</th>
+                        <th className="py-1.5 px-2 text-right w-20">Hours</th>
+                        <th className="py-1.5 px-2 text-right w-24">Rate / Hr</th>
+                        <th className="py-1.5 px-2 text-right w-24">Total</th>
+                        <th className="py-1.5 px-2 text-center w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-theme-subtle/50">
+                      {part.operations.map((op, oIdx) => (
+                        <tr key={oIdx} className="hover:bg-surface2/20">
+                          <td className="p-1.5">
+                            <input
+                              type="text"
+                              placeholder="Operation (e.g. Turning)"
+                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
+                              value={op.operationName}
+                              onChange={(e) => handleOpChange(pIdx, oIdx, 'operationName', e.target.value)}
+                            />
+                          </td>
+                          <td className="p-1.5">
+                            <select
+                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
+                              value={op.machineId}
+                              onChange={(e) => handleOpChange(pIdx, oIdx, 'machineId', e.target.value)}
+                            >
+                              <option value="">-- Select Machine --</option>
+                              {machines.map((mc) => (
+                                <option key={mc.id} value={mc.id}>
+                                  {mc.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.5"
+                              placeholder="Hrs"
+                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-right"
+                              value={op.plannedHours}
+                              onChange={(e) => handleOpChange(pIdx, oIdx, 'plannedHours', Number(e.target.value))}
+                            />
+                          </td>
+                          <td className="p-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              step="any"
+                              placeholder="Rate/Hr"
+                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-right"
+                              value={op.hourlyRate}
+                              onChange={(e) => handleOpChange(pIdx, oIdx, 'hourlyRate', Number(e.target.value))}
+                            />
+                          </td>
+                          <td className="p-1.5 text-right font-mono font-semibold text-secondary">
+                            {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
+                          </td>
+                          <td className="p-1.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePartField(
+                                  pIdx,
+                                  'operations',
+                                  part.operations.filter((_, i) => i !== oIdx)
+                                )
+                              }
+                              className="text-rose-500 hover:text-rose-600"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {part.operations.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="text-[11px] text-muted italic py-3 text-center">
+                            No machining operations added for this part.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -466,6 +493,7 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
             {saving ? 'Submitting...' : 'Submit Manual BOM to Stores'}
           </Button>
         </div>
+      </div>
       </div>
     </Modal>
   );
