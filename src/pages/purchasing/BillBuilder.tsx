@@ -1475,6 +1475,11 @@ export const BillBuilder: React.FC = () => {
                             onChange={e => updateLineItem(item.id, 'total', e.target.value)}
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-bold text-primary focus:border-rex-500 outline-none"
                           />
+                          {taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount && Number(item.total || 0) > 0 && (
+                            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                              Net (Excl. VAT): {formatCurrency(Number(item.total) * (netSubtotal / amount))}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 align-top pt-3.5">
                           <AccountAutocomplete
