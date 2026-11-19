@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Plus, Trash2, CheckCircle2, Wrench, Package, History, Layers } from 'lucide-react';
 import { fetchInventory, updateWorkOrder } from '@/lib/api';
+import { useMachiningOperations } from '@/hooks/useData';
 import { formatCurrency } from '@/lib/utils';
 
 interface WorkOrderManualBomEditorModalProps {
@@ -28,19 +29,26 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
   onSuccess,
 }) => {
   const [inventory, setInventory] = useState<any[]>([]);
-  const [machines, setMachines] = useState<any[]>([]);
   const [parts, setParts] = useState<BomPart[]>([]);
   const [snapshotParts, setSnapshotParts] = useState<BomPart[]>([]);
   const [saving, setSaving] = useState(false);
+
+  const { data: rawOperations } = useMachiningOperations();
+  const EXCEL_PROCESSES = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    if (rawOperations) {
+      rawOperations.forEach((op: any) => {
+        if (!groups[op.groupName]) groups[op.groupName] = [];
+        groups[op.groupName].push(op);
+      });
+    }
+    return Object.keys(groups).map((k) => ({ group: k, items: groups[k] }));
+  }, [rawOperations]);
 
   useEffect(() => {
     if (!isOpen) return;
     fetchInventory()
       .then((res: any) => setInventory(Array.isArray(res) ? res : []))
-      .catch(() => {});
-    fetch('/api/machines')
-      .then((r) => r.json())
-      .then((res: any) => setMachines(Array.isArray(res) ? res : []))
       .catch(() => {});
 
     const normalized: BomPart[] = (initialBoms && initialBoms.length > 0 ? initialBoms : [{ partName: workOrder?.productName || workOrder?.title || 'Main Assembly', qty: workOrder?.qty || 1 }]).map((b: any) => ({
@@ -89,18 +97,31 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
     );
   };
 
-  const handleOpChange = (pIdx: number, oIdx: number, field: string, value: any) => {
+  const handleProcChange = (pIdx: number, proc: any, field: 'estHr' | 'setTime' | 'quoHr', value: number) => {
     setParts((prev) =>
       prev.map((p, i) => {
         if (i !== pIdx) return p;
         const nextOps = [...p.operations];
-        nextOps[oIdx] = { ...nextOps[oIdx], [field]: value };
-        if (field === 'machineId') {
-          const mc = machines.find((x) => x.id === value);
-          if (mc) {
-            nextOps[oIdx].machineName = mc.name;
-            nextOps[oIdx].hourlyRate = Number(mc.hourlyRate || mc.ratePerHour || 0);
-          }
+        const existingIdx = nextOps.findIndex((o) => o.operationName === proc.name);
+        const hrRate = Number(proc.hrRate || proc.rate || 0);
+        const setTimeRate = Number(proc.setTimeRate || 0);
+        if (existingIdx >= 0) {
+          const updated = { ...nextOps[existingIdx], [field]: value };
+          updated.plannedHours = Number(updated.quoHr || updated.estHr || 0);
+          updated.hourlyRate = hrRate;
+          updated.setTimeRate = setTimeRate;
+          nextOps[existingIdx] = updated;
+        } else {
+          nextOps.push({
+            operationName: proc.name,
+            machineName: proc.groupName || '',
+            estHr: field === 'estHr' ? value : 0,
+            setTime: field === 'setTime' ? value : 0,
+            quoHr: field === 'quoHr' ? value : 0,
+            plannedHours: field === 'quoHr' || field === 'estHr' ? value : 0,
+            hourlyRate: hrRate,
+            setTimeRate,
+          });
         }
         return { ...p, operations: nextOps };
       })
@@ -298,111 +319,95 @@ export const WorkOrderManualBomEditorModal: React.FC<WorkOrderManualBomEditorMod
                 </div>
               </div>
 
-              {/* Machining / Operations Table */}
+              {/* Machining Operations (Quotation-Style Grouped Table) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-secondary flex items-center gap-1">
-                    <Wrench size={12} className="text-amber-500" /> Machine Hours & Operations
+                    <Wrench size={12} className="text-amber-500" /> Machining Operations
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={Plus}
-                    onClick={() =>
-                      updatePartField(pIdx, 'operations', [
-                        ...part.operations,
-                        { operationName: '', machineId: '', machineName: '', plannedHours: 1, hourlyRate: 0 },
-                      ])
-                    }
-                    className="h-6 text-[10px] px-2"
-                  >
-                    Add Operation
-                  </Button>
                 </div>
                 <div className="overflow-x-auto border border-theme-subtle rounded">
-                  <table className="w-full text-xs">
-                    <thead className="bg-surface2/50 text-[10px] uppercase text-muted border-b border-theme-subtle">
-                      <tr>
-                        <th className="py-1.5 px-2 text-left">Operation</th>
-                        <th className="py-1.5 px-2 text-left">Machine</th>
-                        <th className="py-1.5 px-2 text-right w-20">Hours</th>
-                        <th className="py-1.5 px-2 text-right w-24">Rate / Hr</th>
-                        <th className="py-1.5 px-2 text-right w-24">Total</th>
-                        <th className="py-1.5 px-2 text-center w-10"></th>
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-surface2/50 border-b border-theme-subtle text-[10px] uppercase tracking-wider text-muted font-bold">
+                        <th className="px-3 py-2">Process</th>
+                        <th className="px-2 py-2 w-20">Est. Hr</th>
+                        <th className="px-2 py-2 w-20">Set Time</th>
+                        <th className="px-2 py-2 w-20">Quo. Hr</th>
+                        <th className="px-2 py-2 w-44">Rates</th>
+                        <th className="px-3 py-2 text-right w-28">Sub Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-theme-subtle/50">
-                      {part.operations.map((op, oIdx) => (
-                        <tr key={oIdx} className="hover:bg-surface2/20">
-                          <td className="p-1.5">
-                            <input
-                              type="text"
-                              placeholder="Operation (e.g. Turning)"
-                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
-                              value={op.operationName}
-                              onChange={(e) => handleOpChange(pIdx, oIdx, 'operationName', e.target.value)}
-                            />
-                          </td>
-                          <td className="p-1.5">
-                            <select
-                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary"
-                              value={op.machineId}
-                              onChange={(e) => handleOpChange(pIdx, oIdx, 'machineId', e.target.value)}
-                            >
-                              <option value="">-- Select Machine --</option>
-                              {machines.map((mc) => (
-                                <option key={mc.id} value={mc.id}>
-                                  {mc.name}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="p-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.5"
-                              placeholder="Hrs"
-                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-right"
-                              value={op.plannedHours}
-                              onChange={(e) => handleOpChange(pIdx, oIdx, 'plannedHours', Number(e.target.value))}
-                            />
-                          </td>
-                          <td className="p-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              placeholder="Rate/Hr"
-                              className="w-full px-2 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-right"
-                              value={op.hourlyRate}
-                              onChange={(e) => handleOpChange(pIdx, oIdx, 'hourlyRate', Number(e.target.value))}
-                            />
-                          </td>
-                          <td className="p-1.5 text-right font-mono font-semibold text-secondary">
-                            {formatCurrency((Number(op.plannedHours) || 0) * (Number(op.hourlyRate) || 0))}
-                          </td>
-                          <td className="p-1.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updatePartField(
-                                  pIdx,
-                                  'operations',
-                                  part.operations.filter((_, i) => i !== oIdx)
-                                )
-                              }
-                              className="text-rose-500 hover:text-rose-600"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
+                    <tbody className="divide-y divide-theme-subtle/30">
+                      {EXCEL_PROCESSES.map((group, gIdx) => (
+                        <React.Fragment key={gIdx}>
+                          <tr className="bg-surface2/30">
+                            <td colSpan={6} className="px-3 py-1.5 text-[10.5px] font-black text-red-500/90 uppercase tracking-widest">
+                              {group.group}
+                            </td>
+                          </tr>
+                          {group.items.map((proc: any) => {
+                            const matched = part.operations.find((o) => o.operationName === proc.name) || {};
+                            const estHr = Number(matched.estHr ?? matched.plannedHours ?? 0);
+                            const setTime = Number(matched.setTime ?? 0);
+                            const quoHr = Number(matched.quoHr ?? matched.plannedHours ?? 0);
+                            const hrRate = Number(proc.hrRate || proc.rate || 0);
+                            const setTimeRate = Number(proc.setTimeRate || 0);
+                            const subTotal = quoHr * hrRate + setTime * setTimeRate;
+
+                            return (
+                              <tr key={proc.name} className="hover:bg-surface2/20">
+                                <td className="px-3 py-1.5 font-medium text-primary">{proc.name}</td>
+                                <td className="px-2 py-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.5"
+                                    value={estHr || ''}
+                                    placeholder="-"
+                                    onChange={(e) => handleProcChange(pIdx, proc, 'estHr', Number(e.target.value))}
+                                    className="w-full px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.5"
+                                    value={setTime || ''}
+                                    placeholder="-"
+                                    onChange={(e) => handleProcChange(pIdx, proc, 'setTime', Number(e.target.value))}
+                                    className="w-full px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.5"
+                                    value={quoHr || ''}
+                                    placeholder="-"
+                                    onChange={(e) => handleProcChange(pIdx, proc, 'quoHr', Number(e.target.value))}
+                                    className="w-full px-1.5 py-1 rounded border border-theme-subtle bg-surface text-primary font-mono text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 text-[11px] font-mono">
+                                  <span className="text-amber-600">Rs. {hrRate.toLocaleString()}/hr</span>
+                                  <span className="text-muted mx-1">|</span>
+                                  <span className="text-blue-600">Rs. {setTimeRate.toLocaleString()}/set</span>
+                                </td>
+                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-secondary">
+                                  {subTotal > 0 ? formatCurrency(subTotal) : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       ))}
-                      {part.operations.length === 0 && (
+                      {EXCEL_PROCESSES.length === 0 && (
                         <tr>
                           <td colSpan={6} className="text-[11px] text-muted italic py-3 text-center">
-                            No machining operations added for this part.
+                            Loading machining operations...
                           </td>
                         </tr>
                       )}
