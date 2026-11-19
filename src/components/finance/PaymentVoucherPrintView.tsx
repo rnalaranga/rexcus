@@ -1,5 +1,47 @@
 import React from 'react';
-import { formatDate, formatCurrency, resolveFileUrl, numberToWords } from '@/lib/utils';
+import { formatDate, formatCurrency, resolveFileUrl } from '@/lib/utils';
+
+function numberToWordsWestern(amount: number, currency = 'LKR'): string {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const scales = ['', 'Thousand', 'Million', 'Billion'];
+
+  const convertChunk = (n: number): string => {
+    if (n === 0) return '';
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convertChunk(n % 100) : '');
+  };
+
+  const abs = Math.abs(amount || 0);
+  const whole = Math.floor(abs);
+  const cents = Math.round((abs - whole) * 100);
+
+  let words = '';
+  if (whole === 0) {
+    words = 'Zero';
+  } else {
+    let rem = whole;
+    let scaleIdx = 0;
+    const parts: string[] = [];
+    while (rem > 0) {
+      const chunk = rem % 1000;
+      if (chunk > 0) {
+        const chunkStr = convertChunk(chunk);
+        parts.unshift(scales[scaleIdx] ? `${chunkStr} ${scales[scaleIdx]}` : chunkStr);
+      }
+      rem = Math.floor(rem / 1000);
+      scaleIdx++;
+    }
+    words = parts.join(' ');
+  }
+
+  if (cents > 0) {
+    return `${currency} ${words} and ${convertChunk(cents)} Cents Only`;
+  }
+  return `${currency} ${words} Only`;
+}
 
 export interface PaymentVoucherPrintViewProps {
   voucher: any;
@@ -241,7 +283,13 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
                       <td className="p-1 px-2 font-mono text-[10px]">
                         <div className="flex items-center">
                           <span className="font-bold mr-1 shrink-0">:</span>
-                          <span className="flex-1">{transactionRef || 'Direct Transfer / Cash'}</span>
+                          <span className="flex-1">
+                            {paymentMethod.toLowerCase().includes('cheque')
+                              ? (chequeNo || '')
+                              : paymentMethod.toLowerCase() === 'cash'
+                                ? ''
+                                : (transactionRef || '')}
+                          </span>
                         </div>
                       </td>
                     </tr>
@@ -264,7 +312,7 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
             <div className="w-[68%] p-2.5 border-r border-black flex flex-col justify-center">
               <span className="font-bold italic text-[9.5px] text-gray-700 block uppercase">Amount in Words:</span>
               <span className="text-[11px] font-bold text-gray-900 italic mt-0.5 leading-snug">
-                {numberToWords(amount, 'LKR')}
+                {numberToWordsWestern(amount, 'LKR')}
               </span>
             </div>
             <div className="w-[32%] p-2.5 bg-gray-50/60 flex flex-col justify-center text-right">
@@ -275,8 +323,8 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
             </div>
           </div>
 
-          {/* 4-Box Signatures Block: Prepared, Checked, Approved, Receiver */}
-          <div className="grid grid-cols-4 divide-x divide-black text-[10px] bg-white print-no-break">
+          {/* 3-Box Signatures Block: Prepared, Approved (Accountant), Receiver */}
+          <div className="grid grid-cols-3 divide-x divide-black text-[10px] bg-white print-no-break">
             {/* 1. Prepared By */}
             <div className="p-2 flex flex-col justify-between" style={{ minHeight: '85px' }}>
               <div className="font-bold uppercase text-black text-[9px]">1. Prepared By</div>
@@ -286,27 +334,18 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
               </div>
             </div>
 
-            {/* 2. Checked By */}
+            {/* 2. Approved By */}
             <div className="p-2 flex flex-col justify-between bg-gray-50/30" style={{ minHeight: '85px' }}>
-              <div className="font-bold uppercase text-black text-[9px]">2. Checked By</div>
+              <div className="font-bold uppercase text-black text-[9px]">2. Approved By</div>
               <div className="mt-auto pt-2">
                 <div className="border-b border-dotted border-black mb-1"></div>
-                <div className="text-[8.5px] text-gray-700 font-semibold text-center">Accountant / FM</div>
+                <div className="text-[8.5px] text-gray-700 font-semibold text-center">Accountant</div>
               </div>
             </div>
 
-            {/* 3. Approved By */}
+            {/* 3. Receiver Signature */}
             <div className="p-2 flex flex-col justify-between" style={{ minHeight: '85px' }}>
-              <div className="font-bold uppercase text-black text-[9px]">3. Approved By</div>
-              <div className="mt-auto pt-2">
-                <div className="border-b border-dotted border-black mb-1"></div>
-                <div className="text-[8.5px] text-gray-700 font-semibold text-center">Director / MD</div>
-              </div>
-            </div>
-
-            {/* 4. Receiver Signature */}
-            <div className="p-2 flex flex-col justify-between bg-gray-50/30" style={{ minHeight: '85px' }}>
-              <div className="font-bold uppercase text-black text-[9px]">4. Payee / Receiver</div>
+              <div className="font-bold uppercase text-black text-[9px]">3. Payee / Receiver</div>
               <div className="mt-auto pt-2">
                 <div className="border-b border-dotted border-black mb-1"></div>
                 <div className="text-[8.5px] text-gray-700 font-semibold text-center">Signature & Stamp</div>

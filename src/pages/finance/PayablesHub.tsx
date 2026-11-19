@@ -725,20 +725,37 @@ export const PayablesHub: React.FC = () => {
                               CHQ #{v.chequeNo}
                             </span>
                           )}
+                          {v.chequeDate && (
+                            <div className="text-[10px] text-muted font-mono mt-0.5">
+                              Chq Date: {formatDate(v.chequeDate)}{v.bankName ? ` (${v.bankName})` : ''}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
                           {formatCurrency(Number(v.amount || 0))}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            icon={Printer}
-                            onClick={() => setPrintVoucher(v)}
-                            className="h-7 text-[11px]"
-                          >
-                            View / Print
-                          </Button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              icon={Printer}
+                              onClick={() => setPrintVoucher(v)}
+                              className="h-7 text-[11px]"
+                            >
+                              View / Print
+                            </Button>
+                            {v.depositSlip && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(v.depositSlip, '_blank', 'noopener,noreferrer')}
+                                className="h-7 text-[11px] text-blue-600 border-blue-500/30 hover:bg-blue-500/10"
+                              >
+                                View Slip
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
