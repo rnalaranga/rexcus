@@ -61,7 +61,7 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
   const chequeNo = voucher.chequeNo || '';
   const chequeDate = voucher.chequeDate || '';
   const bankName = voucher.bankName || '';
-  const transactionRef = voucher.transactionRef || voucher.reference || '';
+  const transactionRef = voucher.transactionRef || voucher.referenceNo || voucher.reference || '';
   const relatedBill = voucher.relatedBillNo || voucher.relatedBillId || voucher.invoiceNo || '';
 
   const logoUrl = resolveFileUrl(settings?.company_logo || settings?.logo || settings?.companyLogo || '') || '/rex-logo.png';

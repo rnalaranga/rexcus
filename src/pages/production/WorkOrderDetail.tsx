@@ -31,7 +31,7 @@ import { WorkOrderQCHub } from '@/components/production/WorkOrderQCHub'
 import { WorkOrderDispatchesSection } from '@/components/production/WorkOrderDispatchesSection'
 import { WorkOrderPartialDispatchModal } from '@/components/production/WorkOrderPartialDispatchModal'
 import { WorkOrderMaterialSubstituteModal } from '@/components/production/WorkOrderMaterialSubstituteModal'
-import { WorkOrderFullBomAdjustModal } from '@/components/production/WorkOrderFullBomAdjustModal'
+import { WorkOrderManualBomEditorModal } from '@/components/production/WorkOrderManualBomEditorModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
 import { GatePassPrintModal } from '@/components/GatePassPrintModal'
@@ -2795,19 +2795,18 @@ export const WorkOrderDetail: React.FC = () => {
         </form>
       </Modal>
 
-      {/* ── FULL BOM ADJUSTMENT & DYNAMIC INTERNAL JOB COSTING ENGINE MODAL ──────── */}
+      {/* ── MANUAL BOM & MACHINE HOURS EDITOR (QUOTATION STYLE) ──────── */}
       {showAdjustBomModal && (
-        <WorkOrderFullBomAdjustModal
+        <WorkOrderManualBomEditorModal
           isOpen={showAdjustBomModal}
           onClose={() => setShowAdjustBomModal(false)}
           workOrder={wo}
           initialBoms={parsedBoms}
-          initialPartIndex={adjustBomPartIndex}
-          onSuccess={(updatedData) => {
+          onSuccess={() => {
             loadData()
             setToastMsg({
               type: 'success',
-              text: `Work Order BOM and Internal Job Costing recalculated successfully! New Target Budget: ${formatCurrency(updatedData?.estimatedCost || 0)}`
+              text: 'Manual BOM & Machine Hours submitted! Required materials are now released to Stores.'
             })
           }}
         />
