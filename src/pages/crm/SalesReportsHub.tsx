@@ -32,6 +32,7 @@ import { useQuotations, useFinishedGoodsOrders, useCustomers, useLeads } from '@
 import { useSettings } from '@/contexts/SettingsContext';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
+import { exportToExcel as exportBrandedExcel } from '@/lib/exportToExcel';
 
 type ReportTab = 'orders' | 'quotes' | 'customers' | 'analytics' | 'ai_insights';
 
@@ -441,9 +442,15 @@ export const SalesReportsHub: React.FC = () => {
         'Invoice Status': `${orderStats.invoicedCount} Invoiced`
       } as any);
 
-      const ws = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.book_append_sheet(wb, ws, 'Sales Orders');
-      XLSX.writeFile(wb, `Sales_Orders_Report_${dateRangeStr}.xlsx`);
+      exportBrandedExcel({
+        fileName: `Sales_Orders_Report_${dateRangeStr}.xlsx`,
+        sheetName: 'Sales Orders',
+        companyName: settings?.company_name || 'REX INDUSTRIES (PVT) LTD',
+        reportTitle: 'COMMERCIAL SALES ORDERS REPORT',
+        subtitle: `Period: ${startDate || 'Beginning'} to ${endDate || 'Present'} | Orders: ${filteredOrders.length}`,
+        columns: Object.keys(rows[0] || {}).map((k) => ({ header: k, key: k })),
+        rows,
+      });
     } else if (activeTab === 'quotes') {
       const rows = filteredQuotes.map((q, idx) => ({
         '#': idx + 1,
@@ -476,9 +483,15 @@ export const SalesReportsHub: React.FC = () => {
         'Approved By': `Rate: ${quoteStats.conversionRate.toFixed(1)}%`
       } as any);
 
-      const ws = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.book_append_sheet(wb, ws, 'Quotations Report');
-      XLSX.writeFile(wb, `Quotations_Report_${dateRangeStr}.xlsx`);
+      exportBrandedExcel({
+        fileName: `Quotations_Report_${dateRangeStr}.xlsx`,
+        sheetName: 'Quotations Report',
+        companyName: settings?.company_name || 'REX INDUSTRIES (PVT) LTD',
+        reportTitle: 'QUOTATIONS & WIN-RATE REPORT',
+        subtitle: `Period: ${startDate || 'Beginning'} to ${endDate || 'Present'} | Quotations: ${filteredQuotes.length}`,
+        columns: Object.keys(rows[0] || {}).map((k) => ({ header: k, key: k })),
+        rows,
+      });
     } else {
       const rows = customerSummary.map((c, idx) => ({
         '#': idx + 1,
@@ -491,9 +504,15 @@ export const SalesReportsHub: React.FC = () => {
         'Total Order Value (LKR)': c.totalOrdersLKR
       }));
 
-      const ws = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.book_append_sheet(wb, ws, 'Customer Sales Summary');
-      XLSX.writeFile(wb, `Customer_Sales_Summary_${dateRangeStr}.xlsx`);
+      exportBrandedExcel({
+        fileName: `Customer_Sales_Summary_${dateRangeStr}.xlsx`,
+        sheetName: 'Customer Sales Summary',
+        companyName: settings?.company_name || 'REX INDUSTRIES (PVT) LTD',
+        reportTitle: 'CUSTOMER COMMERCIAL SALES SUMMARY',
+        subtitle: `Period: ${startDate || 'Beginning'} to ${endDate || 'Present'} | Customers: ${customerSummary.length}`,
+        columns: Object.keys(rows[0] || {}).map((k) => ({ header: k, key: k })),
+        rows,
+      });
     }
   };
 

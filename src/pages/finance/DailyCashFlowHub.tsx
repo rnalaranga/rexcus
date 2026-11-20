@@ -21,6 +21,7 @@ import {
   updateChequeStatus, uploadFileToStorage, realizeChequeToGL, deleteChequeRecord 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { exportToExcel } from '@/lib/exportToExcel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -94,6 +95,9 @@ export const DailyCashFlowHub: React.FC = () => {
   const [activeChequeForPrint, setActiveChequeForPrint] = useState<any | null>(null);
   const [activeChequeForRealize, setActiveChequeForRealize] = useState<any | null>(null);
   const [activeChequeForAction, setActiveChequeForAction] = useState<any | null>(null);
+  const [linkingTx, setLinkingTx] = useState<any | null>(null);
+  const [linkJournalId, setLinkJournalId] = useState('');
+  const [linkingBusy, setLinkingBusy] = useState(false);
   const [isCreateChequeModalOpen, setIsCreateChequeModalOpen] = useState(false);
   const [isPrintReportModalOpen, setIsPrintReportModalOpen] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
@@ -321,68 +325,55 @@ export const DailyCashFlowHub: React.FC = () => {
     setLedgerPage(1);
   }, [search, startDate, endDate, methodFilter, typeFilter]);
 
-  const handleExportCSV = () => {
-    const headers = [
-      'Date',
-      'Time',
-      'Reference / Doc #',
-      'Voucher #',
-      'Journal ID',
-      'Flow Type',
-      'Category',
-      'Payment Method',
-      'Cheque #',
-      'Cheque Date',
-      'Bank Name',
-      'Cheque Status',
-      'Transaction Ref',
-      'Party / Beneficiary',
-      'Particulars / Narration',
-      'Inflow (LKR)',
-      'Outflow (LKR)',
-      'Status'
-    ];
-    const esc = (val: any) => {
-      const s = val === null || val === undefined ? '' : String(val);
-      return `"${s.replace(/"/g, '""')}"`;
-    };
-    const rows = filteredTransactions.map((tx: any) => {
-      const isIn = tx.flowType === 'IN' || tx.type === 'IN';
-      const ref = tx.refNo || tx.reference || '';
-      const desc = tx.description || tx.particulars || '';
-      const isCheque = (tx.paymentMethod || '').toLowerCase().includes('cheque') || Boolean(tx.chequeNo);
-      const status = isCheque ? (tx.chequeStatus || 'Pending') : 'Settled';
-      return [
-        tx.date || '',
-        tx.time || '',
-        ref,
-        tx.voucherNo || '',
-        tx.journalId || '',
-        isIn ? 'IN' : 'OUT',
-        tx.category || '',
-        tx.paymentMethod || 'Cash',
-        tx.chequeNo || '',
-        tx.chequeDate ? String(tx.chequeDate).slice(0, 10) : '',
-        tx.bankName || '',
-        isCheque ? (tx.chequeStatus || 'Pending') : '',
-        tx.transactionRef || '',
-        tx.partyName || '',
-        desc,
-        isIn ? Number(tx.amount || 0).toFixed(2) : '0.00',
-        !isIn ? Number(tx.amount || 0).toFixed(2) : '0.00',
-        status
-      ].map(esc).join(',');
+  const handleExportCSV = async () => {
+    await exportToExcel({
+      fileName: `daily-cash-flow_${startDate}_to_${endDate}.xlsx`,
+      sheetName: 'Daily Cash Flow',
+      reportTitle: 'DAILY CASH FLOW & PAYMENT INSTRUMENTS REPORT',
+      subtitle: `Period: ${startDate} to ${endDate} | Transactions: ${filteredTransactions.length}`,
+      columns: [
+        { header: 'Date', key: 'date', width: 13 },
+        { header: 'Time', key: 'time', width: 10 },
+        { header: 'Reference / Doc #', key: 'refNo', width: 20 },
+        { header: 'Voucher #', key: 'voucherNo', width: 16 },
+        { header: 'Journal ID', key: 'journalId', width: 18 },
+        { header: 'Flow', key: 'flowType', width: 8, align: 'center' },
+        { header: 'Category', key: 'category', width: 20 },
+        { header: 'Method', key: 'paymentMethod', width: 15 },
+        { header: 'Cheque #', key: 'chequeNo', width: 14 },
+        { header: 'Cheque Date', key: 'chequeDate', width: 13 },
+        { header: 'Bank Name', key: 'bankName', width: 18 },
+        { header: 'Transaction Ref', key: 'transactionRef', width: 18 },
+        { header: 'Party / Beneficiary', key: 'partyName', width: 26 },
+        { header: 'Particulars / Narration', key: 'description', width: 32 },
+        { header: 'Inflow (LKR)', key: 'inflow', width: 16, numFmt: '#,##0.00', align: 'right' },
+        { header: 'Outflow (LKR)', key: 'outflow', width: 16, numFmt: '#,##0.00', align: 'right' },
+        { header: 'Status', key: 'status', width: 12, align: 'center' },
+      ],
+      rows: filteredTransactions.map((tx: any) => {
+        const isIn = tx.flowType === 'IN' || tx.type === 'IN';
+        const isCheque = (tx.paymentMethod || '').toLowerCase().includes('cheque') || Boolean(tx.chequeNo);
+        return {
+          date: tx.date || '',
+          time: tx.time || '',
+          refNo: tx.refNo || tx.reference || '',
+          voucherNo: tx.voucherNo || '',
+          journalId: tx.journalId || '',
+          flowType: isIn ? 'IN' : 'OUT',
+          category: tx.category || '',
+          paymentMethod: tx.paymentMethod || 'Cash',
+          chequeNo: tx.chequeNo || '',
+          chequeDate: tx.chequeDate ? String(tx.chequeDate).slice(0, 10) : '',
+          bankName: tx.bankName || '',
+          transactionRef: tx.transactionRef || '',
+          partyName: tx.partyName || '',
+          description: tx.description || tx.particulars || '',
+          inflow: isIn ? Number(tx.amount || 0) : 0,
+          outflow: !isIn ? Number(tx.amount || 0) : 0,
+          status: isCheque ? (tx.chequeStatus || 'Pending') : 'Settled',
+        };
+      }),
     });
-    const csv = [headers.map(esc).join(','), ...rows].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `daily-cash-flow_${startDate}_to_${endDate}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   // Filtered Cheques
@@ -558,7 +549,7 @@ export const DailyCashFlowHub: React.FC = () => {
             title="Export all filtered transactions & details to CSV"
           >
             <Download size={14} />
-            <span>Export CSV</span>
+            <span>Export Excel</span>
           </Button>
 
           <Button
@@ -921,12 +912,14 @@ export const DailyCashFlowHub: React.FC = () => {
                               <ExternalLink size={9} />
                             </Link>
                           ) : (
-                            <span
-                              className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface2 text-muted border border-theme"
-                              title="No GL Journal Entry posted yet (e.g. pending cheque realization)"
+                            <button
+                              type="button"
+                              onClick={() => { setLinkingTx(tx); setLinkJournalId(''); }}
+                              className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface2 text-muted hover:text-rex-400 hover:border-rex-500/40 border border-theme transition-colors cursor-pointer"
+                              title="Click to link an existing GL Journal Entry"
                             >
-                              No GL Yet
-                            </span>
+                              <span>No GL Yet · Link</span>
+                            </button>
                           )}
                         </td>
                         <td className="py-2.5 px-3 whitespace-nowrap">
@@ -2391,6 +2384,77 @@ export const DailyCashFlowHub: React.FC = () => {
           </Modal>
         );
       })()}
+
+      {linkingTx && (
+        <Modal
+          isOpen={!!linkingTx}
+          onClose={() => setLinkingTx(null)}
+          title="Link GL Journal Entry"
+          size="sm"
+        >
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-lg bg-surface2/60 border border-theme space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted">Transaction Ref:</span>
+                <span className="font-mono font-semibold text-primary">{linkingTx.refNo || linkingTx.voucherNo || linkingTx.chequeNo || linkingTx.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Party:</span>
+                <span className="font-semibold text-primary">{linkingTx.partyName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Amount:</span>
+                <span className="font-mono font-bold text-primary">{formatCurrency(linkingTx.amount)}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-secondary mb-1">
+                GL Journal Entry ID (e.g. JE-PV-1001)
+              </label>
+              <input
+                type="text"
+                value={linkJournalId}
+                onChange={(e) => setLinkJournalId(e.target.value)}
+                placeholder="Enter Journal Entry ID..."
+                className="w-full bg-surface border border-theme rounded-lg px-3 py-2 text-xs font-mono text-primary focus:border-rex-500 outline-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setLinkingTx(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={linkingBusy || !linkJournalId.trim()}
+                onClick={async () => {
+                  setLinkingBusy(true);
+                  try {
+                    const reference = linkingTx.refNo || linkingTx.voucherNo || linkingTx.chequeNo || linkingTx.id;
+                    const res = await fetch('/api/finance/daily-cash-flow/link-journal', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ reference, journalId: linkJournalId.trim() }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error || 'Failed to link journal');
+                    setLinkingTx(null);
+                    await loadCashFlow();
+                  } catch (err: any) {
+                    showError(err.message || 'Failed to link GL journal', 'Link Error');
+                  } finally {
+                    setLinkingBusy(false);
+                  }
+                }}
+              >
+                {linkingBusy ? 'Linking...' : 'Link Journal'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {activeChequeForPrint && (
         <ChequePrintModal

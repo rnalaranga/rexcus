@@ -14289,6 +14289,24 @@ app.post('/api/finance/cashbook/set-float', async (req, res) => {
 // DAILY CASH FLOW & PAYMENT INSTRUMENTS HUB
 // ==========================================
 
+// 0. POST /api/finance/daily-cash-flow/link-journal
+app.post('/api/finance/daily-cash-flow/link-journal', async (req, res) => {
+  try {
+    const { journalId, reference } = req.body || {};
+    if (!journalId || !reference) {
+      return res.status(400).json({ error: 'journalId and reference are required' });
+    }
+    const [rows]: any = await db.query('SELECT id FROM journal_entries WHERE id = ?', [String(journalId).trim()]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: `Journal Entry ${journalId} not found` });
+    }
+    await db.query('UPDATE journal_entries SET reference = ? WHERE id = ?', [String(reference).trim(), String(journalId).trim()]);
+    res.json({ success: true, journalId: String(journalId).trim(), reference: String(reference).trim() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to link journal entry' });
+  }
+});
+
 // 1. GET /api/finance/daily-cash-flow
 app.get('/api/finance/daily-cash-flow', async (req, res) => {
   try {
