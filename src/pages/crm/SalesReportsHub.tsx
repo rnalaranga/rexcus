@@ -33,7 +33,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { printElement } from '@/lib/printElement';
 import { exportToPdf } from '@/lib/exportToPdf';
 
-type ReportTab = 'orders' | 'quotes' | 'customers';
+type ReportTab = 'orders' | 'quotes' | 'customers' | 'analytics' | 'ai_insights';
 
 export const SalesReportsHub: React.FC = () => {
   const navigate = useNavigate();
@@ -68,6 +68,12 @@ export const SalesReportsHub: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
+
+  // AI Sales Intelligence State
+  const [aiPrompt, setAiPrompt] = useState('Analyze our sales orders, quotation conversion rate, top customers, and give actionable recommendations to increase revenue.');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResponse, setAiResponse] = useState<string>('');
+  const [aiError, setAiError] = useState<string>('');
 
   // Preset Date Handlers
   const handleDatePresetChange = (preset: typeof datePreset) => {
@@ -520,6 +526,103 @@ export const SalesReportsHub: React.FC = () => {
 
   const currentTotalItems = activeTab === 'orders' ? filteredOrders.length : (activeTab === 'quotes' ? filteredQuotes.length : customerSummary.length);
 
+  const analyticsData = useMemo(() => {
+    const monthlyMap = new Map<string, { month: string; ordersValue: number; quotesValue: number; ordersCount: number; quotesCount: number }>();
+    for (const o of filteredOrders) {
+      const m = (o.orderDate || '').slice(0, 7) || 'Unknown';
+      const cur = monthlyMap.get(m) || { month: m, ordersValue: 0, quotesValue: 0, ordersCount: 0, quotesCount: 0 };
+      cur.ordersValue += Number(o.orderTotalLKR || 0);
+      cur.ordersCount += 1;
+      monthlyMap.set(m, cur);
+    }
+    for (const q of filteredQuotes) {
+      const m = (q.date || '').slice(0, 7) || 'Unknown';
+      const cur = monthlyMap.get(m) || { month: m, ordersValue: 0, quotesValue: 0, ordersCount: 0, quotesCount: 0 };
+      cur.quotesValue += Number(q.totalAmountLKR || 0);
+      cur.quotesCount += 1;
+      monthlyMap.set(m, cur);
+    }
+    const monthlyTrend = Array.from(monthlyMap.values()).sort((a, b) => a.month.localeCompare(b.month));
+
+    const orderStatusMap = new Map<string, number>();
+    for (const o of filteredOrders) {
+      const s = (o.status || 'pending').toUpperCase();
+      orderStatusMap.set(s, (orderStatusMap.get(s) || 0) + 1);
+    }
+    const orderStatusPie = Array.from(orderStatusMap.entries()).map(([name, value]) => ({ name, value }));
+
+    const quoteStatusMap = new Map<string, number>();
+    for (const q of filteredQuotes) {
+      const s = (q.status || 'pending').toUpperCase();
+      quoteStatusMap.set(s, (quoteStatusMap.get(s) || 0) + 1);
+    }
+    const quoteStatusPie = Array.from(quoteStatusMap.entries()).map(([name, value]) => ({ name, value }));
+
+    const topCustomers = [...customerSummary]
+      .sort((a: any, b: any) => (b.totalOrderValueLKR || 0) - (a.totalOrderValueLKR || 0))
+      .slice(0, 8)
+      .map((c: any) => ({
+        name: (c.customerName || 'Customer').slice(0, 18),
+        ordersValue: Number(c.totalOrderValueLKR || 0),
+        quotesValue: Number(c.totalQuoteValueLKR || 0)
+      }));
+
+    return { monthlyTrend, orderStatusPie, quoteStatusPie, topCustomers };
+  }, [filteredOrders, filteredQuotes, customerSummary]);
+
+  const runAiAnalysis = async (customQuestion?: string) => {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const promptText = customQuestion || aiPrompt;
+      const summaryContext = {
+        period: { startDate: startDate || 'Beginning', endDate: endDate || 'Present' },
+        orders: {
+          count: orderStats.totalCount,
+          totalValueLKR: orderStats.totalValueLKR,
+          dispatchedCount: orderStats.dispatchedCount,
+          dispatchedValueLKR: orderStats.dispatchedValueLKR,
+          invoicedCount: orderStats.invoicedCount,
+          invoicedValueLKR: orderStats.invoicedValueLKR
+        },
+        quotations: {
+          count: quoteStats.totalCount,
+          totalValueLKR: quoteStats.totalValueLKR,
+          approvedCount: quoteStats.approvedCount,
+          conversionRatePct: Number(quoteStats.conversionRate.toFixed(1))
+        },
+        topCustomers: analyticsData.topCustomers.slice(0, 5),
+        monthlyTrend: analyticsData.monthlyTrend.slice(-6)
+      };
+
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert B2B Sales & Commercial Operations Analyst. Provide concise, structured, actionable insights in markdown with bullet points, key metrics, risks, and recommendations.'
+            },
+            {
+              role: 'user',
+              content: `${promptText}\n\nHere is the current filtered Sales & Quotations dataset summary:\n${JSON.stringify(summaryContext, null, 2)}`
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'AI analysis failed');
+      }
+      setAiResponse(data.reply || data.content || data.message || JSON.stringify(data));
+    } catch (err: any) {
+      setAiError(err.message || 'Failed to run AI analysis');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
       {/* ── TOP HEADER ── */}
@@ -627,6 +730,30 @@ export const SalesReportsHub: React.FC = () => {
           <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-500/10 text-blue-600 font-bold">
             {customerSummary.length}
           </span>
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('analytics'); setCurrentPage(1); }}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[5px] ${
+            activeTab === 'analytics'
+              ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5'
+              : 'border-transparent text-muted hover:text-primary hover:border-theme-subtle'
+          }`}
+        >
+          <BarChart3 size={14} />
+          Analytics &amp; Charts
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('ai_insights'); setCurrentPage(1); }}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[5px] ${
+            activeTab === 'ai_insights'
+              ? 'border-purple-600 text-purple-600 dark:text-purple-400 bg-purple-500/5'
+              : 'border-transparent text-muted hover:text-primary hover:border-theme-subtle'
+          }`}
+        >
+          <Sparkles size={14} />
+          AI Sales Intelligence
         </button>
       </div>
 
@@ -1247,6 +1374,165 @@ export const SalesReportsHub: React.FC = () => {
           )}
         </div>
       </GlassCard>
+
+      {activeTab === 'analytics' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <GlassCard className="p-4">
+            <h3 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+              <TrendingUp size={16} className="text-emerald-500" />
+              Monthly Orders vs Quotations Value (LKR)
+            </h3>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticsData.monthlyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v || 0))} />
+                  <Legend />
+                  <Bar dataKey="ordersValue" name="Orders Value" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="quotesValue" name="Quotations Value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4">
+            <h3 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+              <Building2 size={16} className="text-blue-500" />
+              Top Customers by Order Revenue (LKR)
+            </h3>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticsData.topCustomers} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v || 0))} />
+                  <Bar dataKey="ordersValue" name="Order Revenue" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4">
+            <h3 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+              <ShoppingBag size={16} className="text-amber-500" />
+              Sales Order Status Breakdown
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={analyticsData.orderStatusPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                    {analyticsData.orderStatusPie.map((_, i) => (
+                      <Cell key={i} fill={['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'][i % 6]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-4">
+            <h3 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+              <FileText size={16} className="text-purple-500" />
+              Quotation Status Breakdown
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={analyticsData.quoteStatusPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                    {analyticsData.quoteStatusPie.map((_, i) => (
+                      <Cell key={i} fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {activeTab === 'ai_insights' && (
+        <GlassCard className="p-5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-primary flex items-center gap-2">
+                <Sparkles size={18} className="text-purple-500" />
+                AI Sales &amp; Quotations Intelligence
+              </h3>
+              <p className="text-xs text-muted mt-0.5">
+                Analyze your filtered sales orders, quotation win-rates, and customer performance using AI.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={aiLoading}
+                onClick={() => runAiAnalysis('Give an Executive Sales Summary with key wins, bottlenecks, and top 3 priorities.')}
+                className="text-xs"
+              >
+                Executive Summary
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={aiLoading}
+                onClick={() => runAiAnalysis('Analyze our quotation-to-order conversion rate and suggest ways to improve win rate.')}
+                className="text-xs"
+              >
+                Conversion Analysis
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={aiLoading}
+                onClick={() => runAiAnalysis('Identify customer concentration risks and upsell/cross-sell opportunities from top customers.')}
+                className="text-xs"
+              >
+                Customer Risk &amp; Upsell
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+              placeholder="Ask AI anything about your sales & quotations..."
+              className="flex-1 bg-surface border border-theme rounded-lg px-3 py-2 text-xs text-primary focus:border-purple-500 outline-none"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={aiLoading || !aiPrompt.trim()}
+              onClick={() => runAiAnalysis()}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4"
+            >
+              <Sparkles size={14} className="mr-1.5" />
+              {aiLoading ? 'Analyzing...' : 'Generate AI Report'}
+            </Button>
+          </div>
+
+          {aiError && (
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+              {aiError}
+            </div>
+          )}
+
+          {aiResponse && (
+            <div className="p-4 rounded-xl bg-surface2/60 border border-theme text-xs text-primary whitespace-pre-wrap leading-relaxed font-sans">
+              {aiResponse}
+            </div>
+          )}
+        </GlassCard>
+      )}
 
       {/* ── PRINT & PDF TEMPLATE (HIDDEN ON SCREEN, VISIBLE ON PRINT) ── */}
       <div id="sales-reports-print-container" style={{ display: 'none' }}>

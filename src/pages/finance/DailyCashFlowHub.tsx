@@ -910,7 +910,7 @@ export const DailyCashFlowHub: React.FC = () => {
                           {tx.voucherNo && tx.voucherNo !== ref && (
                             <span className="text-[10px] text-rex-400 block font-normal">PV: {tx.voucherNo}</span>
                           )}
-                          {tx.journalId && (
+                          {tx.journalId ? (
                             <Link
                               to={`/finance/journal-builder/${tx.journalId}`}
                               className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rex-500/10 text-rex-400 hover:bg-rex-500/20 border border-rex-500/25 transition-colors"
@@ -920,6 +920,13 @@ export const DailyCashFlowHub: React.FC = () => {
                               <span>{tx.journalId}</span>
                               <ExternalLink size={9} />
                             </Link>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface2 text-muted border border-theme"
+                              title="No GL Journal Entry posted yet (e.g. pending cheque realization)"
+                            >
+                              No GL Yet
+                            </span>
                           )}
                         </td>
                         <td className="py-2.5 px-3 whitespace-nowrap">

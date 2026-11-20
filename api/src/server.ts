@@ -14601,6 +14601,27 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
             (t.id && refToJournalId.get(String(t.id))) ||
             null
         }));
+
+        // Fallback: match remaining unmatched cheque/ref transactions by LIKE on reference/description
+        const unmatched = allTransactions.filter((t: any) => !t.journalId && (t.chequeNo || t.refNo));
+        if (unmatched.length > 0) {
+          const [recentJes]: any = await db.query(
+            'SELECT id, reference, description, totalAmount, DATE_FORMAT(date, "%Y-%m-%d") as date FROM journal_entries WHERE date BETWEEN DATE_SUB(?, INTERVAL 7 DAY) AND DATE_ADD(?, INTERVAL 7 DAY)',
+            [start, end]
+          );
+          if (recentJes && recentJes.length > 0) {
+            allTransactions = allTransactions.map((t: any) => {
+              if (t.journalId) return t;
+              const needle = String(t.chequeNo || t.refNo || '').trim();
+              if (!needle || needle === '-') return t;
+              const match = recentJes.find((je: any) =>
+                (je.reference && String(je.reference).includes(needle)) ||
+                (je.description && String(je.description).includes(needle))
+              );
+              return match ? { ...t, journalId: String(match.id) } : t;
+            });
+          }
+        }
       } catch (jeErr) {
         console.warn('Failed to lookup linked journal entries for cash flow:', jeErr);
       }
