@@ -44,6 +44,8 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'quotations.view_all', label: 'View All Quotations (Sales Head / Management)', description: 'View all quotations created across the entire company/sales team' },
       { id: 'quotations.view_own', label: 'View Own Quotations Only (Sales Rep)', description: 'Restricts user to only see quotations created by themselves' },
       { id: 'quotations.create', label: 'Create Quotations', description: 'Draft new quotations with line items and custom pricing' },
+      { id: 'quotations.create_normal', label: 'Normal (Custom) Quotations', description: 'Role creates standard engineering / custom job-costing quotations by default' },
+      { id: 'quotations.create_product', label: 'Product Quotations', description: 'Role creates catalog / product quotations by default' },
       { id: 'quotations.edit', label: 'Edit Quotations', description: 'Modify draft quotes, adjust quantities, and unit prices' },
       { id: 'quotations.delete', label: 'Delete Quotations', description: 'Cancel or delete unconfirmed quotations' },
       { id: 'quotations.approve', label: 'Approve Quotations', description: 'Authorize discounts and mark quotations as Approved' },
@@ -275,5 +277,30 @@ export const hasPermission = (
 
   const aliases = PERMISSION_ALIASES[requiredPermission] || [requiredPermission];
   return aliases.some(alias => userPermissions.includes(alias));
+};
+
+export type QuotationMode = 'normal' | 'product' | 'both';
+
+export const getAllowedQuotationMode = (
+  userPermissions?: string[],
+  userRole?: string
+): QuotationMode => {
+  if (!userRole && (!userPermissions || userPermissions.length === 0)) return 'both';
+  if (
+    userRole === 'admin' ||
+    userRole === 'manager' ||
+    userRole === 'sales_head' ||
+    userRole === 'crm_manager' ||
+    userPermissions?.includes('*')
+  ) {
+    return 'both';
+  }
+  const perms = Array.isArray(userPermissions) ? userPermissions : [];
+  const hasNormal = perms.includes('quotations.create_normal');
+  const hasProduct = perms.includes('quotations.create_product');
+  if (hasNormal && hasProduct) return 'both';
+  if (hasProduct && !hasNormal) return 'product';
+  if (hasNormal && !hasProduct) return 'normal';
+  return 'both';
 };
 

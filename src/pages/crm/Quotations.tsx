@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3, RefreshCw } from 'lucide-react'
+import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3, RefreshCw, Copy } from 'lucide-react'
 import { X, AlertTriangle } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
@@ -1429,6 +1429,26 @@ export const Quotations: React.FC = () => {
             >
               <FileEdit size={14} className="text-zinc-600 dark:text-zinc-400 shrink-0" />
               <span>Edit in Quotation Builder</span>
+            </button>
+
+            {/* 2.2 Clone Quotation */}
+            <button
+              type="button"
+              onClick={() => {
+                const targetId = (latestMain || displayQ)?.id;
+                const leadParam = group.leadId || 'WALK-IN';
+                const cloneUrl = group.isProduct
+                  ? `/crm/product-quotations/new/${leadParam}?cloneId=${targetId}`
+                  : `/crm/quotations/new/${leadParam}?cloneId=${targetId}`;
+                setCloneCountdown(5);
+                setCloneChecked(false);
+                setCloneConfirm({ url: cloneUrl, quoNo: group.quoNo });
+                setOpenActionId(null);
+              }}
+              className="w-full px-3.5 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+            >
+              <Copy size={14} className="text-amber-500 shrink-0" />
+              <span>Clone as New Quotation</span>
             </button>
 
             {/* 2.5 View Quotation Attachments / Drawings */}
@@ -3290,18 +3310,6 @@ export const Quotations: React.FC = () => {
                         title="Click to open quotation in builder"
                       >
                         {group.quoNo}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCloneCountdown(5);
-                          setCloneChecked(false);
-                          setCloneConfirm({ url: cloneUrl, quoNo: group.quoNo });
-                        }}
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface2 hover:bg-amber-500/15 text-secondary hover:text-amber-600 border border-theme-subtle transition-colors"
-                        title="Clone this quotation as a new quotation"
-                      >
-                        Clone
                       </button>
                       {group.isProduct ? (
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">

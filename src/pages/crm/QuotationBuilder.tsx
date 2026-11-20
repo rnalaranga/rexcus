@@ -351,13 +351,17 @@ export const QuotationBuilder: React.FC = () => {
               currentIdRef.current = null;
               setDraftId(null);
               draftIdRef.current = null;
-              fetchNextDocumentNumber('quotation', { userPrefix: (user as any)?.quotationPrefix || '' })
+              fetchNextDocumentNumber('quotation', { userPrefix: user?.prefix || '', reserve: false })
                 .then((seqRes: any) => {
                   if (seqRes?.formattedNumber) {
                     setQuotationNo(seqRes.formattedNumber);
+                  } else {
+                    setQuotationNo(buildDefaultQuotationNo(user?.prefix));
                   }
                 })
-                .catch(() => {});
+                .catch(() => {
+                  setQuotationNo(buildDefaultQuotationNo(user?.prefix));
+                });
             } else if (target.type === 'draft') {
               setDraftId(target.id);
               draftIdRef.current = target.id;
@@ -1075,7 +1079,17 @@ export const QuotationBuilder: React.FC = () => {
       setBoms([])
     }
     
-    setCustItems(snap.custItems || [])
+    const normalizedCustItems = Array.isArray(snap.custItems)
+      ? snap.custItems.map((it: any, idx: number) => ({
+          ...it,
+          id: it?.id ?? `ci-${Date.now()}-${idx}`,
+          desc: it?.desc ?? it?.description ?? it?.name ?? '',
+          qty: it?.qty ?? 1,
+          unitPrice: it?.unitPrice ?? it?.price ?? 0,
+          notes: it?.notes ?? '',
+        }))
+      : []
+    setCustItems(normalizedCustItems)
     setCustTerms(snap.custTerms || snap.terms || snap.paymentTerms || '')
     setCustValidity(snap.custValidity || snap.validity || '30 Days')
     setCustDelivery(snap.custDelivery || snap.delivery || snap.deliveryTerms || '')
@@ -1514,8 +1528,8 @@ export const QuotationBuilder: React.FC = () => {
     try {
       showToast('success', '✨ Enhancing description with Groq Llama 3.3...');
       const enrichedDesc = await generateQuotationDescription({
-        partTitle: matchingBom?.title || item.desc.split('\n')[0] || 'Precision Component',
-        rawDescription: item.desc,
+        partTitle: matchingBom?.title || String(item.desc || '').split('\n')[0] || 'Precision Component',
+        rawDescription: item.desc || '',
         dimensions,
         customerName: customerName || lead?.company || lead?.name || '',
         quantity: item.qty || 1
@@ -1543,15 +1557,15 @@ export const QuotationBuilder: React.FC = () => {
     try {
       const updated = await Promise.all(custItems.map(async (item, idx) => {
         const matchingBom = boms[idx] || boms.find(b => 
-          (b.title && item.desc.toLowerCase().includes(b.title.toLowerCase()))
+          (b.title && String(item.desc || '').toLowerCase().includes(b.title.toLowerCase()))
         );
 
         const dimensions = matchingBom?.autoMats?.map((m: any) => m.dia ? `Dia ${m.dia} x L ${m.length}` : (m.length && m.width ? `${m.length}x${m.width}x${m.thick}mm` : '')).filter(Boolean).join(', ');
 
         try {
           const enriched = await generateQuotationDescription({
-            partTitle: matchingBom?.title || item.desc.split('\n')[0] || `Precision Engineering Item ${idx + 1}`,
-            rawDescription: item.desc,
+            partTitle: matchingBom?.title || String(item.desc || '').split('\n')[0] || `Precision Engineering Item ${idx + 1}`,
+            rawDescription: item.desc || '',
             dimensions,
             customerName: customerName || lead?.company || lead?.name || '',
             quantity: item.qty || 1
@@ -3052,11 +3066,11 @@ export const QuotationBuilder: React.FC = () => {
                           <td className="p-1">
                             <div className="relative group/desc">
                               <textarea 
-                                value={item.desc} 
+                                value={item.desc || ''} 
                                 onChange={e => updateCustItem(item.id, 'desc', e.target.value)} 
                                 placeholder="Item / service description..." 
                                 className="w-full bg-transparent outline-none text-[11px] font-medium resize-y min-h-[70px] p-2 leading-relaxed block border border-transparent hover:border-theme-subtle/30 focus:border-primary/40 focus:bg-surface rounded pr-24"
-                                rows={item.desc.split('\n').length > 1 ? Math.min(item.desc.split('\n').length, 8) : 2}
+                                rows={String(item.desc || '').split('\n').length > 1 ? Math.min(String(item.desc || '').split('\n').length, 8) : 2}
                               />
                               <div className="absolute top-1.5 right-1.5 flex items-center">
                                 <button
@@ -4067,7 +4081,7 @@ export const QuotationBuilder: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span>Customer Items:</span>
-              <span className="font-bold text-rex-500">{custItems.filter(i => i.desc.trim() !== '').length} Line Item(s)</span>
+              <span className="font-bold text-rex-500">{custItems.filter(i => String(i?.desc || '').trim() !== '').length} Line Item(s)</span>
             </div>
             <div className="flex justify-between">
               <span>Validity & Delivery:</span>

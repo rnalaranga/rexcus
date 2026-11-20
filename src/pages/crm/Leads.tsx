@@ -17,6 +17,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useLeads, useFollowups, useCustomers, useQuotations, useFinishedGoodsOrders, useInvoices, invalidateDataCache } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { getAllowedQuotationMode } from '@/config/permissions'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
 import { printElement } from '@/lib/printElement'
 import { exportToPdf } from '@/lib/exportToPdf'
@@ -113,6 +114,11 @@ export const Leads: React.FC = () => {
   }, [leads, selectedLeadId])
   const { settings } = useSettings()
   const { user } = useAuth()
+  const quotationMode = useMemo(() => getAllowedQuotationMode(user?.permissions, user?.role), [user?.permissions, user?.role])
+  const getNewQuotePath = (leadId: string) =>
+    quotationMode === 'product'
+      ? `/crm/product-quotations/new/${leadId}`
+      : `/crm/quotations/new/${leadId}`
   const { toast, showAlert, showConfirm } = useDialog()
   const isAdmin = Boolean(
     user?.role === 'admin' ||
@@ -878,7 +884,7 @@ export const Leads: React.FC = () => {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/crm/quotations/new/${row.id}`);
+                  navigate(getNewQuotePath(row.id));
                 }}
                 className="text-[10px] text-rex-600 dark:text-rex-400 hover:underline font-semibold cursor-pointer"
                 title="Create Quotation for this Lead"
@@ -1054,7 +1060,7 @@ export const Leads: React.FC = () => {
           {row.stage === 'qualified' && (
             <button
               type="button"
-              onClick={() => navigate(`/crm/quotations/new/${row.id}`)}
+              onClick={() => navigate(getNewQuotePath(row.id))}
               className="px-2 py-1 text-xs font-bold rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center gap-1"
               title="Create Quotation"
             >
@@ -1974,7 +1980,7 @@ export const Leads: React.FC = () => {
                             lead.stage === 'qualified' && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); navigate(`/crm/quotations/new/${lead.id}`); }}
+                                onClick={(e) => { e.stopPropagation(); navigate(getNewQuotePath(lead.id)); }}
                                 className="text-[10px] font-bold py-1 px-2 rounded-none bg-rex-600 hover:bg-rex-700 text-white transition-colors flex items-center justify-center gap-1"
                                 title="Create Quotation"
                               >
@@ -2796,10 +2802,10 @@ export const Leads: React.FC = () => {
                 </h3>
                 <button
                   type="button"
-                  onClick={() => navigate(`/crm/quotations/new/${editId}`)}
+                  onClick={() => navigate(getNewQuotePath(editId))}
                   className="text-[10px] text-rex-500 hover:underline"
                 >
-                  + New Quotation
+                  + New {quotationMode === 'product' ? 'Product ' : ''}Quotation
                 </button>
               </div>
               <div className="space-y-2">
@@ -3410,22 +3416,26 @@ export const Leads: React.FC = () => {
                       Quotations ({leadQuotes.length})
                     </h3>
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
-                        className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-theme-subtle hover:border-amber-500 hover:text-amber-600 text-primary transition-colors flex items-center gap-1 cursor-pointer"
-                        title="New Custom Job Costing Quotation"
-                      >
-                        <Plus size={10} /> Custom
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/crm/product-quotations/new/${selectedLead.id}`)}
-                        className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
-                        title="New Product Catalog Quotation"
-                      >
-                        <Plus size={10} /> Product
-                      </button>
+                      {quotationMode !== 'product' && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
+                          className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-theme-subtle hover:border-amber-500 hover:text-amber-600 text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                          title="New Custom Job Costing Quotation"
+                        >
+                          <Plus size={10} /> Custom
+                        </button>
+                      )}
+                      {quotationMode !== 'normal' && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/crm/product-quotations/new/${selectedLead.id}`)}
+                          className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer"
+                          title="New Product Catalog Quotation"
+                        >
+                          <Plus size={10} /> Product
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -3433,13 +3443,24 @@ export const Leads: React.FC = () => {
                     <div className="p-3 bg-surface border border-dashed border-theme-subtle text-center space-y-1.5">
                       <p className="text-xs text-muted">No quotation created for this lead yet.</p>
                       <div className="flex justify-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
-                          className="px-2.5 py-1 text-xs font-bold bg-amber-500 text-slate-900 hover:bg-amber-400 transition-colors cursor-pointer"
-                        >
-                          + Create Custom Quote
-                        </button>
+                        {quotationMode !== 'product' && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/crm/quotations/new/${selectedLead.id}`)}
+                            className="px-2.5 py-1 text-xs font-bold bg-amber-500 text-slate-900 hover:bg-amber-400 transition-colors cursor-pointer"
+                          >
+                            + Create Custom Quote
+                          </button>
+                        )}
+                        {quotationMode !== 'normal' && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/crm/product-quotations/new/${selectedLead.id}`)}
+                            className="px-2.5 py-1 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer"
+                          >
+                            + Create Product Quote
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (

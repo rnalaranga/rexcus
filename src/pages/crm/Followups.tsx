@@ -750,10 +750,14 @@ export const Followups: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* AI Recommendation Box */}
-                      <div className="p-2 rounded-lg bg-surface2/50 border border-theme-subtle/70 text-[11px] text-secondary leading-snug">
-                        <span className="font-bold text-rex-600 dark:text-rex-400">AI: </span>
-                        {profile.aiSuggestion}
+                      {/* Compact Icon + Short-Word Chips */}
+                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                        <span className="px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-primary font-bold">
+                          {profile.ordersCount} Orders • {formatCurrency(profile.totalSalesRevenue)}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-rex-500/10 border border-rex-500/25 text-rex-600 dark:text-rex-400 font-bold uppercase flex items-center gap-1">
+                          <Zap size={10} /> {profile.recommendedFollowup.type} • {profile.recommendedFollowup.dueDate.slice(5)}
+                        </span>
                       </div>
                     </div>
 
@@ -944,15 +948,20 @@ export const Followups: React.FC = () => {
                           )}
                         </div>
 
-                        {item.notes && <p className="text-xs text-secondary mt-1.5 leading-relaxed">{item.notes}</p>}
+                        {item.notes && <p className="text-xs text-secondary mt-1 line-clamp-1">{item.notes}</p>}
 
-                        {/* AI Customer History Tip on active follow-ups */}
+                        {/* Compact Icon + Short-Word History Chip on active follow-ups */}
                         {!isDone && item.status !== 'cancelled' && aiProfile && (
-                          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-rex-500/5 border border-rex-500/20 text-[11px] text-secondary flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-rex-600 dark:text-rex-400 flex items-center gap-1 shrink-0">
-                              <Sparkles size={11} /> {aiProfile.ordersCount > 0 ? `${aiProfile.ordersCount} Past Orders (${formatCurrency(aiProfile.totalSalesRevenue)})` : 'New Prospect'}:
+                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-rex-500/8 border border-rex-500/20 text-rex-600 dark:text-rex-400 font-bold flex items-center gap-1">
+                              <Sparkles size={10} />
+                              {aiProfile.ordersCount > 0
+                                ? `${aiProfile.ordersCount} Orders • ${formatCurrency(aiProfile.totalSalesRevenue)}`
+                                : 'New Prospect'}
                             </span>
-                            <span className="flex-1 min-w-[200px]">{aiProfile.aiSuggestion}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-secondary font-semibold uppercase flex items-center gap-1">
+                              <Zap size={10} className="text-amber-500" /> {aiProfile.recommendedFollowup.type}
+                            </span>
                           </div>
                         )}
 
