@@ -14578,7 +14578,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
 
     // Attach linked GL Journal Entry IDs
     const candidateRefs = Array.from(new Set(
-      allTransactions.flatMap((t: any) => [t.refNo, t.voucherNo, t.id].filter(Boolean).map(String))
+      allTransactions.flatMap((t: any) => [t.refNo, t.voucherNo, t.transactionRef, t.invoiceNo, t.chequeNo, t.id].filter(Boolean).map(String))
     ));
     if (candidateRefs.length > 0) {
       try {
@@ -14595,6 +14595,9 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
           journalId:
             (t.refNo && refToJournalId.get(String(t.refNo))) ||
             (t.voucherNo && refToJournalId.get(String(t.voucherNo))) ||
+            (t.transactionRef && refToJournalId.get(String(t.transactionRef))) ||
+            (t.invoiceNo && refToJournalId.get(String(t.invoiceNo))) ||
+            (t.chequeNo && refToJournalId.get(String(t.chequeNo))) ||
             (t.id && refToJournalId.get(String(t.id))) ||
             null
         }));

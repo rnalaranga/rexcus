@@ -312,7 +312,8 @@ export const DailyCashFlowHub: React.FC = () => {
       (t.paymentMethod && t.paymentMethod.toLowerCase().includes(q)) ||
       (t.chequeNo && t.chequeNo.toLowerCase().includes(q)) ||
       (t.bankName && t.bankName.toLowerCase().includes(q)) ||
-      (t.transactionRef && t.transactionRef.toLowerCase().includes(q))
+      (t.transactionRef && t.transactionRef.toLowerCase().includes(q)) ||
+      (t.journalId && String(t.journalId).toLowerCase().includes(q))
     );
   }, [data?.transactions, search]);
 
