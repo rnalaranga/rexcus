@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Plus, Filter, X, Package, LayoutGrid, List, User, Phone, FileText, Bell, Trash2,
   Flame, Clock, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, ChevronDown, 
   Building2, Mail, ExternalLink, RefreshCw, Trophy, Zap, SlidersHorizontal, Search,
   Briefcase, ArrowRight, Eye, Check, Calendar, Layers, Sparkles, Edit3, MessageSquare, PhoneCall, Camera,
-  FileEdit, Printer, UserPlus, UserCheck, AlertCircle
+  FileEdit, Printer, UserPlus, UserCheck, AlertCircle, Award, Send
 } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Badge } from '@/components/ui/Badge'
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { SearchBar } from '@/components/ui/SearchBar'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { Modal } from '@/components/ui/Modal'
-import { useLeads, useFollowups, useCustomers, useQuotations } from '@/hooks/useData'
+import { useLeads, useFollowups, useCustomers, useQuotations, useFinishedGoodsOrders, useInvoices, invalidateDataCache } from '@/hooks/useData'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { QuotationPrintView } from '@/components/QuotationPrintView'
@@ -22,13 +23,15 @@ import { exportToPdf } from '@/lib/exportToPdf'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete'
 import { useDialog } from '@/components/ui/DialogProvider'
-import { createLead, updateLead, deleteLead, convertLeadToCustomer, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN } from '@/lib/api'
+import { createLead, updateLead, deleteLead, convertLeadToCustomer, fetchQuotations, deleteQuotation, createInvoice, createCustomer, createCustomerGRN, fetchAllCustomerGRNs, updateCustomerGRN, deleteCustomerGRN, createFollowup, updateFollowup } from '@/lib/api'
 import { formatCurrency, formatDate, relativeTime, toMySQLDate } from '@/lib/utils'
 import { PageHelpButton } from '@/components/help/PageHelpButton'
 import { SamplePhotoUploadSection } from '@/components/crm/SamplePhotoUploadSection'
 import { SamplePhotoViewerModal } from '@/components/crm/SamplePhotoViewerModal'
 import { findMatchingSamplePhotos, extractPhotosFromGrn } from '@/lib/samplePhotos'
 import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
+import { analyzeCustomerIntelligence, buildAIFollowupRecommendations, AICustomerProfile } from '@/lib/aiCustomerIntelligence'
+import { AICustomerBadge, AICustomerInsightPanel } from '@/components/crm/AICustomerBadge'
 
 const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const
 const STAGE_LABELS: Record<string, string> = {
@@ -60,8 +63,23 @@ export const Leads: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { data: leads, loading, refetch } = useLeads()
-  const { data: allFollowups } = useFollowups()
+  const { data: customers = [] } = useCustomers()
+  const { data: allFollowups, refetch: refetchFollowups } = useFollowups()
   const { data: allQuotations = [] } = useQuotations()
+  const { data: allSalesOrders = [] } = useFinishedGoodsOrders()
+  const { data: allInvoices = [] } = useInvoices()
+  const [proposalAgingFilter, setProposalAgingFilter] = useState<'all' | '0-7' | '8-14' | '15+'>('all')
+  const [showRemindersDashboard, setShowRemindersDashboard] = useState(false)
+  const [reminderModalLead, setReminderModalLead] = useState<any | null>(null)
+  const [reminderMode, setReminderMode] = useState<'reminder' | 'contacted'>('reminder')
+  const [reminderType, setReminderType] = useState<string>('call')
+  const [reminderPriority, setReminderPriority] = useState<string>('medium')
+  const [reminderDate, setReminderDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [reminderTime, setReminderTime] = useState<string>('09:30')
+  const [reminderSubject, setReminderSubject] = useState<string>('')
+  const [reminderNote, setReminderNote] = useState('')
+  const [savingReminder, setSavingReminder] = useState(false)
+  const [syncingWon, setSyncingWon] = useState(false)
   const [view, setView]     = useState<ViewMode>('kanban')
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('id') || '')
 
@@ -143,7 +161,6 @@ export const Leads: React.FC = () => {
   };
   
   // Custom Confirmation Modal State
-  const { data: customers } = useCustomers()
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'lead' | 'quotation', id: string | number } | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [showCustomerSearch, setShowCustomerSearch] = useState<boolean>(false)
@@ -226,6 +243,57 @@ export const Leads: React.FC = () => {
 
     return combined;
   }, [leadQuotesMap]);
+
+  const aiContext = useMemo(() => ({
+    customers: customers || [],
+    salesOrders: allSalesOrders || [],
+    invoices: allInvoices || [],
+    quotations: allQuotations || [],
+    leads: leads || [],
+    followups: allFollowups || [],
+  }), [customers, allSalesOrders, allInvoices, allQuotations, leads, allFollowups]);
+
+  const aiProfilesMap = useMemo(() => {
+    const map: Record<string, AICustomerProfile> = {};
+    (leads || []).forEach((l: any) => {
+      if (l?.id) {
+        map[String(l.id)] = analyzeCustomerIntelligence(l, aiContext);
+      }
+    });
+    return map;
+  }, [leads, aiContext]);
+
+  const aiFollowupQueue = useMemo(() => {
+    return buildAIFollowupRecommendations(leads || [], aiContext);
+  }, [leads, aiContext]);
+
+  const openAIFollowupModal = (lead: any, profile?: AICustomerProfile, mode: 'reminder' | 'contacted' = 'reminder') => {
+    const p = profile || aiProfilesMap[String(lead?.id)] || analyzeCustomerIntelligence(lead, aiContext);
+    const rec = p.recommendedFollowup;
+    setReminderModalLead(lead);
+    setReminderMode(mode);
+    setReminderType(mode === 'contacted' ? 'call' : rec.type);
+    setReminderPriority(rec.priority);
+    setReminderDate(mode === 'contacted' ? new Date().toISOString().slice(0, 10) : rec.dueDate);
+    setReminderTime(rec.dueTime || '09:30');
+    setReminderSubject(mode === 'contacted' ? `Contacted ${lead?.company || lead?.name || 'Lead'}` : rec.subject);
+    setReminderNote(mode === 'contacted' ? '' : rec.notes);
+  };
+
+  const handleMarkFollowupDone = async (followupId: string, outcome = 'Followed up via Leads Command') => {
+    try {
+      await updateFollowup(followupId, {
+        status: 'done',
+        outcome,
+        completedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      });
+      invalidateDataCache('followups');
+      await refetchFollowups();
+      toast('Follow-up marked as done!', 'success');
+    } catch (e: any) {
+      toast(e?.message || 'Failed to update follow-up', 'error');
+    }
+  };
 
     useEffect(() => {
     fetchAllCustomerGRNs().then(setLeadGrns).catch(() => {});
@@ -642,6 +710,16 @@ export const Leads: React.FC = () => {
     // 3. Stage Filter
     if (selectedStage !== 'all') {
       result = result.filter((l: any) => l.stage === selectedStage)
+      if (selectedStage === 'proposal' && proposalAgingFilter !== 'all') {
+        result = result.filter((l: any) => {
+          const days = Math.floor((Date.now() - new Date(l.updatedAt || l.createdAt || Date.now()).getTime()) / 86400000);
+          const d = isNaN(days) ? 0 : days;
+          if (proposalAgingFilter === '0-7') return d <= 7;
+          if (proposalAgingFilter === '8-14') return d >= 8 && d <= 14;
+          if (proposalAgingFilter === '15+') return d >= 15;
+          return true;
+        });
+      }
     }
 
     // 4. Priority Filter
@@ -670,7 +748,7 @@ export const Leads: React.FC = () => {
     })
 
     return result
-  }, [leads, search, presetFilter, selectedStage, selectedPriority, selectedOwner, sortBy])
+  }, [leads, search, presetFilter, selectedStage, proposalAgingFilter, selectedPriority, selectedOwner, sortBy])
 
   const displayedStages = useMemo(() => {
     if (selectedStage !== 'all') {
@@ -712,12 +790,21 @@ export const Leads: React.FC = () => {
       key: 'name', 
       header: 'Company & Contact', 
       sortable: true,
-      render: (_, row) => (
-        <div className="py-1 min-w-[190px]">
-          <div className="flex items-center gap-1.5">
+      render: (_, row) => {
+        const aiProfile = aiProfilesMap[String(row.id)];
+        return (
+        <div className="py-1 min-w-[210px]">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-primary hover:text-rex-600 transition-colors">
               {row.company || 'Unnamed Company'}
             </span>
+            {aiProfile && (
+              <AICustomerBadge
+                profile={aiProfile}
+                variant="pill"
+                onQuickFollowup={() => openAIFollowupModal(row, aiProfile)}
+              />
+            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-xs text-secondary flex-wrap">
             <span className="flex items-center gap-1">
@@ -743,7 +830,8 @@ export const Leads: React.FC = () => {
             )}
           </div>
         </div>
-      ),
+        );
+      },
     },
     {
       key: 'contact',
@@ -884,24 +972,44 @@ export const Leads: React.FC = () => {
     },
     {
       key: 'activity',
-      header: 'Activity & Health',
+      header: 'Activity & Follow-up',
       sortable: true,
       render: (_, row) => {
         const days = getDaysSinceActivity(row.lastActivity)
         const isStale = days >= 7 && !['won', 'lost'].includes(row.stage)
+        const aiProfile = aiProfilesMap[String(row.id)]
 
         return (
-          <div className="space-y-0.5 min-w-[120px]">
+          <div className="space-y-1 min-w-[140px]" onClick={e => e.stopPropagation()}>
             <span className="text-xs text-secondary block">
               {relativeTime(row.lastActivity)}
             </span>
-            {isStale ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-none border border-amber-500/20">
-                <AlertTriangle size={10} /> {days}d inactive
-              </span>
+            {aiProfile?.nextFollowup ? (
+              <button
+                type="button"
+                onClick={() => openAIFollowupModal(row, aiProfile, 'reminder')}
+                className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border cursor-pointer ${
+                  aiProfile.overdueFollowupsCount > 0
+                    ? 'bg-rose-500/10 text-rose-600 border-rose-500/30'
+                    : 'bg-blue-500/10 text-blue-600 border-blue-500/30'
+                }`}
+                title={aiProfile.nextFollowup.subject}
+              >
+                <Calendar size={10} /> {String(aiProfile.nextFollowup.dueDate || '').slice(0, 10)}
+              </button>
             ) : (
-              <span className="text-[10px] text-muted font-mono">
-                {row.assignedTo ? row.assignedTo.split(' ')[0] : 'Unassigned'}
+              <button
+                type="button"
+                onClick={() => openAIFollowupModal(row, aiProfile, 'reminder')}
+                className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 cursor-pointer"
+                title="Schedule AI Follow-up Reminder"
+              >
+                <Bell size={10} /> + AI Follow-up
+              </button>
+            )}
+            {isStale && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                <AlertTriangle size={10} /> {days}d inactive
               </span>
             )}
           </div>
@@ -994,6 +1102,37 @@ export const Leads: React.FC = () => {
             <RefreshCw size={12} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
 
+          <Button
+            variant={showRemindersDashboard ? 'primary' : 'outline'}
+            size="sm"
+            icon={Bell}
+            onClick={() => setShowRemindersDashboard(v => !v)}
+            className="rounded-none text-xs font-bold"
+          >
+            Reminders ({allFollowups.filter((f: any) => !['done', 'completed', 'cancelled', 'canceled'].includes(String(f.status || '').toLowerCase())).length})
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Trophy}
+            disabled={syncingWon}
+            onClick={async () => {
+              try {
+                setSyncingWon(true)
+                const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/leads/sync-won-from-orders`, { method: 'POST' })
+                const data = await res.json()
+                toast(`Synced ${data.updatedCount || 0} leads with Sales Orders to Won!`, 'success')
+                refetch()
+              } catch (e: any) {
+                toast(e?.message || 'Failed to sync Won leads', 'error')
+              } finally {
+                setSyncingWon(false)
+              }
+            }}
+            className="rounded-none text-xs font-bold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+          >
+            {syncingWon ? 'Syncing...' : 'Sync Won Orders'}
+          </Button>
           <Button 
             variant="primary" 
             size="sm" 
@@ -1005,6 +1144,150 @@ export const Leads: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── FOLLOW-UP & REMINDERS DASHBOARD ── */}
+      {showRemindersDashboard && (() => {
+        const pendingFollowups = allFollowups.filter((f: any) => !['done', 'completed', 'cancelled', 'canceled'].includes(String(f.status || '').toLowerCase()));
+        return (
+        <GlassCard className="p-4 border-amber-500/30 bg-amber-500/5 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+              <Bell size={15} className="text-amber-500" />
+              AI Follow-up &amp; Reminders Command Center
+            </h3>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/crm/followups')}
+                className="text-xs font-bold text-rex-600 dark:text-rex-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Open Full Follow-ups Hub <ArrowRight size={12} />
+              </button>
+              <button onClick={() => setShowRemindersDashboard(false)} className="text-xs text-muted hover:text-primary cursor-pointer">Close</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {/* Scheduled Reminders */}
+            <div className="p-3 bg-surface border border-theme-subtle rounded-lg space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-amber-600 flex items-center justify-between">
+                <span>Scheduled Reminders ({pendingFollowups.length})</span>
+              </div>
+              {pendingFollowups.slice(0, 12).map((f: any) => {
+                const leadObj = leads.find((l: any) => l.id === f.relatedId);
+                const prof = leadObj ? aiProfilesMap[String(leadObj.id)] : undefined;
+                return (
+                  <div key={f.id} className="flex items-center justify-between gap-2 p-2 rounded bg-surface2/50 border border-theme-subtle/60 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary truncate">{leadObj?.company || leadObj?.name || f.relatedName || 'Lead'}</span>
+                        {prof && <AICustomerBadge profile={prof} variant="icon" onQuickFollowup={() => openAIFollowupModal(leadObj, prof)} />}
+                      </div>
+                      <div className="text-[11px] text-secondary truncate">{f.subject || f.notes || f.title || 'Follow-up'}</div>
+                      <div className="text-[10px] font-mono text-amber-600">
+                        {String(f.dueDate || f.date || '').slice(0, 10)} {f.dueTime ? `@ ${f.dueTime}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px] px-2 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                        onClick={() => handleMarkFollowupDone(f.id)}
+                      >
+                        ✓ Done
+                      </Button>
+                      {leadObj && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] px-2"
+                          onClick={() => openAIFollowupModal(leadObj, prof, 'contacted')}
+                        >
+                          Log
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {pendingFollowups.length === 0 && (
+                <div className="text-xs text-muted py-4 text-center">No pending reminders.</div>
+              )}
+            </div>
+
+            {/* AI Recommended Smart Follow-ups */}
+            <div className="p-3 bg-surface border border-rex-500/30 rounded-lg space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-rex-600 dark:text-rex-400 flex items-center gap-1.5">
+                <Sparkles size={12} />
+                <span>AI Priority Follow-up Queue ({aiFollowupQueue.length})</span>
+              </div>
+              {aiFollowupQueue.slice(0, 12).map((item) => (
+                <div key={item.lead.id} className="flex items-center justify-between gap-2 p-2 rounded bg-rex-500/5 border border-rex-500/20 text-xs">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-primary truncate">{item.lead.company || item.lead.name}</span>
+                      <AICustomerBadge profile={item.profile} variant="icon" onQuickFollowup={() => openAIFollowupModal(item.lead, item.profile)} />
+                    </div>
+                    <div className="text-[10.5px] text-secondary truncate">{item.profile.recommendedFollowup.reason}</div>
+                    <div className="text-[10px] font-mono text-rex-600 dark:text-rex-400">
+                      {item.urgencyLabel} • {item.profile.ordersCount} orders ({formatCurrency(item.profile.totalSalesRevenue)})
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className="h-7 text-[10px] shrink-0 px-2"
+                    onClick={() => openAIFollowupModal(item.lead, item.profile, 'reminder')}
+                  >
+                    ⚡ Schedule
+                  </Button>
+                </div>
+              ))}
+              {aiFollowupQueue.length === 0 && (
+                <div className="text-xs text-muted py-4 text-center">All active leads covered!</div>
+              )}
+            </div>
+
+            {/* Overdue Proposals (8+ Days) */}
+            <div className="p-3 bg-surface border border-theme-subtle rounded-lg space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600">
+                Aging Proposals (8+ Days Idle)
+              </div>
+              {leads
+                .filter((l: any) => String(l.stage || l.status || '').toLowerCase() === 'proposal')
+                .map((l: any) => {
+                  const days = getDaysSinceActivity(l.lastActivity || l.updatedAt || l.createdAt);
+                  return { ...l, ageDays: isNaN(days) ? 0 : days };
+                })
+                .filter((l: any) => l.ageDays >= 8)
+                .sort((a: any, b: any) => b.ageDays - a.ageDays)
+                .slice(0, 12)
+                .map((l: any) => {
+                  const prof = aiProfilesMap[String(l.id)];
+                  return (
+                  <div key={l.id} className="flex items-center justify-between gap-2 p-2 rounded bg-surface2/50 border border-theme-subtle/60 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary truncate">{l.company || l.name}</span>
+                        {prof && <AICustomerBadge profile={prof} variant="icon" onQuickFollowup={() => openAIFollowupModal(l, prof)} />}
+                      </div>
+                      <div className="text-[10px] font-mono text-rose-600 font-bold">{l.ageDays} days since last update</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px] shrink-0"
+                      onClick={() => openAIFollowupModal(l, prof, 'reminder')}
+                    >
+                      + AI Remind
+                    </Button>
+                  </div>
+                )})}
+            </div>
+          </div>
+        </GlassCard>
+        );
+      })()}
 
       {/* ── INTERACTIVE 5-METRIC COMMAND RIBBON (CLICK TO FILTER IMMEDIATELY) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
@@ -1269,6 +1552,29 @@ export const Leads: React.FC = () => {
         </div>
       </GlassCard>
 
+      {/* ── PROPOSAL QUOTATION AGING (3 BUCKETS) ── */}
+      {selectedStage === 'proposal' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { id: 'all', label: 'All Proposals', color: 'border-theme-subtle text-primary' },
+            { id: '0-7', label: '0–7 Days (Fresh)', color: 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400' },
+            { id: '8-14', label: '8–14 Days (Follow-up)', color: 'border-amber-500/40 text-amber-600 dark:text-amber-400' },
+            { id: '15+', label: '15+ Days (Critical)', color: 'border-rose-500/40 text-rose-600 dark:text-rose-400' }
+          ].map(b => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setProposalAgingFilter(b.id as any)}
+              className={`px-3 py-2 text-xs font-bold border transition-all text-left ${b.color} ${
+                proposalAgingFilter === b.id ? 'bg-surface2 ring-1 ring-amber-500/50 shadow-sm' : 'bg-surface/60 hover:bg-surface2/50'
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── MAIN CONTENT (KANBAN OR TABLE) ─────────────────────────────────── */}
       {view === 'kanban' ? (
         <div className="flex gap-3 overflow-x-auto pb-4 h-[calc(100vh-270px)] min-h-[450px]">
@@ -1281,7 +1587,7 @@ export const Leads: React.FC = () => {
             return (
               <div 
                 key={stage} 
-                className="flex-shrink-0 w-64 flex flex-col h-full bg-surface/50 border border-theme-subtle rounded-none"
+                className={`flex-shrink-0 ${stage === 'proposal' ? 'w-[780px]' : 'w-64'} flex flex-col h-full bg-surface/50 border border-theme-subtle rounded-none`}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
@@ -1301,17 +1607,20 @@ export const Leads: React.FC = () => {
                 </div>
 
                 {/* Cards Container */}
-                <div className="p-2 space-y-2 flex-1 overflow-y-auto pb-6 custom-scrollbar">
-                  {visibleStageLeads.map((lead: any) => {
+                {(() => {
+                  const renderLeadCard = (lead: any) => {
                     const days = getDaysSinceActivity(lead.lastActivity)
                     const isStale = days >= 7 && !['won', 'lost'].includes(lead.stage)
                     const quotes = getLeadQuotes(lead)
                     const isSelected = selectedLeadId === lead.id
+                    const aiProfile = aiProfilesMap[String(lead.id)]
+                    const bucketBadge = null;
 
                     if (cardDensity === 'compact') {
                       return (
+                        <React.Fragment key={lead.id}>
+                          {bucketBadge}
                         <div 
-                          key={lead.id} 
                           className={`p-2 bg-surface border transition-all cursor-pointer rounded-none group hover:shadow-xs ${
                             isSelected 
                               ? 'border-rex-500 ring-2 ring-rex-500/80 bg-rex-500/5 shadow-sm' 
@@ -1322,10 +1631,27 @@ export const Leads: React.FC = () => {
                           onDragStart={(e) => handleDragStart(e, lead.id)}
                         >
                           <div className="flex items-center justify-between gap-1 mb-1">
-                            <p className="text-xs font-bold text-primary truncate flex-1 group-hover:text-rex-600 transition-colors" title={lead.company}>
-                              {lead.company}
-                            </p>
+                            <div className="flex items-center gap-1 min-w-0 flex-1">
+                              {aiProfile && (
+                                <AICustomerBadge
+                                  profile={aiProfile}
+                                  variant="icon"
+                                  onQuickFollowup={() => openAIFollowupModal(lead, aiProfile)}
+                                />
+                              )}
+                              <p className="text-xs font-bold text-primary truncate flex-1 group-hover:text-rex-600 transition-colors" title={lead.company}>
+                                {lead.company}
+                              </p>
+                            </div>
                             <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openAIFollowupModal(lead, aiProfile); }}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 text-amber-500 hover:text-amber-600 transition-opacity"
+                                title="AI Follow-up / Reminder"
+                              >
+                                <Bell size={10} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); openEditModal(lead); }}
@@ -1375,22 +1701,41 @@ export const Leads: React.FC = () => {
                             </div>
                           )}
 
-                          {isStale && (
-                            <div className="mt-1 pt-1 border-t border-theme-subtle flex items-center justify-between text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                              <span className="flex items-center gap-1">
-                                <Clock size={10} /> {days}d idle
-                              </span>
-                              <span className="text-muted font-mono">{lead.probability}%</span>
+                          {(isStale || aiProfile?.nextFollowup) && (
+                            <div className="mt-1 pt-1 border-t border-theme-subtle flex items-center justify-between text-[10px] font-semibold">
+                              {isStale ? (
+                                <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                                  <Clock size={10} /> {days}d idle
+                                </span>
+                              ) : (
+                                <span className="text-muted font-mono">{aiProfile?.ordersCount ? `${aiProfile.ordersCount} ord` : ''}</span>
+                              )}
+                              {aiProfile?.nextFollowup ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openAIFollowupModal(lead, aiProfile); }}
+                                  className={`flex items-center gap-0.5 font-mono text-[9.5px] ${
+                                    aiProfile.overdueFollowupsCount > 0 ? 'text-rose-500 font-bold' : 'text-blue-600 dark:text-blue-400'
+                                  }`}
+                                  title={`Next follow-up: ${aiProfile.nextFollowup.subject}`}
+                                >
+                                  <Calendar size={9} /> {String(aiProfile.nextFollowup.dueDate || '').slice(5, 10)}
+                                </button>
+                              ) : (
+                                <span className="text-muted font-mono">{lead.probability}%</span>
+                              )}
                             </div>
                           )}
                         </div>
+                        </React.Fragment>
                       )
                     }
 
                     // Detailed Card View
                     return (
+                      <React.Fragment key={lead.id}>
+                        {bucketBadge}
                       <div 
-                        key={lead.id} 
                         className={`p-3 bg-surface border transition-all cursor-pointer rounded-none group ${
                           isSelected 
                             ? 'border-rex-500 ring-2 ring-rex-500/80 bg-rex-500/5 shadow-md' 
@@ -1400,8 +1745,17 @@ export const Leads: React.FC = () => {
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead.id)}
                       >
-                        <div className="flex items-start justify-between mb-1">
-                          <p className="text-xs font-bold text-primary leading-snug flex-1 mr-1 group-hover:text-rex-600 transition-colors">{lead.company}</p>
+                        <div className="flex items-start justify-between mb-1 gap-1.5">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="text-xs font-bold text-primary leading-snug group-hover:text-rex-600 transition-colors">{lead.company}</p>
+                            {aiProfile && (
+                              <AICustomerBadge
+                                profile={aiProfile}
+                                variant="pill"
+                                onQuickFollowup={() => openAIFollowupModal(lead, aiProfile)}
+                              />
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
@@ -1491,6 +1845,13 @@ export const Leads: React.FC = () => {
                           </div>
                         )}
 
+                        {aiProfile && (
+                          <div className="mt-2 p-1.5 rounded bg-rex-500/5 border border-rex-500/20 text-[10px] text-secondary leading-snug">
+                            <span className="font-bold text-rex-600 dark:text-rex-400">AI: </span>
+                            <span className="line-clamp-2">{aiProfile.aiSuggestion}</span>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-theme-subtle">
                           <span className="text-[10px] text-faint truncate max-w-[90px]">{lead.assignedTo?.split(' ')[0] || 'Unassigned'}</span>
                           <div className="flex items-center gap-1.5">
@@ -1506,6 +1867,19 @@ export const Leads: React.FC = () => {
 
                         {/* Action buttons on kanban card */}
                         <div className="mt-2 pt-1.5 border-t border-theme-subtle flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openAIFollowupModal(lead, aiProfile); }}
+                            className={`text-[10px] font-semibold py-1 px-1.5 rounded-none border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                              aiProfile?.nextFollowup
+                                ? 'bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20'
+                                : 'bg-amber-500/10 text-amber-600 border-amber-500/30 hover:bg-amber-500/20'
+                            }`}
+                            title={aiProfile?.nextFollowup ? `Next: ${String(aiProfile.nextFollowup.dueDate || '').slice(0, 10)}` : 'Schedule AI Follow-up'}
+                          >
+                            <Bell size={11} />
+                            {aiProfile?.nextFollowup ? String(aiProfile.nextFollowup.dueDate || '').slice(5, 10) : 'Follow-up'}
+                          </button>
                           {(() => {
                             const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({ id: lead.id, leadId: lead.id }, leadGrns);
                             if (sPhotos.length === 0) return null;
@@ -1564,25 +1938,76 @@ export const Leads: React.FC = () => {
                           )}
                         </div>
                       </div>
+                      </React.Fragment>
                     )
-                  })}
+                  }
 
-                  {hasMoreInStage && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllLeads(true)}
-                      className="w-full py-2 px-2 text-[11px] font-bold text-rex-600 dark:text-rex-400 hover:text-white bg-rex-50 dark:bg-rex-950/40 hover:bg-rex-600 border border-dashed border-rex-300 dark:border-rex-700 rounded-none transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-1"
-                    >
-                      <span>+{stageLeads.length - displayLimit} more in {STAGE_LABELS[stage] || stage}</span>
-                    </button>
-                  )}
+                  if (stage === 'proposal') {
+                    const proposalBuckets = [
+                      {
+                        key: '0-7',
+                        label: '0–7 Days (Fresh)',
+                        headerCls: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400',
+                        leads: visibleStageLeads.filter((l: any) => getDaysSinceActivity(l.lastActivity) <= 7),
+                      },
+                      {
+                        key: '8-14',
+                        label: '8–14 Days (Follow-up)',
+                        headerCls: 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400',
+                        leads: visibleStageLeads.filter((l: any) => {
+                          const d = getDaysSinceActivity(l.lastActivity)
+                          return d >= 8 && d <= 14
+                        }),
+                      },
+                      {
+                        key: '15+',
+                        label: '15+ Days (Critical)',
+                        headerCls: 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-400',
+                        leads: visibleStageLeads.filter((l: any) => getDaysSinceActivity(l.lastActivity) >= 15),
+                      },
+                    ]
 
-                  {stageLeads.length === 0 && (
-                    <div className="py-10 text-center border border-dashed border-theme-subtle m-1">
-                      <p className="text-[11px] text-muted italic">No leads in {STAGE_LABELS[stage] || stage}</p>
+                    return (
+                      <div className="grid grid-cols-3 gap-2 p-2 flex-1 overflow-hidden">
+                        {proposalBuckets.map((b) => (
+                          <div key={b.key} className="flex flex-col h-full bg-surface2/30 border border-theme-subtle overflow-hidden">
+                            <div className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider border-b flex items-center justify-between shrink-0 ${b.headerCls}`}>
+                              <span className="truncate">{b.label}</span>
+                              <span className="font-mono ml-1">{b.leads.length}</span>
+                            </div>
+                            <div className="p-1.5 space-y-2 flex-1 overflow-y-auto pb-6 custom-scrollbar">
+                              {b.leads.length === 0 ? (
+                                <p className="text-[10px] text-muted text-center py-6">No proposals</p>
+                              ) : (
+                                b.leads.map((lead: any) => renderLeadCard(lead))
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="p-2 space-y-2 flex-1 overflow-y-auto pb-6 custom-scrollbar">
+                      {visibleStageLeads.map((lead: any) => renderLeadCard(lead))}
+                      {hasMoreInStage && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllLeads(true)}
+                          className="w-full py-2 px-2 text-[11px] font-bold text-rex-600 dark:text-rex-400 hover:text-white bg-rex-50 dark:bg-rex-950/40 hover:bg-rex-600 border border-dashed border-rex-300 dark:border-rex-700 rounded-none transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                        >
+                          <span>+{stageLeads.length - displayLimit} more in {STAGE_LABELS[stage] || stage}</span>
+                        </button>
+                      )}
+                      {stageLeads.length === 0 && (
+                        <div className="py-10 text-center border border-dashed border-theme-subtle m-1">
+                          <p className="text-[11px] text-muted italic">No leads in {STAGE_LABELS[stage] || stage}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -2668,36 +3093,49 @@ export const Leads: React.FC = () => {
           },
           leadGrns
         ).grns;
+        const selectedAiProfile = aiProfilesMap[String(selectedLead.id)] || analyzeCustomerIntelligence(selectedLead, aiContext);
+        const leadFollowups = [...selectedAiProfile.pendingFollowups, ...selectedAiProfile.completedFollowups];
         const daysInStage = getDaysSinceActivity(selectedLead.lastActivity);
         const cleanPhone = (selectedLead.phone || '').replace(/[^0-9]/g, '');
         const waLink = cleanPhone ? `https://wa.me/${cleanPhone.startsWith('0') ? '94' + cleanPhone.slice(1) : cleanPhone}` : null;
 
-        return (
+        return createPortal(
           <>
             {/* Mobile backdrop */}
-            <div 
-              className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-50 md:hidden"
+            {/* Centered Modal with Blurred Backdrop */}
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-white/60 dark:bg-white/15 backdrop-blur-md p-3 sm:p-6"
               onClick={() => setSelectedLeadId(null)}
-            />
-
-            {/* Split-Pane Drawer */}
-            <aside 
-              className="fixed top-0 right-0 h-screen w-full sm:w-[480px] md:w-[520px] lg:w-[550px] z-50 bg-surface border-l border-theme-subtle shadow-2xl flex flex-col transition-all duration-200"
-              style={{ boxShadow: '-12px 0 35px rgba(0, 0, 0, 0.25)' }}
             >
+              <aside
+                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-2xl max-h-[90vh] bg-surface border border-theme-subtle rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              >
               {/* Header */}
               <div className="p-4 border-b border-theme-subtle bg-surface2/70 shrink-0">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[11px] font-bold text-rex-600 dark:text-rex-400 bg-rex-500/10 px-2 py-0.5 border border-rex-500/30">
                       {selectedLead.id}
                     </span>
                     <Badge value={selectedLead.priority} size="sm" />
+                    <AICustomerBadge
+                      profile={selectedAiProfile}
+                      variant="pill"
+                      onQuickFollowup={() => openAIFollowupModal(selectedLead, selectedAiProfile, 'reminder')}
+                    />
                     {selectedLead.customerId && (
                       <span className="text-[10px] font-mono text-muted bg-surface px-1.5 py-0.5 border border-theme-subtle">
                         Cust: {selectedLead.customerId}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => openAIFollowupModal(selectedLead, selectedAiProfile, 'reminder')}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors cursor-pointer"
+                    >
+                      + Add Follow-up / Reminder
+                    </button>
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -2794,6 +3232,85 @@ export const Leads: React.FC = () => {
 
               {/* Scrollable Content Body */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {/* AI Customer Relationship & Past Sales Intelligence */}
+                <AICustomerInsightPanel
+                  profile={selectedAiProfile}
+                  onApplyFollowup={() => openAIFollowupModal(selectedLead, selectedAiProfile, 'reminder')}
+                />
+
+                {/* Follow-ups & Reminders Timeline */}
+                <div className="bg-surface2/40 border border-theme-subtle p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Bell size={13} className="text-amber-500" />
+                      Follow-ups &amp; Reminders ({leadFollowups.length})
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openAIFollowupModal(selectedLead, selectedAiProfile, 'contacted')}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer"
+                      >
+                        + Log Call
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAIFollowupModal(selectedLead, selectedAiProfile, 'reminder')}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors cursor-pointer"
+                      >
+                        + Schedule AI
+                      </button>
+                    </div>
+                  </div>
+                  {leadFollowups.length === 0 ? (
+                    <p className="text-[11px] text-muted italic">
+                      No follow-ups logged yet. Click &quot;+ Schedule AI&quot; to set an AI-suggested reminder.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                      {leadFollowups.map((f: any) => {
+                        const isDone = ['done', 'completed'].includes(String(f.status || '').toLowerCase());
+                        return (
+                          <div
+                            key={f.id}
+                            className={`p-2 bg-surface border border-theme-subtle flex items-start justify-between gap-2 text-xs ${
+                              isDone ? 'opacity-65' : ''
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.2 border ${
+                                  isDone
+                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                    : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                }`}>
+                                  {f.type || 'call'} • {isDone ? 'Done' : 'Pending'}
+                                </span>
+                                <span className={`font-semibold text-primary truncate ${isDone ? 'line-through text-muted' : ''}`}>
+                                  {f.subject || f.title || 'Follow-up'}
+                                </span>
+                              </div>
+                              {f.notes && <p className="text-[11px] text-secondary mt-0.5 line-clamp-2">{f.notes}</p>}
+                              {f.outcome && <p className="text-[10.5px] text-emerald-600 dark:text-emerald-400 italic mt-0.5">Outcome: {f.outcome}</p>}
+                              <p className="text-[10px] font-mono text-muted mt-0.5">
+                                {String(f.dueDate || '').slice(0, 10)} {f.dueTime ? `at ${f.dueTime}` : ''}
+                              </p>
+                            </div>
+                            {!isDone && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkFollowupDone(f.id)}
+                                className="px-2 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 cursor-pointer"
+                              >
+                                ✓ Done
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 {/* Contact & Communication Channels */}
                 <div className="bg-surface2/40 border border-theme-subtle p-3 space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted flex items-center justify-between">
@@ -3091,7 +3608,9 @@ export const Leads: React.FC = () => {
                 </button>
               </div>
             </aside>
-          </>
+            </div>
+          </>,
+          document.body
         );
       })()}
 
@@ -3250,6 +3769,259 @@ export const Leads: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* ── FULL DETAILED AI FOLLOW-UP & REMINDER MODAL (z-[160] above Lead Modal) ── */}
+      {reminderModalLead && (() => {
+        const modalAiProfile = aiProfilesMap[String(reminderModalLead.id)] || analyzeCustomerIntelligence(reminderModalLead, aiContext);
+        const shiftDate = (days: number) => {
+          const d = new Date();
+          d.setDate(d.getDate() + days);
+          setReminderDate(d.toISOString().slice(0, 10));
+        };
+        const applyAiPlan = (rec: typeof modalAiProfile.recommendedFollowup) => {
+          setReminderMode('reminder');
+          setReminderType(rec.type);
+          setReminderPriority(rec.priority);
+          setReminderDate(rec.dueDate);
+          setReminderTime(rec.dueTime || '09:30');
+          setReminderSubject(rec.subject);
+          setReminderNote(rec.notes);
+        };
+
+        return createPortal(
+        <div
+          className="fixed inset-0 z-[160] flex items-center justify-center bg-white/60 dark:bg-white/15 backdrop-blur-md p-4"
+          onClick={() => setReminderModalLead(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl max-h-[90vh] flex flex-col bg-surface border border-theme-subtle rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="px-5 py-3.5 border-b border-theme-subtle bg-surface2/70 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Bell size={16} className="text-amber-500 shrink-0" />
+                <h3 className="text-sm font-bold text-primary truncate">
+                  AI Follow-up &amp; Reminder: {reminderModalLead?.company || reminderModalLead?.name || 'Lead'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReminderModalLead(null)}
+                className="p-1 text-muted hover:text-primary rounded cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs overflow-y-auto custom-scrollbar">
+              {/* Customer Historical Relationship & AI Recommendation */}
+              <AICustomerInsightPanel
+                profile={modalAiProfile}
+                compact
+                actionLabel="Auto-Fill AI Plan"
+                onApplyFollowup={applyAiPlan}
+              />
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReminderMode('reminder')}
+                  className={`p-2.5 rounded-lg border font-bold text-center transition-colors cursor-pointer ${
+                    reminderMode === 'reminder'
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300'
+                      : 'bg-surface border-theme-subtle text-secondary hover:border-theme'
+                  }`}
+                >
+                  📅 Schedule Future Reminder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReminderMode('contacted');
+                    setReminderDate(new Date().toISOString().slice(0, 10));
+                    if (!reminderSubject.trim()) {
+                      setReminderSubject(`Contacted ${reminderModalLead?.company || reminderModalLead?.name || 'Lead'}`);
+                    }
+                  }}
+                  className={`p-2.5 rounded-lg border font-bold text-center transition-colors cursor-pointer ${
+                    reminderMode === 'contacted'
+                      ? 'bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-surface border-theme-subtle text-secondary hover:border-theme'
+                  }`}
+                >
+                  📞 Log Contacted / Outcome
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-secondary uppercase mb-1.5">
+                  Follow-up Channel / Type
+                </label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  {[
+                    { value: 'call', label: 'Call', icon: Phone },
+                    { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
+                    { value: 'email', label: 'Email', icon: Mail },
+                    { value: 'meeting', label: 'Meeting', icon: UserCheck },
+                    { value: 'site_visit', label: 'Site Visit', icon: Briefcase },
+                    { value: 'task', label: 'Task', icon: CheckCircle2 },
+                  ].map((ch) => {
+                    const ChIcon = ch.icon;
+                    const active = reminderType.toLowerCase() === ch.value;
+                    return (
+                      <button
+                        key={ch.value}
+                        type="button"
+                        onClick={() => setReminderType(ch.value)}
+                        className={`flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border text-[10.5px] font-bold transition-all cursor-pointer ${
+                          active
+                            ? 'bg-rex-500/15 border-rex-500 text-rex-600 dark:text-rex-400 shadow-xs'
+                            : 'bg-surface border-theme-subtle text-secondary hover:border-theme'
+                        }`}
+                      >
+                        <ChIcon size={13} />
+                        <span>{ch.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">
+                    Subject / Action Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={reminderSubject}
+                    onChange={(e) => setReminderSubject(e.target.value)}
+                    placeholder="e.g. Quotation follow-up & PO check..."
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">
+                    Priority
+                  </label>
+                  <select
+                    value={reminderPriority.toLowerCase()}
+                    onChange={(e) => setReminderPriority(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">
+                    {reminderMode === 'reminder' ? 'Due Date' : 'Contacted Date'}
+                  </label>
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    onChange={(e) => setReminderDate(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-secondary uppercase mb-1">
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => setReminderTime(e.target.value)}
+                    className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary"
+                  />
+                </div>
+              </div>
+
+              {reminderMode === 'reminder' && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-muted uppercase mr-1">Quick Schedule:</span>
+                  {[
+                    { label: 'Today', days: 0 },
+                    { label: 'Tomorrow', days: 1 },
+                    { label: '+3 Days', days: 3 },
+                    { label: '+7 Days', days: 7 },
+                  ].map((q) => (
+                    <button
+                      key={q.label}
+                      type="button"
+                      onClick={() => shiftDate(q.days)}
+                      className="px-2 py-1 text-[10px] font-bold rounded bg-surface2 hover:bg-rex-500/15 hover:text-rex-600 border border-theme-subtle transition-colors cursor-pointer"
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-secondary uppercase mb-1">
+                  {reminderMode === 'reminder' ? 'Reminder Notes / Talking Points' : 'Customer Feedback / Outcome'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={reminderNote}
+                  onChange={(e) => setReminderNote(e.target.value)}
+                  placeholder={reminderMode === 'reminder' ? 'e.g. Confirm quote feedback and PO delivery date...' : 'e.g. Customer requested minor revision / confirmed PO next week...'}
+                  className="w-full bg-surface border border-theme-subtle rounded-lg px-3 py-2 text-xs text-primary"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-theme-subtle">
+                <Button variant="ghost" size="sm" onClick={() => setReminderModalLead(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={savingReminder || (!reminderNote.trim() && !reminderSubject.trim())}
+                  onClick={async () => {
+                    if (!reminderModalLead) return;
+                    try {
+                      setSavingReminder(true);
+                      const finalSubject = reminderSubject.trim() || `${reminderType.toUpperCase()}: ${reminderNote.trim().slice(0, 45)}`;
+                      await createFollowup({
+                        relatedType: 'lead',
+                        relatedId: reminderModalLead.id,
+                        relatedName: reminderModalLead.company || reminderModalLead.name,
+                        subject: finalSubject,
+                        type: reminderType.toLowerCase(),
+                        priority: reminderPriority.toLowerCase() === 'urgent' ? 'high' : reminderPriority.toLowerCase(),
+                        dueDate: `${reminderDate} ${reminderTime || '09:30'}:00`,
+                        dueTime: reminderTime || '09:30',
+                        assignedTo: user?.name || user?.username || reminderModalLead.assignedTo || '',
+                        status: reminderMode === 'contacted' ? 'done' : 'pending',
+                        outcome: reminderMode === 'contacted' ? reminderNote.trim() : undefined,
+                        notes: reminderNote.trim(),
+                      });
+                      invalidateDataCache('followups');
+                      toast(reminderMode === 'reminder' ? 'AI Follow-up reminder saved!' : 'Contact feedback logged!', 'success');
+                      await refetchFollowups();
+                      setReminderModalLead(null);
+                    } catch (err: any) {
+                      toast(err?.message || 'Failed to save follow-up', 'error');
+                    } finally {
+                      setSavingReminder(false);
+                    }
+                  }}
+                >
+                  {savingReminder ? 'Saving...' : (reminderMode === 'reminder' ? 'Save Follow-up Reminder' : 'Save Contact Log')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+        );
+      })()}
     </div>
   )
 }

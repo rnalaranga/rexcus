@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FileText, FileEdit, Plus, Download, Filter, Briefcase, User, Search, ArrowRight, Trash2, RotateCcw, Factory, Package, Printer, Bookmark, CheckCircle2, XCircle, Clock, Send, History, Eye, ChevronDown, ChevronUp, Layers, Ruler, Calculator, TrendingUp, Building2, Sparkles, Maximize2, LayoutGrid, List, BarChart3, RefreshCw } from 'lucide-react'
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Modal } from '@/components/ui/Modal'
 import { useDialog } from '@/components/ui/DialogProvider'
@@ -2137,15 +2137,30 @@ export const Quotations: React.FC = () => {
           >
             Export
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Plus}
-            onClick={() => navigate('/crm/quotations/new')}
-            className="rounded-none text-xs h-8 font-bold shadow-xs"
-          >
-            New Quote
-          </Button>
+          {(() => {
+            const canDirectQuote = Boolean(
+              user?.role === 'admin' ||
+              user?.role === 'super_admin' ||
+              user?.role === 'finance_manager' ||
+              user?.role === 'accountant' ||
+              user?.role === 'finance' ||
+              user?.permissions?.includes('admin') ||
+              user?.permissions?.includes('approvals.direct_quotation')
+            );
+            return (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                disabled={!canDirectQuote}
+                onClick={() => navigate('/crm/quotations/new')}
+                title={canDirectQuote ? 'Create Direct Quotation' : 'Direct Quotations require Admin/Finance approval. Please create quotations from a Lead.'}
+                className="rounded-none text-xs h-8 font-bold shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {canDirectQuote ? 'New Quote' : 'New Quote (Admin/Finance Only)'}
+              </Button>
+            );
+          })()}
         </div>
       </div>
 

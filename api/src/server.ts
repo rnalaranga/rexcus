@@ -4475,6 +4475,49 @@ async function findOrCreateCustomerFromLead(leadData: any) {
   return finalCustId;
 }
 
+// Sync all Leads that already have Sales Orders to 'won' stage and ensure Customer DB record exists
+app.post('/api/leads/sync-won-from-orders', async (req, res) => {
+  try {
+    const [r1]: any = await db.query(`
+      UPDATE leads l
+      JOIN finished_goods_orders o ON (o.customerId = l.id OR o.customerId = l.customerId)
+      SET l.stage = 'won', l.lastActivity = NOW()
+      WHERE COALESCE(LOWER(l.stage), '') != 'won'
+    `);
+    const [r2]: any = await db.query(`
+      UPDATE leads l
+      JOIN quotations q ON q.leadId = l.id
+      JOIN finished_goods_orders o ON (o.quoteId = q.id OR (o.quotationNo IS NOT NULL AND o.quotationNo != '' AND o.quotationNo = q.quotationNo))
+      SET l.stage = 'won', l.lastActivity = NOW()
+      WHERE COALESCE(LOWER(l.stage), '') != 'won'
+    `);
+
+    // Auto-save & link Customer DB record for any Won leads missing customerId
+    let customersCreated = 0;
+    const [unlinkedWonLeads]: any = await db.query(`
+      SELECT * FROM leads
+      WHERE LOWER(COALESCE(stage, '')) = 'won'
+        AND (customerId IS NULL OR customerId = '')
+    `);
+    for (const wl of (unlinkedWonLeads || [])) {
+      try {
+        const custId = await findOrCreateCustomerFromLead(wl);
+        if (custId) {
+          await db.query('UPDATE leads SET customerId = ? WHERE id = ?', [custId, wl.id]);
+          customersCreated++;
+        }
+      } catch (ce) {
+        console.warn('Sync won customer link warning:', ce);
+      }
+    }
+
+    const updatedCount = Number(r1?.affectedRows || 0) + Number(r2?.affectedRows || 0);
+    res.json({ success: true, updatedCount, customersCreated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to sync leads to Won' });
+  }
+});
+
 app.get('/api/leads', async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -8023,6 +8066,42 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     }
 
     const [result]: any = await db.query('INSERT INTO finished_goods_orders SET ?', safeOrder);
+
+    // Auto-mark linked Lead as 'won' when a Sales Order is created & auto-save Customer if missing
+    try {
+      const targetLeadId = safeOrder.leadId || safeOrder.customerId || null;
+      if (targetLeadId) {
+        await db.query(
+          "UPDATE leads SET stage = 'won', lastActivity = NOW() WHERE (id = ? OR customerId = ?) AND COALESCE(LOWER(stage), '') != 'won'",
+          [targetLeadId, targetLeadId]
+        );
+      }
+      if (safeOrder.quotationNo || safeOrder.quoteId) {
+        await db.query(
+          `UPDATE leads l
+           JOIN quotations q ON q.leadId = l.id
+           SET l.stage = 'won', l.lastActivity = NOW()
+           WHERE (q.id = ? OR q.quotationNo = ?) AND COALESCE(LOWER(l.stage), '') != 'won'`,
+          [safeOrder.quoteId || '', safeOrder.quotationNo || '']
+        );
+      }
+      const [unlinkedLeads]: any = await db.query(
+        `SELECT l.* FROM leads l
+         LEFT JOIN quotations q ON q.leadId = l.id
+         WHERE (l.customerId IS NULL OR l.customerId = '')
+           AND (l.id = ? OR q.id = ? OR q.quotationNo = ?)
+         LIMIT 5`,
+        [targetLeadId || '', safeOrder.quoteId || '', safeOrder.quotationNo || '']
+      );
+      for (const ul of (unlinkedLeads || [])) {
+        const custId = await findOrCreateCustomerFromLead(ul);
+        if (custId) {
+          await db.query('UPDATE leads SET customerId = ? WHERE id = ?', [custId, ul.id]);
+        }
+      }
+    } catch (leadWonErr) {
+      console.warn('Auto-mark lead Won warning:', leadWonErr);
+    }
     const insertedId = result?.insertId || safeOrder.id;
 
     // Sync Sales Order document sequence
@@ -10661,17 +10740,97 @@ app.get('/api/followups/related/:type/:id', async (req, res) => {
   }
 });
 
+const FOLLOWUP_VALID_COLS = new Set([
+  'id', 'relatedType', 'relatedId', 'relatedName', 'type', 'subject', 'notes',
+  'dueDate', 'dueTime', 'priority', 'assignedTo', 'status', 'outcome', 'completedAt', 'createdAt'
+]);
+
+function normalizeFollowupPayload(raw: any, isUpdate = false): Record<string, any> {
+  const input = { ...(raw || {}) };
+  if (input.subject === undefined && input.title !== undefined) {
+    input.subject = input.title;
+  }
+  if (!isUpdate && !input.subject) {
+    input.subject = 'Follow-up Activity';
+  }
+
+  if (input.type !== undefined) {
+    const t = String(input.type).trim().toLowerCase();
+    if (t === 'phone call' || t === 'quotation follow-up' || t === 'quotation follow up') {
+      input.type = 'call';
+    } else if (t === 'site visit') {
+      input.type = 'site_visit';
+    } else if (t === 'task / to-do' || t === 'todo') {
+      input.type = 'task';
+    } else if (['call', 'whatsapp', 'email', 'meeting', 'site_visit', 'task'].includes(t)) {
+      input.type = t;
+    } else {
+      input.type = 'call';
+    }
+  } else if (!isUpdate) {
+    input.type = 'call';
+  }
+
+  if (input.priority !== undefined) {
+    const p = String(input.priority).trim().toLowerCase();
+    input.priority = p === 'urgent' ? 'high' : (['low', 'medium', 'high'].includes(p) ? p : 'medium');
+  } else if (!isUpdate) {
+    input.priority = 'medium';
+  }
+
+  if (input.status !== undefined) {
+    const s = String(input.status).trim().toLowerCase();
+    if (s === 'completed' || s === 'done') input.status = 'done';
+    else if (s === 'overdue') input.status = 'overdue';
+    else if (s === 'cancelled' || s === 'canceled') input.status = 'cancelled';
+    else input.status = 'pending';
+  } else if (!isUpdate) {
+    input.status = 'pending';
+  }
+
+  if (input.dueTime !== undefined) {
+    input.dueTime = String(input.dueTime || '09:00').trim() || '09:00';
+  } else if (!isUpdate) {
+    input.dueTime = '09:00';
+  }
+
+  if (input.dueDate !== undefined && input.dueDate !== null && input.dueDate !== '') {
+    const dStr = String(input.dueDate).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+      const timePart = (input.dueTime || '09:00').length === 5 ? `${input.dueTime || '09:00'}:00` : (input.dueTime || '09:00:00');
+      input.dueDate = `${dStr} ${timePart}`;
+    } else if (dStr.includes('T')) {
+      input.dueDate = dStr.slice(0, 19).replace('T', ' ');
+    }
+  }
+
+  if (input.completedAt && typeof input.completedAt === 'string' && input.completedAt.includes('T')) {
+    input.completedAt = input.completedAt.slice(0, 19).replace('T', ' ');
+  } else if (!isUpdate && input.status === 'done' && !input.completedAt) {
+    input.completedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (FOLLOWUP_VALID_COLS.has(k) && v !== undefined) {
+      sanitized[k] = v;
+    }
+  }
+  return sanitized;
+}
+
 app.post('/api/followups', async (req, res) => {
-    try {
-      const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
-      if (!data.id) {
-        data.id = 'FOL-' + Date.now().toString().slice(-6);
-        data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-      }
-    const [result] = await db.query('INSERT INTO followups SET ?', data);
-    res.json({ success: true, id: data.id });
-  } catch (error) {
+  try {
+    const data = normalizeFollowupPayload(req.body, false);
+    if (!data.id) {
+      data.id = 'FOL-' + Date.now().toString().slice(-6);
+    }
+    if (!data.createdAt) {
+      data.createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    }
+    await db.query('INSERT INTO followups SET ?', data);
+    res.json({ success: true, id: data.id, followup: data });
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }
@@ -10680,11 +10839,13 @@ app.post('/api/followups', async (req, res) => {
 app.put('/api/followups/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const data = { ...req.body };
-    if (data.contacts && typeof data.contacts === 'object') data.contacts = JSON.stringify(data.contacts);
+    const data = normalizeFollowupPayload(req.body, true);
+    if (Object.keys(data).length === 0) {
+      return res.json({ success: true, id });
+    }
     await db.query('UPDATE followups SET ? WHERE id = ?', [data, id]);
-    res.json({ success: true, id });
-  } catch (error) {
+    res.json({ success: true, id, followup: data });
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Internal Server Error', details: error.sqlMessage });
   }

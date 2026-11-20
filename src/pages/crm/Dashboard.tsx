@@ -651,6 +651,60 @@ export const CRMDashboard: React.FC = () => {
           )}
         </div>
       </GlassCard>
+
+      {/* AI Aging Leads & Proposal Insights */}
+      <GlassCard className="p-4 border-rose-500/20">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-rose-500" />
+            <h3 className="text-sm font-bold text-primary">AI Aging &amp; At-Risk Proposals (8+ Days Idle)</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/crm/leads')}
+            className="text-xs font-semibold text-rex-600 hover:underline flex items-center gap-1"
+          >
+            Open Leads <ChevronRight size={13} />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {leads
+            .filter((l: any) => !['won', 'lost'].includes(String(l.stage || l.status || '').toLowerCase()))
+            .map((l: any) => {
+              const days = Math.floor((Date.now() - new Date(l.lastActivity || l.updatedAt || l.createdAt || Date.now()).getTime()) / 86400000);
+              return { ...l, ageDays: isNaN(days) ? 0 : days };
+            })
+            .filter((l: any) => l.ageDays >= 8)
+            .sort((a: any, b: any) => b.ageDays - a.ageDays)
+            .slice(0, 6)
+            .map((l: any) => {
+              const isCritical = l.ageDays >= 15;
+              return (
+                <div
+                  key={l.id}
+                  onClick={() => navigate('/crm/leads')}
+                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                    isCritical
+                      ? 'bg-rose-500/5 border-rose-500/30 hover:bg-rose-500/10'
+                      : 'bg-amber-500/5 border-amber-500/30 hover:bg-amber-500/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-bold text-primary truncate">{l.company || l.name}</span>
+                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                      isCritical ? 'bg-rose-500/20 text-rose-600' : 'bg-amber-500/20 text-amber-600'
+                    }`}>
+                      {l.ageDays}d idle
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-secondary truncate">
+                    Stage: <strong className="uppercase">{l.stage || l.status}</strong> • {isCritical ? 'AI: Immediate call/discount check recommended' : 'AI: Schedule follow-up reminder'}
+                  </p>
+                </div>
+              );
+            })}
+        </div>
+      </GlassCard>
     </div>
   )
 }

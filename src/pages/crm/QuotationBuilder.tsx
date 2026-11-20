@@ -345,7 +345,20 @@ export const QuotationBuilder: React.FC = () => {
             initialLoadedRef.current = true;
             const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
             restoreSnapshot(snap, target);
-            if (target.type === 'draft') {
+            if (cloneIdParam) {
+              // Cloning: treat as brand new quotation with next sequential number
+              setCurrentId(null);
+              currentIdRef.current = null;
+              setDraftId(null);
+              draftIdRef.current = null;
+              fetchNextDocumentNumber('quotation', { userPrefix: (user as any)?.quotationPrefix || '' })
+                .then((seqRes: any) => {
+                  if (seqRes?.formattedNumber) {
+                    setQuotationNo(seqRes.formattedNumber);
+                  }
+                })
+                .catch(() => {});
+            } else if (target.type === 'draft') {
               setDraftId(target.id);
               draftIdRef.current = target.id;
               setCurrentId(null);
