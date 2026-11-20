@@ -97,6 +97,10 @@ export const Leads: React.FC = () => {
   const [displayLimit, setDisplayLimit] = useState<number>(20)
   const [showAllLeads, setShowAllLeads] = useState<boolean>(false)
   const [cardDensity, setCardDensity] = useState<CardDensity>('compact')
+  const [collapsedStages, setCollapsedStages] = useState<Record<string, boolean>>({})
+  const toggleStageCollapse = (stage: string) => {
+    setCollapsedStages(prev => ({ ...prev, [stage]: !prev[stage] }))
+  }
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [leadGrns, setLeadGrns] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -1583,23 +1587,65 @@ export const Leads: React.FC = () => {
             const stageValue = stageLeads.reduce((s: number, l: any) => s + Number(l.value || 0), 0)
             const visibleStageLeads = showAllLeads ? stageLeads : stageLeads.slice(0, displayLimit)
             const hasMoreInStage = !showAllLeads && stageLeads.length > displayLimit
+            const isCollapsed = Boolean(collapsedStages[stage])
+
+            if (isCollapsed) {
+              return (
+                <div
+                  key={stage}
+                  onClick={() => toggleStageCollapse(stage)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, stage)}
+                  title={`Expand ${STAGE_LABELS[stage] || stage} (${stageLeads.length})`}
+                  className={`flex-shrink-0 w-11 flex flex-col items-center py-2.5 px-1 h-full bg-surface/60 hover:bg-surface2/80 border border-theme-subtle border-t-2 cursor-pointer transition-all select-none ${stageColorBorder[stage] || ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleStageCollapse(stage); }}
+                    className="p-1 text-muted hover:text-primary mb-2"
+                    title={`Expand ${STAGE_LABELS[stage] || stage}`}
+                  >
+                    <ArrowRight size={13} />
+                  </button>
+                  <span className="text-[10px] bg-surface text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle mb-3">
+                    {stageLeads.length}
+                  </span>
+                  <span
+                    className="text-[11px] font-bold uppercase tracking-widest text-primary whitespace-nowrap"
+                    style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                  >
+                    {STAGE_LABELS[stage] || stage}
+                  </span>
+                </div>
+              )
+            }
 
             return (
               <div 
                 key={stage} 
-                className={`flex-shrink-0 ${stage === 'proposal' ? 'w-[780px]' : 'w-64'} flex flex-col h-full bg-surface/50 border border-theme-subtle rounded-none`}
+                className={`flex-shrink-0 ${stage === 'proposal' ? 'w-[780px]' : 'w-64'} flex flex-col h-full bg-surface/50 border border-theme-subtle rounded-none transition-all`}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
                 {/* Column header */}
                 <div className={`p-2.5 shrink-0 bg-surface2/60 border-b ${stageColorBorder[stage] || 'border-b-theme'}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary truncate">
                       {STAGE_LABELS[stage] || stage}
                     </span>
-                    <span className="text-[10px] bg-surface text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle">
-                      {stageLeads.length}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] bg-surface text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle">
+                        {stageLeads.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleStageCollapse(stage)}
+                        className="p-0.5 text-muted hover:text-primary hover:bg-surface rounded transition-colors cursor-pointer"
+                        title={`Collapse ${STAGE_LABELS[stage] || stage} column`}
+                      >
+                        <ChevronDown size={13} className="rotate-90" />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-[10px] font-mono font-semibold text-muted mt-1">
                     {formatCurrency(stageValue)}
