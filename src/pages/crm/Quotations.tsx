@@ -158,6 +158,15 @@ export const Quotations: React.FC = () => {
   const [activePrintReceipt, setActivePrintReceipt] = useState<any>(null)
   const [printReceiptModalOpen, setPrintReceiptModalOpen] = useState(false)
   const [snapshotModalData, setSnapshotModalData] = useState<any | null>(null)
+  const [cloneConfirm, setCloneConfirm] = useState<{ url: string; quoNo: string } | null>(null)
+  const [cloneCountdown, setCloneCountdown] = useState(5)
+  const [cloneChecked, setCloneChecked] = useState(false)
+
+  useEffect(() => {
+    if (!cloneConfirm || cloneCountdown <= 0) return;
+    const t = setTimeout(() => setCloneCountdown(c => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cloneConfirm, cloneCountdown]);
   const [salesOrderModalData, setSalesOrderModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product' } | null>(null)
   const [recordPoModalData, setRecordPoModalData] = useState<{ group: any; quotation: any; type?: 'custom' | 'product'; proceedToSalesOrder?: boolean } | null>(null)
   const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
@@ -3223,6 +3232,9 @@ export const Quotations: React.FC = () => {
             const editUrl = group.isProduct
               ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`
               : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?quoteId=${displayQ.id}`;
+            const cloneUrl = group.isProduct
+              ? `/crm/product-quotations/new/${group.leadId || 'WALK-IN'}?cloneId=${displayQ.id}`
+              : `/crm/quotations/new/${group.leadId || 'WALK-IN'}?cloneId=${displayQ.id}`;
 
             const cust = customers.find((c: any) =>
               (group.leadId && c.leadId && String(c.leadId) === String(group.leadId)) ||
@@ -3263,6 +3275,18 @@ export const Quotations: React.FC = () => {
                         title="Click to open quotation in builder"
                       >
                         {group.quoNo}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCloneCountdown(5);
+                          setCloneChecked(false);
+                          setCloneConfirm({ url: cloneUrl, quoNo: group.quoNo });
+                        }}
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface2 hover:bg-amber-500/15 text-secondary hover:text-amber-600 border border-theme-subtle transition-colors"
+                        title="Clone this quotation as a new quotation"
+                      >
+                        Clone
                       </button>
                       {group.isProduct ? (
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-none bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 font-semibold">
@@ -4594,6 +4618,66 @@ export const Quotations: React.FC = () => {
           invoice={activePrintProforma}
           settings={settings}
         />
+      )}
+
+      {/* ── CLONE QUOTATION REMINDER MODAL (5s Countdown + Tick) ── */}
+      {cloneConfirm && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setCloneConfirm(null)}
+        >
+          <div
+            className="bg-surface border border-theme rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-theme-subtle bg-amber-500/10 flex items-center gap-2.5">
+              <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+              <h3 className="text-sm font-bold text-primary">
+                Clone Quotation ({cloneConfirm.quoNo})
+              </h3>
+            </div>
+            <div className="p-5 space-y-4 text-xs text-secondary leading-relaxed">
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 font-medium">
+                <strong>Important Reminder:</strong> Please double-check the <strong>Customer details</strong> and all <strong>Item Pricings / Quantities</strong> before saving the cloned quotation.
+              </div>
+              <label className={`flex items-start gap-2.5 p-2.5 rounded-lg border border-theme-subtle ${cloneCountdown > 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-surface2/50'}`}>
+                <input
+                  type="checkbox"
+                  disabled={cloneCountdown > 0}
+                  checked={cloneChecked}
+                  onChange={(e) => setCloneChecked(e.target.checked)}
+                  className="mt-0.5 rounded text-amber-500 h-4 w-4"
+                />
+                <span className="text-xs font-semibold text-primary">
+                  I have read this reminder and will double-check Customer &amp; Pricings.
+                  {cloneCountdown > 0 && (
+                    <span className="ml-1.5 font-mono text-amber-600 dark:text-amber-400">
+                      (Wait {cloneCountdown}s...)
+                    </span>
+                  )}
+                </span>
+              </label>
+            </div>
+            <div className="px-5 py-3 border-t border-theme-subtle bg-surface2/40 flex items-center justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCloneConfirm(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={cloneCountdown > 0 || !cloneChecked}
+                onClick={() => {
+                  const targetUrl = cloneConfirm.url;
+                  setCloneConfirm(null);
+                  navigate(targetUrl);
+                }}
+              >
+                {cloneCountdown > 0 ? `Please wait (${cloneCountdown}s)` : 'Proceed to Clone'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

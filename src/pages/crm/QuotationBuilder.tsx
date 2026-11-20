@@ -200,6 +200,7 @@ export const QuotationBuilder: React.FC = () => {
   const { leadId } = useParams<{ leadId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const quoteIdParam = searchParams.get('quoteId')
+  const cloneIdParam = searchParams.get('cloneId')
   const previewParam = searchParams.get('preview') === 'true'
   const isTemplateMode = searchParams.get('mode') === 'template'
   const editTemplateId = searchParams.get('editTemplateId')
@@ -317,9 +318,10 @@ export const QuotationBuilder: React.FC = () => {
   const loadVersions = useCallback(async () => {
       try {
         let targetQuote: any = null;
-        if (quoteIdParam && !initialLoadedRef.current) {
+        const targetParamId = quoteIdParam || cloneIdParam;
+        if (targetParamId && !initialLoadedRef.current) {
           try {
-            const singleRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/single/${quoteIdParam}`);
+            const singleRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/single/${targetParamId}`);
             if (singleRes.ok) {
               targetQuote = await singleRes.json();
             }
@@ -337,8 +339,8 @@ export const QuotationBuilder: React.FC = () => {
         }
 
         // Auto-load if quoteId is in URL (only on initial load so it doesn't overwrite user edits)
-        if (quoteIdParam && !initialLoadedRef.current) {
-          const target = targetQuote || data.find((v: any) => v.id === quoteIdParam || v.quotationNo === quoteIdParam) || allQuotations.find((v: any) => v.id === quoteIdParam || v.quotationNo === quoteIdParam);
+        if (targetParamId && !initialLoadedRef.current) {
+          const target = targetQuote || data.find((v: any) => v.id === targetParamId || v.quotationNo === targetParamId) || allQuotations.find((v: any) => v.id === targetParamId || v.quotationNo === targetParamId);
           if (target) {
             initialLoadedRef.current = true;
             const snap = typeof target.data === 'string' ? JSON.parse(target.data) : target.data;
