@@ -14292,7 +14292,8 @@ app.post('/api/finance/cashbook/set-float', async (req, res) => {
 // 1. GET /api/finance/daily-cash-flow
 app.get('/api/finance/daily-cash-flow', async (req, res) => {
   try {
-    const { startDate, endDate, method, type, search } = req.query;
+    const { startDate, endDate, method: queryMethod, paymentMethod, type, search } = req.query;
+    const method = queryMethod || paymentMethod;
     
     const now = new Date();
     const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -14331,7 +14332,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         COALESCE(NULLIF(pr.chequeNo, ''), CASE WHEN pr.paymentMethod = 'Cheque' THEN COALESCE(NULLIF(pr.transactionRef, ''), NULLIF(pr.reference, '')) ELSE NULL END) as chequeNo,
         pr.invoiceId,
         pr.invoiceNo,
-        DATE_FORMAT(pr.chequeDate, '%Y-%m-%d') as chequeDate,
+        CASE WHEN pr.paymentMethod = 'Cheque' OR pr.chequeNo IS NOT NULL THEN COALESCE(DATE_FORMAT(pr.chequeDate, '%Y-%m-%d'), DATE_FORMAT(pr.date, '%Y-%m-%d')) ELSE DATE_FORMAT(pr.chequeDate, '%Y-%m-%d') END as chequeDate,
         pr.bankName,
         CASE WHEN pr.paymentMethod = 'Cheque' OR pr.chequeNo IS NOT NULL THEN COALESCE(pr.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         pr.transactionRef,
@@ -14376,7 +14377,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
                     amount: Number(p.amount || 0),
                     currency: p.currency || inv.currency || 'LKR',
                     chequeNo: p.chequeNo || (p.method === 'Cheque' ? p.reference : null) || null,
-                    chequeDate: p.chequeDate ? String(p.chequeDate).slice(0, 10) : null,
+                    chequeDate: p.chequeDate ? String(p.chequeDate).slice(0, 10) : ((p.method === 'Cheque' || p.chequeNo) ? pDate : null),
                     bankName: p.bankName || null,
                     chequeStatus: p.chequeStatus || (p.chequeNo ? 'Pending' : null),
                     transactionRef: p.transactionRef || p.reference || null,
@@ -21543,7 +21544,94 @@ app.get('/api/notifications', async (req, res) => {
           message: `Overdue by ${days} days · Rs. ${due.toLocaleString()} pending settlement`,
           time: `${days}d ago`,
           link: '/finance/invoices',
+          roles: ['admin', 'finance'],
           timestamp: new Date(inv.dueDate).getTime()
+        });
+      }
+    } catch(e) {}
+
+    // 1b. Upcoming / Aging Invoice Payment Reminders (due within 7 days)
+    try {
+      const [upcomingInvoices] = await db.query(
+        `SELECT id, invoiceNo, total, paidAmount, dueDate
+         FROM invoices
+         WHERE status NOT IN ('paid', 'draft', 'cancelled')
+           AND dueDate IS NOT NULL
+           AND dueDate >= CURDATE()
+           AND dueDate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+         ORDER BY dueDate ASC LIMIT 5`
+      ) as any[];
+
+      for (const inv of (upcomingInvoices || [])) {
+        const due = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
+        if (due <= 0) continue;
+        const daysLeft = Math.max(0, Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        list.push({
+          id: `reminder-inv-${inv.id}`,
+          type: 'invoice',
+          severity: 'warning',
+          title: `Invoice Payment Reminder: ${inv.invoiceNo || inv.id}`,
+          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`} · Rs. ${due.toLocaleString()} pending`,
+          time: daysLeft === 0 ? 'Due today' : `In ${daysLeft}d`,
+          link: '/finance/invoices',
+          roles: ['admin', 'finance'],
+          timestamp: new Date(inv.dueDate).getTime()
+        });
+      }
+    } catch(e) {}
+
+    // 1c. Overdue / Aging Bills & Upcoming Bill Reminders
+    try {
+      const [overdueBills] = await db.query(
+        `SELECT id, billNo, supplierName, totalAmount, paidAmount, dueDate
+         FROM bills
+         WHERE status NOT IN ('paid', 'draft', 'cancelled')
+           AND dueDate IS NOT NULL
+           AND dueDate < CURDATE()
+         ORDER BY dueDate ASC LIMIT 6`
+      ) as any[];
+
+      for (const b of (overdueBills || [])) {
+        const due = Math.max(0, Number(b.totalAmount || 0) - Number(b.paidAmount || 0));
+        if (due <= 0) continue;
+        const days = Math.max(1, Math.ceil((Date.now() - new Date(b.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
+        list.push({
+          id: `overdue-bill-${b.id}`,
+          type: 'bill',
+          severity: 'error',
+          title: `Overdue Bill: ${b.billNo || b.id}${b.supplierName ? ` (${b.supplierName})` : ''}`,
+          message: `Overdue by ${days} days · Rs. ${due.toLocaleString()} payable`,
+          time: `${days}d ago`,
+          link: '/purchasing/bills',
+          roles: ['admin', 'finance'],
+          timestamp: new Date(b.dueDate).getTime()
+        });
+      }
+
+      const [upcomingBills] = await db.query(
+        `SELECT id, billNo, supplierName, totalAmount, paidAmount, dueDate
+         FROM bills
+         WHERE status NOT IN ('paid', 'draft', 'cancelled')
+           AND dueDate IS NOT NULL
+           AND dueDate >= CURDATE()
+           AND dueDate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+         ORDER BY dueDate ASC LIMIT 5`
+      ) as any[];
+
+      for (const b of (upcomingBills || [])) {
+        const due = Math.max(0, Number(b.totalAmount || 0) - Number(b.paidAmount || 0));
+        if (due <= 0) continue;
+        const daysLeft = Math.max(0, Math.ceil((new Date(b.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        list.push({
+          id: `reminder-bill-${b.id}`,
+          type: 'bill',
+          severity: 'warning',
+          title: `Bill Payment Reminder: ${b.billNo || b.id}${b.supplierName ? ` (${b.supplierName})` : ''}`,
+          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`} · Rs. ${due.toLocaleString()} payable`,
+          time: daysLeft === 0 ? 'Due today' : `In ${daysLeft}d`,
+          link: '/purchasing/bills',
+          roles: ['admin', 'finance'],
+          timestamp: new Date(b.dueDate).getTime()
         });
       }
     } catch(e) {}

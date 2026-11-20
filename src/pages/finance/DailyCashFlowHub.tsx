@@ -93,11 +93,14 @@ export const DailyCashFlowHub: React.FC = () => {
   const [activeVoucherForPrint, setActiveVoucherForPrint] = useState<any | null>(null);
   const [activeChequeForPrint, setActiveChequeForPrint] = useState<any | null>(null);
   const [activeChequeForRealize, setActiveChequeForRealize] = useState<any | null>(null);
+  const [activeChequeForAction, setActiveChequeForAction] = useState<any | null>(null);
   const [isCreateChequeModalOpen, setIsCreateChequeModalOpen] = useState(false);
   const [isPrintReportModalOpen, setIsPrintReportModalOpen] = useState(false);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [viewingSlip, setViewingSlip] = useState<{ url: string; title: string; tx?: any } | null>(null);
   const [isUploadingVoucherSlip, setIsUploadingVoucherSlip] = useState(false);
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const LEDGER_PER_PAGE = 25;
 
   // Reference hooks
   const { data: accounts = [] } = useAccounts();
@@ -313,6 +316,74 @@ export const DailyCashFlowHub: React.FC = () => {
     );
   }, [data?.transactions, search]);
 
+  useEffect(() => {
+    setLedgerPage(1);
+  }, [search, startDate, endDate, methodFilter, typeFilter]);
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Date',
+      'Time',
+      'Reference / Doc #',
+      'Voucher #',
+      'Journal ID',
+      'Flow Type',
+      'Category',
+      'Payment Method',
+      'Cheque #',
+      'Cheque Date',
+      'Bank Name',
+      'Cheque Status',
+      'Transaction Ref',
+      'Party / Beneficiary',
+      'Particulars / Narration',
+      'Inflow (LKR)',
+      'Outflow (LKR)',
+      'Status'
+    ];
+    const esc = (val: any) => {
+      const s = val === null || val === undefined ? '' : String(val);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const rows = filteredTransactions.map((tx: any) => {
+      const isIn = tx.flowType === 'IN' || tx.type === 'IN';
+      const ref = tx.refNo || tx.reference || '';
+      const desc = tx.description || tx.particulars || '';
+      const isCheque = (tx.paymentMethod || '').toLowerCase().includes('cheque') || Boolean(tx.chequeNo);
+      const status = isCheque ? (tx.chequeStatus || 'Pending') : 'Settled';
+      return [
+        tx.date || '',
+        tx.time || '',
+        ref,
+        tx.voucherNo || '',
+        tx.journalId || '',
+        isIn ? 'IN' : 'OUT',
+        tx.category || '',
+        tx.paymentMethod || 'Cash',
+        tx.chequeNo || '',
+        tx.chequeDate ? String(tx.chequeDate).slice(0, 10) : '',
+        tx.bankName || '',
+        isCheque ? (tx.chequeStatus || 'Pending') : '',
+        tx.transactionRef || '',
+        tx.partyName || '',
+        desc,
+        isIn ? Number(tx.amount || 0).toFixed(2) : '0.00',
+        !isIn ? Number(tx.amount || 0).toFixed(2) : '0.00',
+        status
+      ].map(esc).join(',');
+    });
+    const csv = [headers.map(esc).join(','), ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily-cash-flow_${startDate}_to_${endDate}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Filtered Cheques
   const filteredCheques = useMemo(() => {
     return chequesList.filter((ch: any) => {
@@ -475,6 +546,18 @@ export const DailyCashFlowHub: React.FC = () => {
           >
             <Printer size={14} />
             <span>Print Flow Report</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={filteredTransactions.length === 0}
+            className="flex items-center gap-1.5 text-xs border border-white/[0.1] hover:bg-white/[0.05]"
+            title="Export all filtered transactions & details to CSV"
+          >
+            <Download size={14} />
+            <span>Export CSV</span>
           </Button>
 
           <Button
@@ -808,7 +891,9 @@ export const DailyCashFlowHub: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((tx: any, idx: number) => {
+                  filteredTransactions
+                    .slice((ledgerPage - 1) * LEDGER_PER_PAGE, ledgerPage * LEDGER_PER_PAGE)
+                    .map((tx: any, idx: number) => {
                     const isIn = (tx.flowType === 'IN' || tx.type === 'IN');
                     const ref = tx.refNo || tx.reference || '-';
                     const desc = tx.description || tx.particulars || '-';
@@ -921,6 +1006,38 @@ export const DailyCashFlowHub: React.FC = () => {
               )}
             </table>
           </div>
+          {filteredTransactions.length > LEDGER_PER_PAGE && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-theme bg-surface2/40 text-xs">
+              <div className="text-muted">
+                Showing <span className="font-mono font-semibold text-primary">{(ledgerPage - 1) * LEDGER_PER_PAGE + 1}</span>–
+                <span className="font-mono font-semibold text-primary">{Math.min(ledgerPage * LEDGER_PER_PAGE, filteredTransactions.length)}</span> of{' '}
+                <span className="font-mono font-semibold text-primary">{filteredTransactions.length}</span> transactions
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                  disabled={ledgerPage === 1}
+                  className="text-xs px-2.5 py-1 border border-theme"
+                >
+                  Prev
+                </Button>
+                <span className="font-mono text-secondary">
+                  Page {ledgerPage} / {Math.ceil(filteredTransactions.length / LEDGER_PER_PAGE)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLedgerPage(p => Math.min(Math.ceil(filteredTransactions.length / LEDGER_PER_PAGE), p + 1))}
+                  disabled={ledgerPage >= Math.ceil(filteredTransactions.length / LEDGER_PER_PAGE)}
+                  className="text-xs px-2.5 py-1 border border-theme"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </GlassCard>
       )}
 
@@ -1057,96 +1174,16 @@ export const DailyCashFlowHub: React.FC = () => {
                             </Badge>
                           </td>
                           <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1">
-                              {/* Print Cheque Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setActiveChequeForPrint(ch)}
-                                className="h-7 px-2 text-[10px] text-secondary hover:text-primary hover:bg-surface2"
-                                title="Print Cheque Leaf & Voucher"
-                              >
-                                <Printer size={12} className="mr-1" />
-                                Print
-                              </Button>
-
-                              {(ch.invoiceId || ch.invoiceNo) && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => window.open(`/finance/invoices?search=${encodeURIComponent(ch.invoiceNo || ch.invoiceId)}`, '_blank')}
-                                  className="h-7 px-2 text-[10px] text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
-                                  title={`Preview Invoice ${ch.invoiceNo || ch.invoiceId}`}
-                                >
-                                  <FileText size={11} className="mr-1" />
-                                  Invoice
-                                </Button>
-                              )}
-
-                              {/* Realize Cheque into GL on Realization Date */}
-                              {!isCleared && (
-                                <Button
-                                  variant="primary"
-                                  size="sm"
-                                  disabled={statusUpdatingId === ch.id}
-                                  onClick={() => setActiveChequeForRealize(ch)}
-                                  className="h-7 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                                  title="Mark Realized on specific date & post to General Ledger"
-                                >
-                                  <Check size={11} className="mr-1" />
-                                  Realize to GL
-                                </Button>
-                              )}
-
-                              {isInward && isPending && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={statusUpdatingId === ch.id}
-                                  onClick={() => handleUpdateChequeStatus(ch, 'Deposited')}
-                                  className="h-7 px-2 text-[10px] text-blue-400 hover:bg-blue-500/10"
-                                >
-                                  Deposited
-                                </Button>
-                              )}
-
-                              {!isReturned && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={statusUpdatingId === ch.id}
-                                  onClick={() => handleUpdateChequeStatus(ch, 'Returned')}
-                                  className="h-7 px-2 text-[10px] text-rose-400 hover:bg-rose-500/10"
-                                >
-                                  <X size={11} className="mr-1" />
-                                  Return
-                                </Button>
-                              )}
-
-                              {(isCleared || isReturned || isDeposited) && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={statusUpdatingId === ch.id}
-                                  onClick={() => handleUpdateChequeStatus(ch, 'Pending')}
-                                  className="h-7 px-1.5 text-[10px] text-muted hover:text-secondary"
-                                  title="Revert status to Pending"
-                                >
-                                  Reset
-                                </Button>
-                              )}
-
-                              {/* Delete Cheque Button */}
-                              <button
-                                type="button"
-                                disabled={statusUpdatingId === ch.id}
-                                onClick={() => handleDeleteCheque(ch)}
-                                className="p-1 text-muted hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
-                                title="Delete this cheque record"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActiveChequeForAction(ch)}
+                              className="h-7 px-2.5 text-[11px] font-semibold"
+                              title="Open Cheque Actions & Printing"
+                            >
+                              <MoreHorizontal size={13} className="mr-1" />
+                              Action
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -2217,6 +2254,135 @@ export const DailyCashFlowHub: React.FC = () => {
           onConfirmRealize={handleRealizeCheque}
         />
       )}
+
+      {activeChequeForAction && (() => {
+        const ch = activeChequeForAction;
+        const isInward = ch.sourceTable !== 'cashbook_entries' && (ch.direction === 'IN' || String(ch.direction || '').toLowerCase().includes('inward'));
+        const isPending = (ch.status || 'Pending').toLowerCase() === 'pending';
+        const isDeposited = (ch.status || '').toLowerCase() === 'deposited';
+        const isCleared = (ch.status || '').toLowerCase() === 'cleared';
+        const isReturned = (ch.status || '').toLowerCase() === 'returned';
+
+        return (
+          <Modal
+            isOpen={!!activeChequeForAction}
+            onClose={() => setActiveChequeForAction(null)}
+            title={`Cheque #${ch.chequeNo || '-'} Actions`}
+            size="sm"
+          >
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-lg bg-surface2/60 border border-theme space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted">Party / Drawer:</span>
+                  <span className="font-semibold text-primary">{ch.partyName || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Amount:</span>
+                  <span className="font-mono font-bold text-primary">{formatCurrency(ch.amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Cheque Date:</span>
+                  <span className="font-mono text-secondary">{ch.chequeDate ? ch.chequeDate.slice(0, 10) : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Status:</span>
+                  <span className="font-semibold text-primary">{ch.status || 'Pending'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setActiveChequeForPrint(ch); setActiveChequeForAction(null); }}
+                  className="w-full justify-start gap-2"
+                >
+                  <Printer size={14} />
+                  Print Cheque Leaf & Voucher
+                </Button>
+
+                {(ch.invoiceId || ch.invoiceNo) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      window.open(`/finance/invoices?search=${encodeURIComponent(ch.invoiceNo || ch.invoiceId)}`, '_blank');
+                      setActiveChequeForAction(null);
+                    }}
+                    className="w-full justify-start gap-2 text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+                  >
+                    <FileText size={14} />
+                    Preview Invoice ({ch.invoiceNo || ch.invoiceId})
+                  </Button>
+                )}
+
+                {!isCleared && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={statusUpdatingId === ch.id}
+                    onClick={() => { setActiveChequeForRealize(ch); setActiveChequeForAction(null); }}
+                    className="w-full justify-start gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                  >
+                    <Check size={14} />
+                    Realize to GL
+                  </Button>
+                )}
+
+                {isInward && isPending && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={statusUpdatingId === ch.id}
+                    onClick={() => { handleUpdateChequeStatus(ch, 'Deposited'); setActiveChequeForAction(null); }}
+                    className="w-full justify-start gap-2 text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+                  >
+                    <Landmark size={14} />
+                    Mark as Deposited
+                  </Button>
+                )}
+
+                {!isReturned && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={statusUpdatingId === ch.id}
+                    onClick={() => { handleUpdateChequeStatus(ch, 'Returned'); setActiveChequeForAction(null); }}
+                    className="w-full justify-start gap-2 text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                  >
+                    <X size={14} />
+                    Mark as Returned
+                  </Button>
+                )}
+
+                {(isCleared || isReturned || isDeposited) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={statusUpdatingId === ch.id}
+                    onClick={() => { handleUpdateChequeStatus(ch, 'Pending'); setActiveChequeForAction(null); }}
+                    className="w-full justify-start gap-2 text-muted hover:text-secondary"
+                  >
+                    <RefreshCw size={14} />
+                    Reset Status to Pending
+                  </Button>
+                )}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={statusUpdatingId === ch.id}
+                  onClick={() => { handleDeleteCheque(ch); setActiveChequeForAction(null); }}
+                  className="w-full justify-start gap-2 text-red-500 hover:bg-red-500/10"
+                >
+                  <Trash2 size={14} />
+                  Delete Cheque Record
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {activeChequeForPrint && (
         <ChequePrintModal
