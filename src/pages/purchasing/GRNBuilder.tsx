@@ -1549,7 +1549,7 @@ export const GRNBuilder: React.FC = () => {
                   <PackageCheck size={16} /> Incoming Freight Breakdown ({items.length} items)
                 </h2>
                 <div className="flex items-center gap-2">
-                  {!isReadonly && receiptMode === 'direct' && (
+                  {!isReadonly && (
                     <>
                       <Button 
                         variant="outline" 
