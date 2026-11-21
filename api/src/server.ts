@@ -10146,9 +10146,17 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
       let totalDebits = 0;
 
       if (validItemLines.length > 0) {
+        const rawItemsSum = validItemLines.reduce(
+          (s, it) => s + (Number(it.total) || (Number(it.qty || 1) * Number(it.unitCost || 0))),
+          0
+        );
+        const netScale = (taxAmount > 0 && subtotal > 0 && rawItemsSum > subtotal + 0.05)
+          ? (subtotal / rawItemsSum)
+          : 1;
         let allocatedSubtotal = 0;
         for (const it of validItemLines) {
-          const lineTotal = Math.round((Number(it.total) || (Number(it.qty || 1) * Number(it.unitCost || 0))) * 100) / 100;
+          const rawLineTotal = Number(it.total) || (Number(it.qty || 1) * Number(it.unitCost || 0));
+          const lineTotal = Math.round(rawLineTotal * netScale * 100) / 100;
           if (lineTotal <= 0) continue;
           allocatedSubtotal += lineTotal;
           totalDebits += lineTotal;

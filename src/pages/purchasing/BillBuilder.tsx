@@ -171,7 +171,25 @@ export const BillBuilder: React.FC = () => {
                 inventoryId: it.inventoryId || ''
               }));
               parsedItemsSum = mapped.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
-              setLineItems(mapped);
+              if (
+                loadedIsInclusive &&
+                loadedSubtotal > 0 &&
+                loadedAmount > loadedSubtotal &&
+                Math.abs(parsedItemsSum - loadedSubtotal) < 1 &&
+                Math.abs(parsedItemsSum - loadedAmount) > 1
+              ) {
+                const grossFactor = loadedAmount / loadedSubtotal;
+                const restored = mapped.map((it: any) => {
+                  const grossTotal = Math.round(Number(it.total || 0) * grossFactor * 100) / 100;
+                  const qty = Number(it.qty || 1);
+                  const grossUnitCost = qty > 0 ? Math.round((grossTotal / qty) * 100) / 100 : grossTotal;
+                  return { ...it, unitCost: grossUnitCost, total: grossTotal };
+                });
+                parsedItemsSum = loadedAmount;
+                setLineItems(restored);
+              } else {
+                setLineItems(mapped);
+              }
             }
           } catch (e) {}
         }
@@ -1473,23 +1491,42 @@ export const BillBuilder: React.FC = () => {
                             type="number"
                             min="0"
                             step="0.01"
-                            value={item.unitCost}
-                            onChange={e => updateLineItem(item.id, 'unitCost', e.target.value)}
+                            value={
+                              taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount
+                                ? Number((Number(item.unitCost || 0) * (netSubtotal / amount)).toFixed(2))
+                                : item.unitCost
+                            }
+                            onChange={e =>
+                              updateLineItem(
+                                item.id,
+                                'unitCost',
+                                taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount
+                                  ? Number((Number(e.target.value || 0) / (netSubtotal / amount)).toFixed(4))
+                                  : e.target.value
+                              )
+                            }
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-medium focus:border-rex-500 outline-none"
                           />
                         </td>
                         <td className="py-2.5 px-3 text-right align-top pt-3.5">
-                          {taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount && Number(item.total || 0) > 0 && (
-                            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mb-1">
-                              Net (Excl. VAT): {formatCurrency(Number(item.total) * (netSubtotal / amount))}
-                            </div>
-                          )}
                           <input
                             type="number"
                             min="0"
                             step="0.01"
-                            value={item.total}
-                            onChange={e => updateLineItem(item.id, 'total', e.target.value)}
+                            value={
+                              taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount
+                                ? Number((Number(item.total || 0) * (netSubtotal / amount)).toFixed(2))
+                                : item.total
+                            }
+                            onChange={e =>
+                              updateLineItem(
+                                item.id,
+                                'total',
+                                taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount
+                                  ? Number((Number(e.target.value || 0) / (netSubtotal / amount)).toFixed(4))
+                                  : e.target.value
+                              )
+                            }
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-bold text-primary focus:border-rex-500 outline-none"
                           />
                         </td>
