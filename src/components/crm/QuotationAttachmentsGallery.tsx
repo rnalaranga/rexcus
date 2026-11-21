@@ -110,7 +110,7 @@ export const QuotationAttachmentsGallery: React.FC<QuotationAttachmentsGalleryPr
               <div className="w-12 h-12 shrink-0 bg-surface border border-theme-subtle overflow-hidden flex items-center justify-center relative">
                 {isImg && src ? (
                   <img
-                    src={src}
+                    src={resolveFileUrl(src)}
                     alt={att.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
@@ -237,13 +237,13 @@ export const QuotationAttachmentsGallery: React.FC<QuotationAttachmentsGalleryPr
           >
             {isImage(activePreview) ? (
               <img
-                src={activePreview.dataUrl || activePreview.url}
+                src={resolveFileUrl(activePreview.dataUrl || activePreview.url || '')}
                 alt={activePreview.name}
                 className="max-h-[78vh] max-w-full object-contain shadow-2xl border border-white/10"
               />
             ) : isPdf(activePreview) ? (
               <iframe
-                src={activePreview.dataUrl || activePreview.url}
+                src={resolveFileUrl(activePreview.dataUrl || activePreview.url || '')}
                 title={activePreview.name}
                 className="w-full h-[78vh] border border-white/10 bg-white"
               />
