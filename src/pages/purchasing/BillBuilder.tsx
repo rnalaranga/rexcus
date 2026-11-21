@@ -1467,6 +1467,11 @@ export const BillBuilder: React.FC = () => {
                           />
                         </td>
                         <td className="py-2.5 px-3 text-right align-top pt-3.5">
+                          {taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount && Number(item.total || 0) > 0 && (
+                            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mb-1">
+                              Net (Excl. VAT): {formatCurrency(Number(item.total) * (netSubtotal / amount))}
+                            </div>
+                          )}
                           <input
                             type="number"
                             min="0"
@@ -1475,11 +1480,6 @@ export const BillBuilder: React.FC = () => {
                             onChange={e => updateLineItem(item.id, 'total', e.target.value)}
                             className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right font-mono font-bold text-primary focus:border-rex-500 outline-none"
                           />
-                          {taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount && Number(item.total || 0) > 0 && (
-                            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mt-1">
-                              Net (Excl. VAT): {formatCurrency(Number(item.total) * (netSubtotal / amount))}
-                            </div>
-                          )}
                         </td>
                         <td className="py-2.5 px-3 align-top pt-3.5">
                           <AccountAutocomplete
@@ -1511,7 +1511,11 @@ export const BillBuilder: React.FC = () => {
                         Total Line Items:
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-primary text-sm font-black">
-                        {formatCurrency(lineItems.reduce((s: number, it: any) => s + Number(it.total || 0), 0))}
+                        {formatCurrency(
+                          taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount
+                            ? netSubtotal
+                            : lineItems.reduce((s: number, it: any) => s + Number(it.total || 0), 0)
+                        )}
                       </td>
                       <td colSpan={2} className="py-2.5 px-3 text-[11px] text-muted italic">
                         Allocated across {new Set(lineItems.map((it: any) => it.accountId).filter(Boolean)).size} account(s)
