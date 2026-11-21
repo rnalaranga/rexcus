@@ -969,6 +969,12 @@ export const QuotationBuilder: React.FC = () => {
     ? Math.min(custSubtotal, Math.max(0, Number(custDiscountAmount) || 0))
     : custSubtotal * (Math.max(0, Number(custDiscount) || 0) / 100)
   const custTotal = Math.max(0, custSubtotal - custDiscountAmt)
+  const userMaxDiscountPct = Number(
+    (user as any)?.maxDiscountPct ??
+      (['admin', 'superadmin'].includes(String(user?.role || '').toLowerCase()) ? 100 : 10)
+  )
+  const effectiveDiscountPct = custSubtotal > 0 ? (custDiscountAmt / custSubtotal) * 100 : (Number(custDiscount) || 0)
+  const exceedsDiscountLimit = effectiveDiscountPct > userMaxDiscountPct
 
   const handlePercentDiscountChange = (val: string) => {
     setCustDiscountType('percent')
@@ -3262,6 +3268,11 @@ export const QuotationBuilder: React.FC = () => {
                           <span className="font-mono font-medium text-primary">
                             ≈ {formatCurrency(custDiscountAmt, false, currency)}
                           </span>
+                        </div>
+                      )}
+                      {exceedsDiscountLimit && (
+                        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-300 text-[10px] font-semibold">
+                          Exceeds your {userMaxDiscountPct}% discount limit. Saving will require separate Discount Approval.
                         </div>
                       )}
                     </div>

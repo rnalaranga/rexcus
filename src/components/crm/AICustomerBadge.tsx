@@ -158,8 +158,9 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
       {open &&
         createPortal(
           <div
-            className="ai-customer-popover fixed z-[190] w-[340px] max-w-[calc(100vw-24px)] bg-surface border border-theme-subtle rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+            className="ai-customer-popover fixed z-[190] w-[320px] max-w-[calc(100vw-24px)] bg-surface border border-theme-subtle rounded-xl shadow-2xl overflow-visible animate-in fade-in zoom-in-95 duration-100"
             style={{ top: coords.top, left: coords.left }}
+            title="AI Customer & Trust Summary"
             onClick={(e) => e.stopPropagation()}
             onMouseEnter={() => {
               if (closeTimerRef.current) {
@@ -169,8 +170,16 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
             }}
             onMouseLeave={handleMouseLeave}
           >
+            {/* Top Tooltip Arrow & Pill */}
+            <div className="absolute -top-6 left-4 flex flex-col items-start pointer-events-none">
+              <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[9.5px] font-semibold shadow-md whitespace-nowrap">
+                AI Customer Insights
+              </span>
+              <div className="w-2 h-2 bg-slate-900 rotate-45 ml-3 -mt-1" />
+            </div>
+
             {/* Header */}
-            <div className={`px-3.5 py-2.5 border-b ${style.headerBgCls} flex items-start justify-between gap-2`}>
+            <div className={`px-3.5 py-2.5 border-b rounded-t-xl ${style.headerBgCls} flex items-start justify-between gap-2`}>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <TierIcon size={13} className={style.accentTextCls} />
@@ -181,8 +190,14 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
                     {profile.trustScore}% Trust
                   </span>
                 </div>
-                <p className="text-[11px] font-semibold text-primary mt-1 leading-snug">
-                  {profile.sinhalaTag}
+                <p className="text-[11px] font-semibold text-primary mt-0.5 leading-snug">
+                  {profile.tier === 'past_buyer'
+                    ? 'Returning Customer'
+                    : profile.tier === 'needs_care'
+                    ? 'Needs Attention'
+                    : profile.tier === 'new_prospect'
+                    ? 'First-Time Prospect'
+                    : 'VIP Repeat Buyer'}
                 </p>
               </div>
               <button
@@ -220,18 +235,13 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
                 </div>
               </div>
 
-              {/* Relationship Summary */}
-              <p className="text-[11px] text-secondary leading-relaxed">
-                {profile.relationshipSummary}
-              </p>
-
               {/* AI Suggestion Box */}
               <div className="p-2.5 rounded-lg bg-rex-500/8 border border-rex-500/25 space-y-1">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rex-600 dark:text-rex-400">
                   <Sparkles size={11} />
                   <span>AI Sales Suggestion</span>
                 </div>
-                <p className="text-[11px] text-primary leading-relaxed font-medium">
+                <p className="text-[11px] text-primary leading-snug font-medium line-clamp-2" title={profile.aiSuggestion}>
                   {profile.aiSuggestion}
                 </p>
               </div>

@@ -1432,6 +1432,15 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               </button>
             </div>
 
+            {poMode === 'without_po' && (
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
+                <div>
+                  <span className="font-bold">Reminder:</span> If you need to attach or add a Customer PO to this order/quotation later, it will require management approval.
+                </div>
+              </div>
+            )}
+
             {poMode === 'received' && (
               <div className="space-y-3 pt-1 animate-fade-in">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
