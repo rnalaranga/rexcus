@@ -142,7 +142,6 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
         }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        title={`${profile.badgeLabel} — ${profile.sinhalaTag} (${profile.ordersCount} orders, ${formatCurrency(profile.totalSalesRevenue)})`}
         className={`inline-flex items-center justify-center border transition-all cursor-pointer shrink-0 ${
           variant === 'icon'
             ? 'w-5 h-5 rounded-md'
@@ -158,9 +157,8 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
       {open &&
         createPortal(
           <div
-            className="ai-customer-popover fixed z-[190] w-[320px] max-w-[calc(100vw-24px)] bg-surface border border-theme-subtle rounded-xl shadow-2xl overflow-visible animate-in fade-in zoom-in-95 duration-100"
+            className="ai-customer-popover fixed z-[190] w-[320px] max-w-[calc(100vw-24px)] bg-surface border border-theme-subtle rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
             style={{ top: coords.top, left: coords.left }}
-            title="AI Customer & Trust Summary"
             onClick={(e) => e.stopPropagation()}
             onMouseEnter={() => {
               if (closeTimerRef.current) {
@@ -170,16 +168,8 @@ export const AICustomerBadge: React.FC<AICustomerBadgeProps> = ({
             }}
             onMouseLeave={handleMouseLeave}
           >
-            {/* Top Tooltip Arrow & Pill */}
-            <div className="absolute -top-6 left-4 flex flex-col items-start pointer-events-none">
-              <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[9.5px] font-semibold shadow-md whitespace-nowrap">
-                AI Customer Insights
-              </span>
-              <div className="w-2 h-2 bg-slate-900 rotate-45 ml-3 -mt-1" />
-            </div>
-
             {/* Header */}
-            <div className={`px-3.5 py-2.5 border-b rounded-t-xl ${style.headerBgCls} flex items-start justify-between gap-2`}>
+            <div className={`px-3.5 py-2.5 border-b ${style.headerBgCls} flex items-start justify-between gap-2`}>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <TierIcon size={13} className={style.accentTextCls} />
