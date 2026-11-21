@@ -673,6 +673,18 @@ export const BillBuilder: React.FC = () => {
       const primaryPoId = activeLinkedPoIds[0] || null;
       const poIdsPayload = activeLinkedPoIds.length > 0 ? JSON.stringify(activeLinkedPoIds) : null;
 
+      const ratio = (taxEnabled && isTaxInclusive && amount > 0 && netSubtotal < amount)
+        ? (netSubtotal / amount)
+        : 1;
+      const itemsToSave = ratio < 1
+        ? lineItems.map((it: any) => {
+            const netTotal = Number((Number(it.total || 0) * ratio).toFixed(2));
+            const qty = Number(it.qty || 1);
+            const netUnitCost = qty > 0 ? Number((netTotal / qty).toFixed(2)) : netTotal;
+            return { ...it, total: netTotal, unitCost: netUnitCost };
+          })
+        : lineItems;
+
       const payload: any = { 
         id: docNo, 
         billNo: docNo,
@@ -688,7 +700,7 @@ export const BillBuilder: React.FC = () => {
         dueDate: formatYMD(dueDate) || null, 
         amount: grandTotalBillValue, 
         subtotal: netSubtotal,
-        items: lineItems.length > 0 ? JSON.stringify(lineItems) : null,
+        items: itemsToSave.length > 0 ? JSON.stringify(itemsToSave) : null,
         taxAmount: totalTax,
         taxProfileId: taxEnabled ? taxProfileId : null,
         taxBreakdown: taxEnabled && taxBreakdown ? JSON.stringify(taxBreakdown) : null,
