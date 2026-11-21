@@ -2700,17 +2700,28 @@ export const QuotationBuilder: React.FC = () => {
                   <div className="flex gap-2 flex-wrap">
                     {attachments.map(att => (
                       <div key={att.id} className="relative w-16 h-16 border border-theme-subtle/40/50 rounded-lg overflow-hidden group bg-surface2">
-                        {att.type.includes('image')
-                          ? <img src={att.dataUrl} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex flex-col items-center justify-center text-muted gap-1">
+                        {att.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name || att.dataUrl || '')
+                          ? <img
+                              src={att.dataUrl}
+                              alt={att.name || 'Attachment'}
+                              onClick={() => window.open(att.dataUrl, '_blank')}
+                              title="Click to preview image"
+                              className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            />
+                          : <div
+                              onClick={() => att.dataUrl && window.open(att.dataUrl, '_blank')}
+                              title="Click to open file"
+                              className="w-full h-full flex flex-col items-center justify-center text-muted gap-1 cursor-pointer hover:text-primary"
+                            >
                               <FileText size={16} />
                               <span className="text-[7px] max-w-full truncate px-1">{att.name}</span>
                             </div>
                         }
                         <button type="button"
-                          onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Trash2 size={14} className="text-white" />
+                          onClick={(e) => { e.stopPropagation(); setAttachments(prev => prev.filter(a => a.id !== att.id)); }}
+                          title="Remove attachment"
+                          className="absolute top-1 right-1 p-1 rounded-full bg-black/70 hover:bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                          <Trash2 size={10} />
                         </button>
                       </div>
                     ))}
