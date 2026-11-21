@@ -1233,14 +1233,24 @@ export const Leads: React.FC = () => {
               </div>
               {aiFollowupQueue.slice(0, 12).map((item) => (
                 <div key={item.lead.id} className="flex items-center justify-between gap-2 p-2 rounded bg-rex-500/5 border border-rex-500/20 text-xs">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-primary truncate">{item.lead.company || item.lead.name}</span>
                       <AICustomerBadge profile={item.profile} variant="icon" onQuickFollowup={() => openAIFollowupModal(item.lead, item.profile)} />
                     </div>
-                    <div className="text-[10.5px] text-secondary truncate">{item.profile.recommendedFollowup.reason}</div>
-                    <div className="text-[10px] font-mono text-rex-600 dark:text-rex-400">
-                      {item.urgencyLabel} • {item.profile.ordersCount} orders ({formatCurrency(item.profile.totalSalesRevenue)})
+                    <div className="flex items-center gap-1 flex-wrap text-[9.5px] font-mono">
+                      <span className="px-1 py-0.2 rounded bg-surface border border-theme-subtle text-primary font-bold">
+                        {item.profile.ordersCount} Ord
+                      </span>
+                      <span className="px-1 py-0.2 rounded bg-surface border border-theme-subtle text-rex-600 dark:text-rex-300 font-bold">
+                        {formatCurrency(item.profile.totalSalesRevenue)}
+                      </span>
+                      <span className="px-1 py-0.2 rounded bg-rose-500/10 text-rose-600 font-bold">
+                        {item.profile.daysIdle}d
+                      </span>
+                      <span className="px-1 py-0.2 rounded bg-rex-500/15 text-rex-600 dark:text-rex-400 font-bold uppercase">
+                        {item.profile.recommendedFollowup.type}
+                      </span>
                     </div>
                   </div>
                   <Button
@@ -1898,9 +1908,13 @@ export const Leads: React.FC = () => {
                         )}
 
                         {aiProfile && (
-                          <div className="mt-2 p-1.5 rounded bg-rex-500/5 border border-rex-500/20 text-[10px] text-secondary leading-snug">
-                            <span className="font-bold text-rex-600 dark:text-rex-400">AI: </span>
-                            <span className="line-clamp-2">{aiProfile.aiSuggestion}</span>
+                          <div className="mt-2 flex items-center justify-between gap-1 text-[9.5px] font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-primary font-bold truncate">
+                              {aiProfile.ordersCount} Ord • {formatCurrency(aiProfile.totalSalesRevenue)}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-rex-500/10 border border-rex-500/25 text-rex-600 dark:text-rex-400 font-bold uppercase shrink-0 flex items-center gap-0.5">
+                              <Zap size={9} /> {aiProfile.recommendedFollowup.type}
+                            </span>
                           </div>
                         )}
 
@@ -3315,44 +3329,38 @@ export const Leads: React.FC = () => {
                     </div>
                   </div>
                   {leadFollowups.length === 0 ? (
-                    <p className="text-[11px] text-muted italic">
-                      No follow-ups logged yet. Click &quot;+ Schedule AI&quot; to set an AI-suggested reminder.
-                    </p>
+                    <p className="text-[11px] text-muted italic">No follow-ups yet.</p>
                   ) : (
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
                       {leadFollowups.map((f: any) => {
                         const isDone = ['done', 'completed'].includes(String(f.status || '').toLowerCase());
                         return (
                           <div
                             key={f.id}
-                            className={`p-2 bg-surface border border-theme-subtle flex items-start justify-between gap-2 text-xs ${
-                              isDone ? 'opacity-65' : ''
+                            className={`px-2.5 py-1.5 bg-surface border border-theme-subtle flex items-center justify-between gap-2 text-xs ${
+                              isDone ? 'opacity-60' : ''
                             }`}
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.2 border ${
-                                  isDone
-                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                                    : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-                                }`}>
-                                  {f.type || 'call'} • {isDone ? 'Done' : 'Pending'}
-                                </span>
-                                <span className={`font-semibold text-primary truncate ${isDone ? 'line-through text-muted' : ''}`}>
-                                  {f.subject || f.title || 'Follow-up'}
-                                </span>
-                              </div>
-                              {f.notes && <p className="text-[11px] text-secondary mt-0.5 line-clamp-2">{f.notes}</p>}
-                              {f.outcome && <p className="text-[10.5px] text-emerald-600 dark:text-emerald-400 italic mt-0.5">Outcome: {f.outcome}</p>}
-                              <p className="text-[10px] font-mono text-muted mt-0.5">
-                                {String(f.dueDate || '').slice(0, 10)} {f.dueTime ? `at ${f.dueTime}` : ''}
-                              </p>
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 border shrink-0 ${
+                                isDone
+                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                  : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                              }`}>
+                                {f.type || 'call'} • {isDone ? 'Done' : 'Pending'}
+                              </span>
+                              <span className={`font-semibold text-primary truncate max-w-[230px] ${isDone ? 'line-through text-muted' : ''}`}>
+                                {f.subject || f.title || 'Follow-up'}
+                              </span>
+                              <span className="text-[10px] font-mono text-muted shrink-0">
+                                {String(f.dueDate || '').slice(5, 10)}
+                              </span>
                             </div>
                             {!isDone && (
                               <button
                                 type="button"
                                 onClick={() => handleMarkFollowupDone(f.id)}
-                                className="px-2 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 cursor-pointer"
+                                className="px-2 py-0.5 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 cursor-pointer"
                               >
                                 ✓ Done
                               </button>

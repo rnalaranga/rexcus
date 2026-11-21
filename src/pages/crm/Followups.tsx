@@ -614,16 +614,11 @@ export const Followups: React.FC = () => {
     <div className="space-y-6 animate-fade-in pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-primary tracking-tight">Follow-ups &amp; AI Priority Queue</h1>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/30 flex items-center gap-1">
-              <Sparkles size={11} /> AI Enabled
-            </span>
-          </div>
-          <p className="text-sm text-secondary mt-1">
-            Track calls, reminders, past-customer history scores, and AI-prioritized follow-ups across Leads &amp; Customers.
-          </p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Follow-ups</h1>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-rex-500/10 text-rex-600 dark:text-rex-400 border border-rex-500/30 flex items-center gap-1">
+            <Sparkles size={11} /> AI
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" icon={ExternalLink} onClick={() => navigate('/crm/leads')}>
@@ -684,19 +679,14 @@ export const Followups: React.FC = () => {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-rex-500/15 text-rex-600 dark:text-rex-400">
-              <Sparkles size={16} />
+              <Sparkles size={15} />
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                AI Smart Follow-up Command Queue
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-surface border border-theme-subtle text-rex-600 dark:text-rex-300">
-                  {aiQueue.length} Leads Suggested
-                </span>
-              </h2>
-              <p className="text-[11px] text-secondary">
-                Analyzes past customer sales orders, invoices, repeat loyalty, and idle aging days to prioritize today&apos;s best calls.
-              </p>
-            </div>
+            <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+              AI Queue
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-surface border border-theme-subtle text-rex-600 dark:text-rex-300">
+                {aiQueue.length}
+              </span>
+            </h2>
           </div>
           <button
             type="button"
@@ -736,24 +726,30 @@ export const Followups: React.FC = () => {
                               onQuickFollowup={() => handleOpenAiPrefilledForm(lead, profile, 'lead')}
                             />
                           </div>
-                          <p className="text-[10.5px] text-muted mt-0.5 truncate">
-                            {lead.name} • Stage: <span className="uppercase font-semibold text-secondary">{lead.stage}</span>
-                            {Number(lead.value || 0) > 0 && ` • ${formatCurrency(lead.value)}`}
-                          </p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px] font-mono">
+                            <span className="px-1.5 py-0.2 rounded bg-surface2 border border-theme-subtle text-secondary uppercase font-bold">
+                              {lead.stage}
+                            </span>
+                            {Number(lead.value || 0) > 0 && (
+                              <span className="text-rex-600 dark:text-rex-300 font-bold">
+                                {formatCurrency(lead.value)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                        <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded border shrink-0 uppercase ${
                           urgencyTag === 'overdue_followup' || urgencyTag === 'critical_aging'
                             ? 'bg-rose-500/10 text-rose-600 border-rose-500/30'
                             : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                         }`}>
-                          {urgencyLabel}
+                          {urgencyTag === 'overdue_followup' ? 'Overdue' : urgencyTag === 'critical_aging' ? `${profile.daysIdle}d` : urgencyTag === 'vip_idle' ? 'VIP' : urgencyTag === 'proposal_followup' ? `${profile.daysIdle}d` : 'Unset'}
                         </span>
                       </div>
 
-                      {/* Compact Icon + Short-Word Chips */}
+                      {/* Compact Icon + Single-Word Chips */}
                       <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
                         <span className="px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-primary font-bold">
-                          {profile.ordersCount} Orders • {formatCurrency(profile.totalSalesRevenue)}
+                          {profile.ordersCount} Ord • {formatCurrency(profile.totalSalesRevenue)}
                         </span>
                         <span className="px-1.5 py-0.5 rounded bg-rex-500/10 border border-rex-500/25 text-rex-600 dark:text-rex-400 font-bold uppercase flex items-center gap-1">
                           <Zap size={10} /> {profile.recommendedFollowup.type} • {profile.recommendedFollowup.dueDate.slice(5)}

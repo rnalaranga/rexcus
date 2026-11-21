@@ -286,74 +286,46 @@ export const AICustomerInsightPanel: React.FC<AICustomerInsightPanelProps> = ({
 
   return (
     <div className={`border rounded-xl overflow-hidden bg-surface ${style.headerBgCls}`}>
-      <div className={`${compact ? 'p-3' : 'p-3.5'} space-y-2.5`}>
-        {/* Top Row: Tier Badge + Sinhala Tag + Trust Score */}
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${style.iconBgCls}`}>
-              <TierIcon size={16} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className={`text-xs font-bold uppercase tracking-wider ${style.accentTextCls}`}>
-                  {profile.badgeLabel}
-                </span>
-                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-primary flex items-center gap-1">
-                  <ShieldCheck size={10} className="text-emerald-500" />
-                  {profile.trustScore}% Trust
-                </span>
-                {profile.isRegisteredCustomer && profile.matchedCustomerId && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-secondary">
-                    {profile.matchedCustomerId}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] font-semibold text-primary mt-0.5">
-                {profile.sinhalaTag}
-              </p>
-            </div>
+      <div className={`${compact ? 'p-2.5' : 'p-3'} flex items-center justify-between gap-2 flex-wrap`}>
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${style.iconBgCls}`}>
+            <TierIcon size={14} />
           </div>
-
-          {/* Past Sales Compact Pills */}
-          <div className="flex items-center gap-1.5 text-[10.5px] font-mono">
-            <span className="px-2 py-0.5 rounded bg-surface border border-theme-subtle text-primary font-bold flex items-center gap-1">
-              <ShoppingBag size={10} className="text-rex-500" />
-              {profile.ordersCount} Orders
-            </span>
-            <span className="px-2 py-0.5 rounded bg-surface border border-theme-subtle text-rex-600 dark:text-rex-300 font-bold">
-              {formatCurrency(profile.totalSalesRevenue)}
-            </span>
-          </div>
+          <span className={`text-[11px] font-bold uppercase tracking-wider ${style.accentTextCls}`}>
+            {profile.shortLabel}
+          </span>
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-primary flex items-center gap-1">
+            <ShieldCheck size={10} className="text-emerald-500" />
+            {profile.trustScore}%
+          </span>
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-primary flex items-center gap-1">
+            <ShoppingBag size={10} className="text-rex-500" />
+            {profile.ordersCount}
+          </span>
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-theme-subtle text-rex-600 dark:text-rex-300">
+            {formatCurrency(profile.totalSalesRevenue)}
+          </span>
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-theme-subtle">
+            <span className="text-emerald-600">{profile.wonLeadsCount}W</span>
+            <span className="text-muted mx-0.5">/</span>
+            <span className="text-rose-500">{profile.lostLeadsCount}L</span>
+          </span>
+          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-rex-500/10 border border-rex-500/25 text-rex-600 dark:text-rex-400 uppercase flex items-center gap-1">
+            <Sparkles size={10} />
+            {profile.recommendedFollowup.type}
+          </span>
         </div>
 
-        {!compact && (
-          <p className="text-[11px] text-secondary leading-relaxed">
-            {profile.relationshipSummary}
-          </p>
+        {onApplyFollowup && (
+          <button
+            type="button"
+            onClick={() => onApplyFollowup(profile.recommendedFollowup)}
+            className="shrink-0 px-2.5 py-1.5 rounded-lg bg-rex-600 hover:bg-rex-700 text-white text-[10.5px] font-bold flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer"
+          >
+            <Bell size={11} />
+            <span>{actionLabel || 'AI Plan'}</span>
+          </button>
         )}
-
-        {/* AI Suggestion Banner */}
-        <div className="p-2.5 rounded-lg bg-surface/90 border border-theme-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="space-y-0.5 min-w-0">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rex-600 dark:text-rex-400">
-              <Sparkles size={11} />
-              <span>AI Sales &amp; Follow-up Recommendation</span>
-            </div>
-            <p className="text-[11.5px] text-primary leading-snug font-medium">
-              {profile.aiSuggestion}
-            </p>
-          </div>
-          {onApplyFollowup && (
-            <button
-              type="button"
-              onClick={() => onApplyFollowup(profile.recommendedFollowup)}
-              className="shrink-0 px-3 py-1.5 rounded-lg bg-rex-600 hover:bg-rex-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-            >
-              <Bell size={12} />
-              <span>{actionLabel || 'Schedule AI Follow-up'}</span>
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
