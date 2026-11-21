@@ -26,7 +26,7 @@ import {
   approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber,
   uploadFileToStorage
 } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveFileUrl } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { exportPdf } from '@/lib/exportPdf'
@@ -2295,7 +2295,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                       <div key={att.id} className="relative w-16 h-16 border border-theme-subtle/50 rounded-lg overflow-hidden group bg-surface2">
                         {att.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name || att.dataUrl || '')
                           ? <img
-                              src={att.dataUrl}
+                              src={resolveFileUrl(att.dataUrl || '')}
                               alt={att.name || 'Attachment'}
                               onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
                               title="Click to preview image"

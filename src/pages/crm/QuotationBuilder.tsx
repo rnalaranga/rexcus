@@ -17,7 +17,7 @@ import { createCustomer } from '@/lib/api'
 import { useTaxProfiles } from '@/hooks/useFinance'
 import { useCurrencies, useTaxes } from '@/hooks/useFinance'
 import { createQuotation, fetchQuotations, updateQuotation, deleteQuotation, generateQuotationDescription, fetchAllCustomerGRNs, submitQuotationForApproval, approveQuotation, rejectQuotation, requestQuotationEditApproval, approveQuotationEdit, rejectQuotationEdit, fetchNextDocumentNumber, uploadFileToStorage } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveFileUrl } from '@/lib/utils'
 import { useDialog } from '@/components/ui/DialogProvider'
 import { exportPdf } from '@/lib/exportPdf'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -2706,7 +2706,7 @@ export const QuotationBuilder: React.FC = () => {
                       <div key={att.id} className="relative w-16 h-16 border border-theme-subtle/40/50 rounded-lg overflow-hidden group bg-surface2">
                         {att.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name || att.dataUrl || '')
                           ? <img
-                              src={att.dataUrl}
+                              src={resolveFileUrl(att.dataUrl || att.url || '')}
                               alt={att.name || 'Attachment'}
                               onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
                               title="Click to preview image"

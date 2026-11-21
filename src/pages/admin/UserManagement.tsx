@@ -86,7 +86,7 @@ const RoleBadge = ({ roleId, label }: { roleId: string; label?: string }) => (
   </span>
 );
 
-const emptyUserForm = { name: '', username: '', password: '', role: 'user', prefix: '', assignedCashAccountId: '' };
+const emptyUserForm = { name: '', username: '', password: '', role: 'user', prefix: '', assignedCashAccountId: '', maxDiscountPct: '' };
 const emptyRoleForm = { id: '', name: '', description: '', permissions: [] as string[] };
 
 const EXCEL_ACTIONS_LIST: { key: ExcelAction; label: string }[] = [
@@ -368,7 +368,8 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
           username: showEditUser.username?.trim().toLowerCase(),
           role: showEditUser.role,
           prefix: showEditUser.prefix,
-          assignedCashAccountId: showEditUser.assignedCashAccountId || null
+          assignedCashAccountId: showEditUser.assignedCashAccountId || null,
+          maxDiscountPct: (showEditUser as any).maxDiscountPct !== undefined && (showEditUser as any).maxDiscountPct !== null && (showEditUser as any).maxDiscountPct !== '' ? Number((showEditUser as any).maxDiscountPct) : null
         })
       });
       const data = await res.json();
@@ -1525,6 +1526,19 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               </p>
             </div>
             <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Max Quotation Discount (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={userForm.maxDiscountPct}
+                onChange={e => setUserForm({ ...userForm, maxDiscountPct: e.target.value })}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-mono"
+                placeholder="Leave blank for role default (Admin 100%, Staff 10%)"
+              />
+            </div>
+            <div>
               <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Initial Password</label>
               <input
                 type="password"
@@ -1612,6 +1626,19 @@ export const UserManagement = ({ initialTab }: { initialTab?: 'users' | 'roles' 
               <p className="text-[11px] text-muted mt-1 leading-snug">
                 Assign a dedicated sub-petty cash ledger account for this user's mobile vouchers.
               </p>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Max Quotation Discount (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={(showEditUser as any).maxDiscountPct ?? ''}
+                onChange={e => setShowEditUser({ ...showEditUser, maxDiscountPct: e.target.value } as any)}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2.5 text-primary text-sm focus:border-rex-500 outline-none transition-all font-mono"
+                placeholder="Leave blank for role default (Admin 100%, Staff 10%)"
+              />
             </div>
             <div className="flex justify-end gap-3 pt-3">
               <Button variant="ghost" onClick={() => setShowEditUser(null)}>Cancel</Button>

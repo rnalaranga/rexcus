@@ -664,7 +664,7 @@ app.get('/api/auth/me', async (req, res) => {
     const token = authHeader.split(' ')[1];
     const decoded: any = jwt.verify(token, JWT_SECRET);
     const [users]: any = await db.query(
-      'SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, ' +
+      'SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, u.maxDiscountPct, ' +
       'coa.code as assignedCashAccountCode, coa.name as assignedCashAccountName ' +
       'FROM users u ' +
       'LEFT JOIN chart_of_accounts coa ON u.assignedCashAccountId = coa.id ' +
@@ -735,7 +735,8 @@ app.post('/api/auth/login', async (req, res) => {
         roleName,
         permissions,
         prefix: user.prefix,
-        assignedCashAccountId: user.assignedCashAccountId || null
+        assignedCashAccountId: user.assignedCashAccountId || null,
+        maxDiscountPct: user.maxDiscountPct !== undefined && user.maxDiscountPct !== null ? Number(user.maxDiscountPct) : null
       } 
     });
   } catch (error) {
@@ -1960,6 +1961,7 @@ async function runDatabaseSync() {
     "ALTER TABLE cashbook_entries ADD COLUMN rejectionReason TEXT DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN receiptPhoto MEDIUMTEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN assignedCashAccountId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE users ADD COLUMN maxDiscountPct DECIMAL(5,2) DEFAULT NULL",
     "ALTER TABLE invoices ADD COLUMN hideVatSeparately TINYINT(1) DEFAULT 0",
     "ALTER TABLE invoices ADD COLUMN discount DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE invoices ADD COLUMN discountType VARCHAR(20) DEFAULT 'percent'",
@@ -3453,7 +3455,7 @@ app.post('/api/email/send', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, u.created_at, r.name as roleName,
+      SELECT u.id, u.name, u.username, u.role, u.prefix, u.assignedCashAccountId, u.maxDiscountPct, u.created_at, r.name as roleName,
              coa.code as assignedCashAccountCode, coa.name as assignedCashAccountName
       FROM users u
       LEFT JOIN roles r ON u.role = r.id
@@ -3469,7 +3471,7 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { name, username, password, role, prefix, assignedCashAccountId } = req.body;
+    const { name, username, password, role, prefix, assignedCashAccountId, maxDiscountPct } = req.body;
     const [existing]: any = await db.query('SELECT id FROM users WHERE username = ?', [username]);
     if (existing.length > 0) return res.status(400).json({ error: 'Username already taken' });
 
@@ -3484,6 +3486,7 @@ app.post('/api/users', async (req, res) => {
       role: role || 'user', 
       prefix: prefix || null, 
       assignedCashAccountId: assignedCashAccountId || null,
+      maxDiscountPct: maxDiscountPct !== undefined && maxDiscountPct !== null && maxDiscountPct !== '' ? Number(maxDiscountPct) : null,
       created_at 
     });
     res.json({ success: true, user: { id, name, username, role: role || 'user' } });
@@ -3497,7 +3500,7 @@ app.put('/api/users/:id', async (req, res) => {
   const conn = await db.getConnection();
   try {
     const userId = req.params.id;
-    const { name, role, prefix, username, assignedCashAccountId } = req.body;
+    const { name, role, prefix, username, assignedCashAccountId, maxDiscountPct } = req.body;
 
     // 1. Fetch current user record
     const [existingUsers]: any = await conn.query('SELECT * FROM users WHERE id = ?', [userId]);
@@ -3530,13 +3533,14 @@ app.put('/api/users/:id', async (req, res) => {
 
     // 4.1 Update users table
     await conn.query(
-      'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ?, assignedCashAccountId = ? WHERE id = ?',
+      'UPDATE users SET name = COALESCE(?, name), username = ?, role = COALESCE(?, role), prefix = ?, assignedCashAccountId = ?, maxDiscountPct = ? WHERE id = ?',
       [
         name !== undefined && name !== null && String(name).trim() !== '' ? String(name).trim() : null,
         cleanUsername,
         role || null,
         prefix !== undefined && prefix !== null ? String(prefix).trim().toUpperCase() : currentUser.prefix,
         assignedCashAccountId !== undefined ? (assignedCashAccountId || null) : currentUser.assignedCashAccountId,
+        maxDiscountPct !== undefined ? (maxDiscountPct !== null && maxDiscountPct !== '' ? Number(maxDiscountPct) : null) : currentUser.maxDiscountPct,
         userId
       ]
     );
