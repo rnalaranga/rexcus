@@ -9,6 +9,8 @@ import { Modal } from '@/components/ui/Modal'
 import { SendDocumentEmailModal } from '@/components/SendDocumentEmailModal'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal, QuotationTemplate } from '@/components/crm/QuotationTemplatesModal'
+import { QuotationAttachmentsModal } from '@/components/crm/QuotationAttachmentsModal'
+import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
 import { useLeads, useInventory, useMachiningOperations, useCustomers, useQuotations, invalidateDataCache } from '@/hooks/useData'
 import { createCustomer } from '@/lib/api'
@@ -713,6 +715,8 @@ export const QuotationBuilder: React.FC = () => {
 
   // --- Job Items / Description ---
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<any | null>(null);
+  const [isAttachmentPreviewOpen, setIsAttachmentPreviewOpen] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -2704,13 +2708,13 @@ export const QuotationBuilder: React.FC = () => {
                           ? <img
                               src={att.dataUrl}
                               alt={att.name || 'Attachment'}
-                              onClick={() => window.open(att.dataUrl, '_blank')}
+                              onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
                               title="Click to preview image"
                               className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             />
                           : <div
-                              onClick={() => att.dataUrl && window.open(att.dataUrl, '_blank')}
-                              title="Click to open file"
+                              onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
+                              title="Click to preview file"
                               className="w-full h-full flex flex-col items-center justify-center text-muted gap-1 cursor-pointer hover:text-primary"
                             >
                               <FileText size={16} />
@@ -2731,6 +2735,14 @@ export const QuotationBuilder: React.FC = () => {
                     No attachments.
                   </div>
                 )}
+                <QuotationAttachmentsModal
+                  isOpen={isAttachmentPreviewOpen}
+                  onClose={() => setIsAttachmentPreviewOpen(false)}
+                  quotationNo={quotationNo || 'Draft'}
+                  attachments={attachments}
+                  customerName={customerName}
+                  initialAttachment={previewAttachment}
+                />
               </div>
             </div>
           </div>
@@ -3562,6 +3574,14 @@ export const QuotationBuilder: React.FC = () => {
             lead={currentEntity || lead}
             settings={settings}
           />
+          {attachments.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-zinc-200">
+              <QuotationAttachmentsGallery
+                attachments={attachments}
+                title="Quotation Attachments"
+              />
+            </div>
+          )}
           
           {currentQuote && !isApproved && currentQuote.type !== 'draft' && currentQuote.type !== 'product_draft' && Boolean(currentId) && (
             <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">

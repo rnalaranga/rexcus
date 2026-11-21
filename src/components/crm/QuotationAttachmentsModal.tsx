@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, Paperclip, FileText, Image as ImageIcon, Eye, Download, 
@@ -14,6 +14,7 @@ interface QuotationAttachmentsModalProps {
   quotationNo: string;
   attachments: QuotationAttachmentItem[];
   customerName?: string;
+  initialAttachment?: QuotationAttachmentItem | null;
 }
 
 export const QuotationAttachmentsModal: React.FC<QuotationAttachmentsModalProps> = ({
@@ -21,9 +22,16 @@ export const QuotationAttachmentsModal: React.FC<QuotationAttachmentsModalProps>
   onClose,
   quotationNo,
   attachments = [],
-  customerName
+  customerName,
+  initialAttachment = null
 }) => {
-  const [selectedAttachment, setSelectedAttachment] = useState<QuotationAttachmentItem | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<QuotationAttachmentItem | null>(initialAttachment);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedAttachment(initialAttachment || null);
+    }
+  }, [isOpen, initialAttachment]);
 
   if (!isOpen) return null;
 

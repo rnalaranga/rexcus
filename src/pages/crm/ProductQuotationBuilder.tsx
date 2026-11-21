@@ -15,6 +15,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { CustomerModal } from '@/components/crm/CustomerModal'
 import { QuotationTemplatesModal } from '@/components/crm/QuotationTemplatesModal'
+import { QuotationAttachmentsModal } from '@/components/crm/QuotationAttachmentsModal'
+import { QuotationAttachmentsGallery } from '@/components/crm/QuotationAttachmentsGallery'
 import { QuotationTermsPreset, DEFAULT_TERMS_PRESETS } from '@/components/TermsConditionsManager'
 import { useLeads, useInventory, useCustomers, useQuotations, invalidateDataCache } from '@/hooks/useData'
 import { useTaxProfiles, useCurrencies, useTaxes } from '@/hooks/useFinance'
@@ -641,6 +643,8 @@ export const ProductQuotationBuilder: React.FC = () => {
     { id: 1, text: 'Supply and delivery of finished products as per customer specifications' }
   ])
   const [attachments, setAttachments] = useState<{ id: string; name: string; type: string; dataUrl: string }[]>([])
+  const [previewAttachment, setPreviewAttachment] = useState<any | null>(null)
+  const [isAttachmentPreviewOpen, setIsAttachmentPreviewOpen] = useState(false)
   
   useEffect(() => {
     fetchAllCustomerGRNs().then(setAllGrns).catch(() => {});
@@ -2289,17 +2293,28 @@ export const ProductQuotationBuilder: React.FC = () => {
                   <div className="flex gap-2 flex-wrap">
                     {attachments.map(att => (
                       <div key={att.id} className="relative w-16 h-16 border border-theme-subtle/50 rounded-lg overflow-hidden group bg-surface2">
-                        {att.type.includes('image')
-                          ? <img src={att.dataUrl} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex flex-col items-center justify-center text-muted gap-1">
+                        {att.type?.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name || att.dataUrl || '')
+                          ? <img
+                              src={att.dataUrl}
+                              alt={att.name || 'Attachment'}
+                              onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
+                              title="Click to preview image"
+                              className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            />
+                          : <div
+                              onClick={() => { setPreviewAttachment(att); setIsAttachmentPreviewOpen(true); }}
+                              title="Click to preview file"
+                              className="w-full h-full flex flex-col items-center justify-center text-muted gap-1 cursor-pointer hover:text-primary"
+                            >
                               <FileText size={16} />
                               <span className="text-[7px] max-w-full truncate px-1">{att.name}</span>
                             </div>
                         }
                         <button type="button"
-                          onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Trash2 size={14} className="text-white" />
+                          onClick={(e) => { e.stopPropagation(); setAttachments(prev => prev.filter(a => a.id !== att.id)); }}
+                          title="Remove attachment"
+                          className="absolute top-1 right-1 p-1 rounded-full bg-black/70 hover:bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                          <Trash2 size={10} />
                         </button>
                       </div>
                     ))}
@@ -2309,6 +2324,14 @@ export const ProductQuotationBuilder: React.FC = () => {
                     No attachments.
                   </div>
                 )}
+                <QuotationAttachmentsModal
+                  isOpen={isAttachmentPreviewOpen}
+                  onClose={() => setIsAttachmentPreviewOpen(false)}
+                  quotationNo={quotationNo || 'Draft'}
+                  attachments={attachments}
+                  customerName={customerName}
+                  initialAttachment={previewAttachment}
+                />
               </div>
             </div>
           </div>
@@ -2967,6 +2990,14 @@ export const ProductQuotationBuilder: React.FC = () => {
               settings={settings}
             />
           </div>
+          {attachments.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-zinc-200">
+              <QuotationAttachmentsGallery
+                attachments={attachments}
+                title="Quotation Attachments"
+              />
+            </div>
+          )}
           
           {currentQuote && currentQuote.status !== 'Approved' && currentQuote.type !== 'draft' && currentQuote.type !== 'product_draft' && Boolean(currentId) && (
             <div className="mt-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center justify-between gap-3">
