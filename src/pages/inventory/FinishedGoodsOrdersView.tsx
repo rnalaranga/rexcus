@@ -4412,7 +4412,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                                 : null);
                             if (parentNo) {
                               traces.push({
-                                type: 'sales_order',
+                                type: 'order',
                                 title: 'Original Sales Order',
                                 reference: parentNo,
                                 subtitle: order.reworkReason ? `Rework Reason: ${order.reworkReason}` : 'Parent Sales Order',
@@ -4431,7 +4431,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             );
                             childReworks.forEach((rw: any) => {
                               traces.push({
-                                type: 'sales_order',
+                                type: 'order',
                                 title: 'Rework Sales Order',
                                 reference: rw.orderNo,
                                 subtitle: rw.reworkReason ? `Reason: ${rw.reworkReason}` : 'Linked Rework Order',
