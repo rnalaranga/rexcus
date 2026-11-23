@@ -958,6 +958,9 @@ export interface CashbookEntry {
   rejectionReason?: string;
   receiptPhoto?: string;
   notes?: string;
+  isEdited?: boolean | number;
+  editedBy?: string;
+  editedAt?: string;
   createdAt?: string;
   accountCode?: string;
   accountName?: string;
@@ -1012,6 +1015,17 @@ export const createCashbookEntry = async (data: any) => {
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || 'Failed to create cashbook entry');
+  return json;
+};
+
+export const updateCashbookEntry = async (id: string, data: any) => {
+  const res = await fetch(`${API_URL}/finance/cashbook/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to update cashbook entry');
   return json;
 };
 

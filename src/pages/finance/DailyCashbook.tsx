@@ -4,7 +4,7 @@ import {
   Wallet, ArrowDownLeft, ArrowUpRight, Plus, Printer, Calendar,
   ChevronLeft, ChevronRight, Search, Trash2, ArrowRightLeft,
   DollarSign, CheckCircle2, Clock, FileText, User, Tag, BookOpen, AlertCircle, Coins,
-  Check, X, Camera, ShieldCheck, Smartphone, Upload, Paperclip, Eye
+  Check, X, Camera, ShieldCheck, Smartphone, Upload, Paperclip, Eye, Edit3
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +14,7 @@ import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { useCashbook, useAccounts } from '@/hooks/useFinance';
 import { 
-  createCashbookEntry, deleteCashbookEntry, approveCashbookEntry, 
+  createCashbookEntry, updateCashbookEntry, deleteCashbookEntry, approveCashbookEntry, 
   rejectCashbookEntry, setCashbookFloat, CashbookEntry, uploadFileToStorage 
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -38,6 +38,7 @@ export const DailyCashbook: React.FC = () => {
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<CashbookEntry | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isFloatModalOpen, setIsFloatModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -232,6 +233,7 @@ export const DailyCashbook: React.FC = () => {
     setSupplierBills([]);
     setRelatedBillId('');
     setRelatedBillNo('');
+    setEditingEntry(null);
     setFormCashAccountId(selectedCashAccountId || (cashbookData?.cashAccount?.id || ''));
     
     // Default account depending on entry type
@@ -245,7 +247,34 @@ export const DailyCashbook: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
-  // Handle Create Entry
+  // Open Edit Modal
+  const handleOpenEditModal = (entry: CashbookEntry) => {
+    setEditingEntry(entry);
+    setEntryType(entry.entryType);
+    setEntryDate(String(entry.date || selectedDate).slice(0, 10));
+    setEntryTime(String(entry.time || '09:00').slice(0, 5));
+    setAmount(String(entry.amount || ''));
+    setParticulars(entry.particulars || '');
+    setTargetAccountId(entry.accountId || '');
+    setFormCashAccountId(entry.cashAccountId || selectedCashAccountId || (cashbookData?.cashAccount?.id || ''));
+    setPartyName(entry.partyName || '');
+    setReferenceNo(entry.referenceNo || '');
+    setPaymentMethod(((entry as any).paymentMethod as any) || 'Cash');
+    setChequeNo((entry as any).chequeNo || '');
+    setChequeDate((entry as any).chequeDate ? String((entry as any).chequeDate).slice(0, 10) : selectedDate);
+    setBankName((entry as any).bankName || '');
+    setTransactionRef((entry as any).transactionRef || '');
+    setDepositSlip((entry as any).depositSlip || entry.receiptPhoto || '');
+    setNotes(entry.notes || '');
+    setPayeeCategory('expense');
+    setSelectedSupplierId('');
+    setSupplierBills([]);
+    setRelatedBillId('');
+    setRelatedBillNo('');
+    setIsAddModalOpen(true);
+  };
+
+  // Handle Create or Update Entry
   const handleSubmitEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = parseFloat(amount);
@@ -268,6 +297,33 @@ export const DailyCashbook: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      if (editingEntry) {
+        await updateCashbookEntry(editingEntry.id, {
+          date: entryDate,
+          time: entryTime,
+          entryType,
+          amount: numAmount,
+          particulars: particulars.trim(),
+          accountId: targetAccountId,
+          cashAccountId: formCashAccountId,
+          referenceNo: referenceNo.trim() || undefined,
+          partyName: partyName.trim() || undefined,
+          paymentMethod,
+          chequeNo: paymentMethod === 'Cheque' ? (chequeNo.trim() || referenceNo.trim() || undefined) : undefined,
+          chequeDate: paymentMethod === 'Cheque' ? (chequeDate || entryDate) : undefined,
+          bankName: paymentMethod === 'Cheque' ? (bankName.trim() || undefined) : undefined,
+          transactionRef: paymentMethod === 'Bank Transfer' ? (transactionRef.trim() || referenceNo.trim() || undefined) : undefined,
+          depositSlip: depositSlip || undefined,
+          notes: notes.trim() || undefined,
+          editedBy: user?.name || user?.username || 'Finance',
+        });
+        toast(`Cashbook entry #${editingEntry.id} & GL journal updated!`, 'success');
+        setEditingEntry(null);
+        setIsAddModalOpen(false);
+        refetch();
+        return;
+      }
+
       await createCashbookEntry({
         date: entryDate,
         time: entryTime,
@@ -918,7 +974,17 @@ export const DailyCashbook: React.FC = () => {
 
                     {/* Particulars */}
                     <td className="py-3 px-4">
-                      <div className="font-medium text-primary text-xs">{entry.particulars}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-primary text-xs">{entry.particulars}</span>
+                        {(entry.isEdited || entry.editedAt) && (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                            title={entry.editedBy ? `Edited by ${entry.editedBy}${entry.editedAt ? ` on ${String(entry.editedAt).slice(0, 16).replace('T', ' ')}` : ''}` : 'Edited'}
+                          >
+                            Edited
+                          </span>
+                        )}
+                      </div>
                       {entry.notes && (
                         <div className="text-[11px] text-muted italic mt-0.5 line-clamp-1">
                           {entry.notes}
@@ -1020,6 +1086,14 @@ export const DailyCashbook: React.FC = () => {
                           </button>
                         )}
                         <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(entry)}
+                          title="Edit entry & update GL journal"
+                          className="p-1 rounded text-muted hover:text-amber-600 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button
                           onClick={() => handleDeleteEntry(entry)}
                           title="Delete entry (reverts GL journal)"
                           className="p-1 rounded text-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
@@ -1064,8 +1138,12 @@ export const DailyCashbook: React.FC = () => {
       {/* Record Cash Entry Modal */}
       <Modal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title={entryType === 'IN' ? 'Record Cash In (Receipt)' : 'Record Cash Out (Payment)'}
+        onClose={() => { setIsAddModalOpen(false); setEditingEntry(null); }}
+        title={
+          editingEntry
+            ? `Edit Cashbook Entry (${editingEntry.id})`
+            : (entryType === 'IN' ? 'Record Cash In (Receipt)' : 'Record Cash Out (Payment)')
+        }
         size="lg"
       >
         <form onSubmit={handleSubmitEntry} className="space-y-4">
@@ -1548,7 +1626,9 @@ export const DailyCashbook: React.FC = () => {
               disabled={isSubmitting}
               className={entryType === 'IN' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rex-600 hover:bg-rex-700'}
             >
-              {isSubmitting ? 'Posting...' : entryType === 'IN' ? 'Post Cash Receipt' : 'Post Cash Payment'}
+              {isSubmitting
+                ? (editingEntry ? 'Updating...' : 'Posting...')
+                : (editingEntry ? 'Save Changes & Update GL' : (entryType === 'IN' ? 'Post Cash Receipt' : 'Post Cash Payment'))}
             </Button>
           </div>
         </form>

@@ -1853,6 +1853,9 @@ async function runDatabaseSync() {
     "ALTER TABLE rework_logs ADD COLUMN actionTaken TEXT DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN assignedEmployeeId VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN machineId VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN isEdited TINYINT(1) DEFAULT 0",
+    "ALTER TABLE cashbook_entries ADD COLUMN editedBy VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE cashbook_entries ADD COLUMN editedAt DATETIME DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN resolvedAt DATETIME DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN resolvedBy VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE rework_logs ADD COLUMN notes TEXT DEFAULT NULL",
@@ -14329,6 +14332,179 @@ app.post('/api/finance/cashbook/:id/reject', async (req, res) => {
   } catch (error: any) {
     console.error('Error rejecting cashbook entry:', error);
     res.status(500).json({ error: error.message || 'Failed to reject cashbook entry' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.put('/api/finance/cashbook/:id', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    const entryId = req.params.id;
+    const {
+      date,
+      time,
+      entryType,
+      amount,
+      particulars,
+      accountId,
+      cashAccountId,
+      referenceNo,
+      partyName,
+      notes,
+      paymentMethod,
+      chequeNo,
+      chequeDate,
+      bankName,
+      transactionRef,
+      depositSlip,
+      editedBy,
+    } = req.body || {};
+
+    const numAmount = Number(amount);
+    if (!particulars || !String(particulars).trim()) {
+      return res.status(400).json({ error: 'Particulars is required.' });
+    }
+    if (!entryType || !['IN', 'OUT'].includes(entryType)) {
+      return res.status(400).json({ error: 'entryType must be IN or OUT.' });
+    }
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be greater than 0.' });
+    }
+    if (!accountId || !cashAccountId) {
+      return res.status(400).json({ error: 'Target account and cash account are required.' });
+    }
+
+    const [entries]: any = await conn.query('SELECT * FROM cashbook_entries WHERE id = ?', [entryId]);
+    if (!entries || entries.length === 0) {
+      return res.status(404).json({ error: 'Cashbook entry not found' });
+    }
+    const existing = entries[0];
+
+    const [targetAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [accountId]);
+    if (!targetAccRows || targetAccRows.length === 0) {
+      return res.status(404).json({ error: 'Target Chart of Account not found.' });
+    }
+    const targetAcc = targetAccRows[0];
+
+    const [cashAccRows]: any = await conn.query('SELECT id, code, name, type, balance FROM chart_of_accounts WHERE id = ?', [cashAccountId]);
+    if (!cashAccRows || cashAccRows.length === 0) {
+      return res.status(404).json({ error: 'Cash account not found.' });
+    }
+    const cashAcc = cashAccRows[0];
+
+    const formattedDate = String(date || existing.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const entryTime = String(time || existing.time || '09:00').slice(0, 8);
+    const nowSql = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const editorName = editedBy || 'Finance';
+
+    await conn.beginTransaction();
+
+    // 1. If linked to a GL Journal Entry, revert old lines and post updated lines
+    if (existing.journalEntryId) {
+      const [oldLines]: any = await conn.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [existing.journalEntryId]);
+      for (const line of (oldLines || [])) {
+        const [accRows]: any = await conn.query('SELECT type, balance FROM chart_of_accounts WHERE id = ?', [line.accountId]);
+        if (accRows.length > 0) {
+          const accType = (accRows[0].type || '').toLowerCase();
+          const isDebitNormal = accType.includes('asset') || accType.includes('expense');
+          let currentBalance = Number(accRows[0].balance || 0);
+          const balanceChange = Number(line.debit || 0) - Number(line.credit || 0);
+          currentBalance = isDebitNormal ? (currentBalance - balanceChange) : (currentBalance + balanceChange);
+          await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [currentBalance, line.accountId]);
+        }
+      }
+      await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [existing.journalEntryId]);
+
+      const journalDescription = `[Cashbook ${entryType === 'IN' ? 'Receipt' : 'Payment'}] ${String(particulars).trim()}${partyName ? ' (' + String(partyName).trim() + ')' : ''} [Edited]`;
+      await conn.query(
+        'UPDATE journal_entries SET date = ?, reference = ?, description = ?, totalAmount = ? WHERE id = ?',
+        [`${formattedDate} ${entryTime.length === 5 ? entryTime + ':00' : entryTime}`, referenceNo ? String(referenceNo).trim() : existing.id, journalDescription, numAmount, existing.journalEntryId]
+      );
+
+      let cashDebit = 0;
+      let cashCredit = 0;
+      let targetDebit = 0;
+      let targetCredit = 0;
+      if (entryType === 'IN') {
+        cashDebit = numAmount;
+        targetCredit = numAmount;
+      } else {
+        targetDebit = numAmount;
+        cashCredit = numAmount;
+      }
+
+      const [freshTargetRows]: any = await conn.query('SELECT id, type, balance FROM chart_of_accounts WHERE id = ?', [targetAcc.id]);
+      const freshTarget = freshTargetRows[0];
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${existing.journalEntryId}-1-${Date.now().toString().slice(-3)}`,
+        entryId: existing.journalEntryId,
+        accountId: targetAcc.id,
+        debit: targetDebit,
+        credit: targetCredit,
+        description: String(particulars).trim(),
+        partyType: partyName ? 'Party' : null,
+        partyId: partyName ? String(partyName).trim() : null
+      });
+      const targetIsDebitNormal = (freshTarget.type || '').toLowerCase().includes('asset') || (freshTarget.type || '').toLowerCase().includes('expense');
+      const targetChange = targetDebit - targetCredit;
+      const newTargetBal = targetIsDebitNormal
+        ? Number(freshTarget.balance || 0) + targetChange
+        : Number(freshTarget.balance || 0) - targetChange;
+      await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newTargetBal, targetAcc.id]);
+
+      const [freshCashRows]: any = await conn.query('SELECT id, type, balance FROM chart_of_accounts WHERE id = ?', [cashAcc.id]);
+      const freshCash = freshCashRows[0];
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${existing.journalEntryId}-2-${Date.now().toString().slice(-3)}`,
+        entryId: existing.journalEntryId,
+        accountId: cashAcc.id,
+        debit: cashDebit,
+        credit: cashCredit,
+        description: String(particulars).trim(),
+        partyType: partyName ? 'Party' : null,
+        partyId: partyName ? String(partyName).trim() : null
+      });
+      const cashIsDebitNormal = (freshCash.type || '').toLowerCase().includes('asset') || (freshCash.type || '').toLowerCase().includes('expense');
+      const cashChange = cashDebit - cashCredit;
+      const newCashBal = cashIsDebitNormal
+        ? Number(freshCash.balance || 0) + cashChange
+        : Number(freshCash.balance || 0) - cashChange;
+      await conn.query('UPDATE chart_of_accounts SET balance = ? WHERE id = ?', [newCashBal, cashAcc.id]);
+    }
+
+    // 2. Update cashbook_entries row
+    await conn.query('UPDATE cashbook_entries SET ? WHERE id = ?', [
+      {
+        date: formattedDate,
+        time: entryTime,
+        entryType,
+        amount: numAmount,
+        particulars: String(particulars).trim(),
+        accountId: targetAcc.id,
+        cashAccountId: cashAcc.id,
+        referenceNo: referenceNo ? String(referenceNo).trim() : null,
+        partyName: partyName ? String(partyName).trim() : null,
+        notes: notes ? String(notes).trim() : null,
+        paymentMethod: paymentMethod || existing.paymentMethod || 'Cash',
+        chequeNo: paymentMethod === 'Cheque' ? (chequeNo ? String(chequeNo).trim() : null) : null,
+        chequeDate: paymentMethod === 'Cheque' ? (chequeDate || null) : null,
+        bankName: paymentMethod === 'Cheque' ? (bankName ? String(bankName).trim() : null) : null,
+        transactionRef: paymentMethod === 'Bank Transfer' ? (transactionRef ? String(transactionRef).trim() : null) : null,
+        depositSlip: depositSlip !== undefined ? (depositSlip || null) : existing.depositSlip,
+        isEdited: 1,
+        editedBy: editorName,
+        editedAt: nowSql,
+      },
+      entryId,
+    ]);
+
+    await conn.commit();
+    res.json({ success: true, id: entryId, journalEntryId: existing.journalEntryId || null, isEdited: 1 });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Error updating cashbook entry:', error);
+    res.status(500).json({ error: error.message || 'Failed to update cashbook entry' });
   } finally {
     conn.release();
   }
