@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/utils'
 import { fetchWorkOrders, deleteWorkOrder, updateWorkOrder, fetchFinishedGoodsOrders, fetchInvoices, fetchMRs, fetchAllCustomerGRNs, fetchPOs, fetchGRNs } from '@/lib/api'
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown'
 import { WorkOrderStudioModal } from '@/components/production/WorkOrderStudioModal'
+import { WorkOrderManualBomEditorModal } from '@/components/production/WorkOrderManualBomEditorModal'
 import { WorkOrderCreateModal } from '@/components/production/WorkOrderCreateModal'
 import { WorkOrderPrintModal } from '@/components/production/WorkOrderPrintModal'
 import { SalesOrderPrintModal } from '@/components/crm/SalesOrderPrintModal'
@@ -103,6 +104,7 @@ export const WorkOrders: React.FC = () => {
 
   // Modals
   const [activeStudioWO, setActiveStudioWO] = useState<any>(null)
+  const [adjustBomWo, setAdjustBomWo] = useState<any | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [printWo, setPrintWo] = useState<any | null>(null)
   const [printSalesOrder, setPrintSalesOrder] = useState<any | null>(null)
@@ -709,6 +711,20 @@ export const WorkOrders: React.FC = () => {
               </button>
             )}
 
+            {/* Direct Adjust Work Order & Routes Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setOpenActionWoId(null)
+                navigate(`/production/work-orders/${row.id}/adjust`)
+              }}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-500/40 hover:bg-indigo-500/10 rounded-none h-7 px-2.5"
+              title="Adjust Work Order BOM (Mat #1, #2) & Production Routes"
+            >
+              <Wrench size={12} className="mr-1" /> Adjust WO & Routes
+            </Button>
+
             {/* Separate Assign Button */}
             <Button
               variant="outline"
@@ -735,13 +751,21 @@ export const WorkOrders: React.FC = () => {
               </Button>
 
               {isOpen && (
-                <div className="absolute right-0 mt-1 w-44 bg-surface border border-theme-subtle shadow-xl z-50 py-1 text-left">
+                <div className="absolute right-0 mt-1 w-52 bg-surface border border-theme-subtle shadow-xl z-50 py-1 text-left">
                   <button
                     type="button"
                     onClick={() => { setOpenActionWoId(null); navigate(`/production/work-orders/${row.id}`) }}
                     className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-rex-600 dark:text-rex-400 font-semibold"
                   >
                     <Eye size={12} /> Open Studio
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setOpenActionWoId(null); navigate(`/production/work-orders/${row.id}/adjust`) }}
+                    className="w-full px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-surface2 text-indigo-600 dark:text-indigo-400 font-semibold"
+                  >
+                    <Wrench size={12} /> Adjust Work Order & Routes
                   </button>
 
                   {sPhotos.length > 0 && (
@@ -1161,6 +1185,36 @@ export const WorkOrders: React.FC = () => {
           navigate(`/purchasing/mr-builder/${mrId}`)
         }}
       />
+
+      {/* ── ADJUST WORK ORDER BOM & ROUTES STUDIO MODAL ─────────────────────────── */}
+      {adjustBomWo && (() => {
+        const matchedQuote = quotations.find((q: any) =>
+          (adjustBomWo.sourceQuoteId && String(q.id) === String(adjustBomWo.sourceQuoteId)) ||
+          (adjustBomWo.quoteId && String(q.id) === String(adjustBomWo.quoteId)) ||
+          (adjustBomWo.quotationId && String(q.id) === String(adjustBomWo.quotationId)) ||
+          (adjustBomWo.quotationNo && (q.quotationNo === adjustBomWo.quotationNo || q.docNo === adjustBomWo.quotationNo))
+        )
+        let parsedDirectBoms: any[] = []
+        try {
+          parsedDirectBoms = typeof adjustBomWo.bom === 'string' ? JSON.parse(adjustBomWo.bom || '[]') : (adjustBomWo.bom || [])
+        } catch {
+          parsedDirectBoms = []
+        }
+
+        return (
+          <WorkOrderManualBomEditorModal
+            isOpen={!!adjustBomWo}
+            onClose={() => setAdjustBomWo(null)}
+            workOrder={adjustBomWo}
+            initialBoms={parsedDirectBoms}
+            linkedQuote={matchedQuote}
+            machineries={machineries}
+            onSuccess={() => {
+              loadAllData()
+            }}
+          />
+        )
+      })()}
 
       {/* ── CREATE WORK ORDER MODAL ──────────────────────────────────────────────── */}
       <WorkOrderCreateModal

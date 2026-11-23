@@ -40,6 +40,7 @@ import { findMatchingSamplePhotos } from '@/lib/samplePhotos'
 import { RecordCustomerPoModal } from '@/components/crm/RecordCustomerPoModal'
 import { ViewCustomerPoModal } from '@/components/crm/ViewCustomerPoModal'
 import { CustomerPoPoolModal } from '@/components/crm/CustomerPoPoolModal'
+import { ReworkSalesOrderModal } from '@/components/crm/ReworkSalesOrderModal'
 import { openDataUriOrUrl, downloadDataUriOrUrl, dataUriToBlobUrl, resolveFileUrl } from '@/lib/utils'
 import { 
   createFinishedGoodsOrder, 
@@ -283,6 +284,9 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
   const [changeNumberTarget, setChangeNumberTarget] = useState<any | null>(null)
   const [newOrderNoInput, setNewOrderNoInput] = useState<string>('')
   const [submittingChangeNumber, setSubmittingChangeNumber] = useState(false)
+
+  // Rework Sales Order Modal State
+  const [reworkModalState, setReworkModalState] = useState<{ order: any; mode: 'create' | 'update_billing' } | null>(null)
 
   const handleOpenPrintProforma = (proforma: any, order?: any) => {
     if (!proforma) return;
@@ -3226,6 +3230,39 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
               <Hash size={13} className="text-amber-500" /> Change Order Number
             </button>
 
+            {/* Create Rework Sales Order (SO-RE-XXXX-1, SO-RE-XXXX-2...) */}
+            <button
+              type="button"
+              onClick={() => {
+                setOpenActionOrderId(null)
+                setActionCoords(null)
+                setReworkModalState({ order, mode: 'create' })
+              }}
+              className="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-rex-500/10 transition-colors text-rex-600 dark:text-rex-400 font-semibold cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <RotateCcw size={13} className="text-rex-500 shrink-0" /> Create Rework Sales Order
+              </span>
+              <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-rex-500/15 text-rex-600 dark:text-rex-400 border border-rex-500/25">
+                SO-RE
+              </span>
+            </button>
+
+            {/* Update Rework Billing / Custom Amount (if this is already a Rework SO) */}
+            {(Boolean(order.isRework) || /^SO-RE-/i.test(String(order.orderNo || ''))) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenActionOrderId(null)
+                  setActionCoords(null)
+                  setReworkModalState({ order, mode: 'update_billing' })
+                }}
+                className="w-full px-3 py-2 text-xs flex items-center gap-2 hover:bg-amber-500/10 transition-colors text-amber-600 dark:text-amber-400 font-semibold cursor-pointer"
+              >
+                <DollarSign size={13} className="text-amber-500 shrink-0" /> Update Rework Billing / Amount
+              </button>
+            )}
+
             {/* View Sample Inspection Photos */}
             {(() => {
               const { photos: sPhotos, grns: matchedGrns } = findMatchingSamplePhotos({
@@ -3929,13 +3966,21 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {/* Order No & Dates */}
                     <td className="px-3 py-1.5">
                       <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {isOrderUSD && (
                             <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0 shadow-sm shadow-blue-500/50" title="USD Export Sales Order" />
                           )}
                           <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">
                             {order.orderNo}
                           </span>
+                          {(Boolean(order.isRework) || /^SO-RE-/i.test(String(order.orderNo || ''))) && (
+                            <span
+                              className="px-1.5 py-0.2 text-[9px] font-mono font-extrabold bg-rex-500/15 text-rex-600 dark:text-rex-400 border border-rex-500/30 rounded uppercase"
+                              title={order.reworkReason ? `Rework Reason: ${order.reworkReason}` : 'Rework Sales Order'}
+                            >
+                              REWORK
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={(e) => {
@@ -3948,6 +3993,67 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                             <Edit3 size={11} />
                           </button>
                         </div>
+                        {(order.reworkReason || /\[Rework Reason:/i.test(String(order.notes || ''))) && (
+                          <div className="text-[10px] text-rex-600 dark:text-rex-400 font-medium truncate max-w-[210px] mt-0.5" title={order.reworkReason || order.notes}>
+                            Reason: {order.reworkReason || (String(order.notes || '').match(/\[Rework Reason:\s*([^\]]+)\]/i)?.[1] || '')}
+                          </div>
+                        )}
+                        {(() => {
+                          const isReworkOrder = Boolean(order.isRework) || /^SO-RE-/i.test(String(order.orderNo || ''));
+                          if (isReworkOrder) {
+                            const parentNo =
+                              order.parentOrderNo ||
+                              (String(order.orderNo || '').match(/^SO-RE-(.+)-\d+$/i)?.[1]
+                                ? `SO-${String(order.orderNo || '').match(/^SO-RE-(.+)-\d+$/i)?.[1]}`
+                                : null);
+                            if (!parentNo) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSearch(parentNo);
+                                }}
+                                className="text-[9.5px] font-mono text-secondary hover:text-blue-600 dark:hover:text-blue-400 hover:underline flex items-center gap-1 mt-0.5 cursor-pointer text-left"
+                                title={`Click to view original Sales Order ${parentNo}`}
+                              >
+                                <RotateCcw size={9} className="text-rex-500 shrink-0" />
+                                <span>Original SO: <strong>{parentNo}</strong></span>
+                              </button>
+                            );
+                          }
+
+                          // Check if this original SO has any linked Rework Sales Orders
+                          const baseCode = String(order.orderNo || '').replace(/^SO-/i, '');
+                          const childReworks = (orders || []).filter(
+                            (ro: any) =>
+                              ro.id !== order.id &&
+                              ((ro.parentOrderId && String(ro.parentOrderId) === String(order.id)) ||
+                                (ro.parentOrderNo && String(ro.parentOrderNo).toUpperCase() === String(order.orderNo || '').toUpperCase()) ||
+                                (baseCode && String(ro.orderNo || '').toUpperCase().startsWith(`SO-RE-${baseCode.toUpperCase()}-`)))
+                          );
+                          if (childReworks.length === 0) return null;
+
+                          return (
+                            <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                              {childReworks.map((rw: any) => (
+                                <button
+                                  key={rw.id || rw.orderNo}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSearch(rw.orderNo);
+                                  }}
+                                  className="px-1.5 py-0.2 rounded bg-rex-500/10 hover:bg-rex-500/20 text-rex-600 dark:text-rex-400 border border-rex-500/25 font-mono font-bold text-[9.5px] flex items-center gap-1 cursor-pointer transition-colors"
+                                  title={`Linked Rework Order: ${rw.orderNo}${rw.reworkReason ? ` (${rw.reworkReason})` : ''}`}
+                                >
+                                  <RotateCcw size={8} />
+                                  <span>{rw.orderNo}</span>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         {(() => {
                           const isPoPending = isOrderPoPending(order);
                           const hasPo = order.customerPoNo && !isPoPending && order.customerPoNo !== 'WITHOUT PO';
@@ -4151,9 +4257,74 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     {!isStoreRole && (
                       <td className="px-3 py-1.5 text-right">
                         <div className="flex flex-col items-end gap-0.5">
-                          <span className="font-mono font-bold text-xs text-primary">
-                            {formatCurrency(order.totalPrice, false, orderCurrency)}
-                          </span>
+                          {(() => {
+                            const isReworkRow = Boolean(order.isRework) || /^SO-RE-/i.test(String(order.orderNo || ''));
+                            const billingMode =
+                              order.reworkBillingMode ||
+                              (/\[Rework Billing:\s*To Be Decided Later\]/i.test(String(order.notes || ''))
+                                ? 'tbd'
+                                : /\[Rework Billing:\s*Non-Paid/i.test(String(order.notes || ''))
+                                ? 'non_paid'
+                                : isReworkRow && Number(order.totalPrice || 0) === 0
+                                ? 'tbd'
+                                : null);
+
+                            if (isReworkRow && billingMode === 'tbd') {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReworkModalState({ order, mode: 'update_billing' });
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-mono font-bold text-[10.5px] cursor-pointer transition-colors"
+                                  title="Click to decide Paid / Non-Paid & enter custom rework amount"
+                                >
+                                  Amount: TBD (Decide)
+                                </button>
+                              );
+                            }
+
+                            if (isReworkRow && billingMode === 'non_paid') {
+                              return (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-mono font-bold text-[10.5px]">
+                                    FREE (Non-Paid Rework)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReworkModalState({ order, mode: 'update_billing' });
+                                    }}
+                                    className="text-[9.5px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                  >
+                                    Change Billing
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <>
+                                <span className="font-mono font-bold text-xs text-primary">
+                                  {formatCurrency(order.totalPrice, false, orderCurrency)}
+                                </span>
+                                {isReworkRow && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReworkModalState({ order, mode: 'update_billing' });
+                                    }}
+                                    className="text-[9.5px] text-rex-600 dark:text-rex-400 hover:underline font-semibold cursor-pointer"
+                                  >
+                                    Paid Rework (Edit Amount)
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                           {(() => {
                             let vat = Number(order.vatAmount || 0);
                             let sscl = Number(order.ssclAmount || 0);
@@ -4232,6 +4403,43 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                         title={`Order #${order.orderNo}`}
                         traces={(() => {
                           const traces: TraceNode[] = [];
+                          const isReworkOrder = Boolean(order.isRework) || /^SO-RE-/i.test(String(order.orderNo || ''));
+                          if (isReworkOrder) {
+                            const parentNo =
+                              order.parentOrderNo ||
+                              (String(order.orderNo || '').match(/^SO-RE-(.+)-\d+$/i)?.[1]
+                                ? `SO-${String(order.orderNo || '').match(/^SO-RE-(.+)-\d+$/i)?.[1]}`
+                                : null);
+                            if (parentNo) {
+                              traces.push({
+                                type: 'sales_order',
+                                title: 'Original Sales Order',
+                                reference: parentNo,
+                                subtitle: order.reworkReason ? `Rework Reason: ${order.reworkReason}` : 'Parent Sales Order',
+                                statusBadge: { label: 'Original SO', variant: 'info' },
+                                navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(parentNo)}`
+                              });
+                            }
+                          } else {
+                            const baseCode = String(order.orderNo || '').replace(/^SO-/i, '');
+                            const childReworks = (orders || []).filter(
+                              (ro: any) =>
+                                ro.id !== order.id &&
+                                ((ro.parentOrderId && String(ro.parentOrderId) === String(order.id)) ||
+                                  (ro.parentOrderNo && String(ro.parentOrderNo).toUpperCase() === String(order.orderNo || '').toUpperCase()) ||
+                                  (baseCode && String(ro.orderNo || '').toUpperCase().startsWith(`SO-RE-${baseCode.toUpperCase()}-`)))
+                            );
+                            childReworks.forEach((rw: any) => {
+                              traces.push({
+                                type: 'sales_order',
+                                title: 'Rework Sales Order',
+                                reference: rw.orderNo,
+                                subtitle: rw.reworkReason ? `Reason: ${rw.reworkReason}` : 'Linked Rework Order',
+                                statusBadge: { label: 'Rework SO', variant: 'warning' },
+                                navigateUrl: `/crm/sales-orders?search=${encodeURIComponent(rw.orderNo)}`
+                              });
+                            });
+                          }
                           if (order.quotationNo) {
                             traces.push({
                               type: 'quotation',
@@ -6917,6 +7125,26 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Rework Sales Order Creation & Billing Decision Modal */}
+      {reworkModalState && (
+        <ReworkSalesOrderModal
+          isOpen={!!reworkModalState}
+          onClose={() => setReworkModalState(null)}
+          sourceOrder={reworkModalState.order}
+          allOrders={orders || []}
+          mode={reworkModalState.mode}
+          onSuccess={(newOrder) => {
+            refetch();
+            invalidateDataCache('finishedGoodsOrders');
+            if (reworkModalState.mode === 'create') {
+              toast(`Rework Sales Order ${newOrder?.orderNo || ''} created successfully!`, 'success');
+            } else {
+              toast('Rework Billing & Amount updated successfully!', 'success');
+            }
+          }}
+        />
       )}
 
     </div>

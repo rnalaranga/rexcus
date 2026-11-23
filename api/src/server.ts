@@ -1525,12 +1525,8 @@ async function runDatabaseSync() {
       }
     }
 
-    // Ensure Foreign Currency USD Account and Master Setup Setting exist
-    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1010', '1010', 'Foreign Currency Bank Account (USD)', 'Asset', 'Bank', 0, NOW())`);
+    // Ensure Master Setup Settings exist if not already configured
     await db.query(`INSERT INTO settings (id, val) VALUES ('usd_master_account_id', 'acc_1010') ON DUPLICATE KEY UPDATE val=val`);
-
-    // Ensure Supplier Advance / Prepayment Account and Setting exist
-    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1450', '1450', 'Advance to Suppliers / Prepayments', 'Asset', 'Current Asset', 0, NOW())`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('default_supplier_advance_account_id', 'acc_1450') ON DUPLICATE KEY UPDATE val=val`);
 
     // Clean up any historical journal lines where Bank/Cash was incorrectly tagged with partyType='Customer'
@@ -2119,9 +2115,6 @@ async function runDatabaseSync() {
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_quote_validity_days', '30')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('default_lead_time_days', '14')",
     "INSERT IGNORE INTO settings (id, val) VALUES ('low_stock_warning_pct', '20')",
-    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_3900', '3900', 'Retained Earnings / Share Capital', 'Equity', 'Equity', 0, NOW())",
-    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES ('acc_1110', '1110', 'Petty Cash', 'Asset', 'Cash', 0, NOW())",
-    "INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, isTaxAccount, balance, createdAt) VALUES ('acc_5010', '5010', 'SSCL Expense (Non-claimable Purchase Tax)', 'Expense', 'Taxes & Levies', 1, 0, NOW())",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('quotation', 'Quotations (Custom / Engineering)', '', 2206, 4, 1, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('product_quotation', 'Product Quotations', 'PQ', 2206, 4, 0, 1, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
     "INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) VALUES ('sales_order', 'Sales Orders', 'SO-', 1001, 4, 0, 0, NOW()) ON DUPLICATE KEY UPDATE name=VALUES(name)",
@@ -7790,12 +7783,14 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       }
     }
 
+    const isReworkOrder = Boolean(data.isRework || /^SO-RE-/i.test(orderNo));
+
     // Calculate subtotal and stock status
     let subtotal = Number(data.subtotal) || 0;
     let stockStatus = 'In Stock';
 
     if (itemsList.length > 0) {
-      if (!subtotal) {
+      if (!subtotal && !isReworkOrder) {
         subtotal = itemsList.reduce((acc, it) => acc + (Number(it.qty || 1) * Number(it.unitPrice || 0)), 0);
       }
 
@@ -7826,7 +7821,9 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     }
 
     const taxAmount = Number(data.taxAmount) || 0;
-    const totalPrice = Number(data.totalPrice) || (subtotal + taxAmount) || (Number(data.qty || 1) * Number(data.unitPrice || 0));
+    const totalPrice = isReworkOrder
+      ? (data.totalPrice !== undefined && data.totalPrice !== null ? Number(data.totalPrice) : (subtotal + taxAmount))
+      : (Number(data.totalPrice) || (subtotal + taxAmount) || (Number(data.qty || 1) * Number(data.unitPrice || 0)));
     
     // Primary product name/id (guaranteed non-null)
     const primaryName = data.productName || (itemsList.length > 0 ? (itemsList[0].description || itemsList[0].productName || 'Order Item') : 'Finished Goods Order');
@@ -7884,6 +7881,11 @@ app.post('/api/finished-goods-orders', async (req, res) => {
       customerPoDate: data.customerPoDate || null,
       customerPoAttachment: data.customerPoAttachment ? (typeof data.customerPoAttachment === 'object' ? JSON.stringify(data.customerPoAttachment) : String(data.customerPoAttachment)) : null,
       customerPoAttachmentName: data.customerPoAttachmentName || null,
+      isRework: isReworkOrder ? 1 : 0,
+      parentOrderId: data.parentOrderId || null,
+      parentOrderNo: data.parentOrderNo || null,
+      reworkReason: data.reworkReason || null,
+      reworkBillingMode: data.reworkBillingMode || (isReworkOrder ? 'tbd' : null),
       notes: data.notes || '',
       createdAt: now,
       updatedAt: now
@@ -7925,6 +7927,11 @@ app.post('/api/finished-goods-orders', async (req, res) => {
         { col: 'isTaxInclusive', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN isTaxInclusive TINYINT(1) DEFAULT 0' },
         { col: 'vatAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN vatAmount DECIMAL(15,2) DEFAULT 0.00' },
         { col: 'ssclAmount', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN ssclAmount DECIMAL(15,2) DEFAULT 0.00' },
+        { col: 'isRework', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN isRework TINYINT(1) DEFAULT 0' },
+        { col: 'parentOrderId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN parentOrderId VARCHAR(50) DEFAULT NULL' },
+        { col: 'parentOrderNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN parentOrderNo VARCHAR(100) DEFAULT NULL' },
+        { col: 'reworkReason', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN reworkReason TEXT DEFAULT NULL' },
+        { col: 'reworkBillingMode', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN reworkBillingMode VARCHAR(30) DEFAULT NULL' },
       ];
       for (const q of alterQueries) {
         if (!validCols.has(q.col)) {
@@ -8108,15 +8115,17 @@ app.post('/api/finished-goods-orders', async (req, res) => {
     }
     const insertedId = result?.insertId || safeOrder.id;
 
-    // Sync Sales Order document sequence
-    const soNumMatch = safeOrder.orderNo && String(safeOrder.orderNo).match(/\d+$/);
-    if (soNumMatch) {
-      const parsedNum = parseInt(soNumMatch[0], 10);
-      if (!isNaN(parsedNum) && parsedNum >= 1000 && parsedNum < 100000 && parsedNum !== 7528) {
-        await db.query(
-          "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
-          [parsedNum + 1]
-        );
+    // Sync Sales Order document sequence (ONLY for standard Sales Orders, NEVER for Rework SO-RE- orders)
+    if (!isReworkOrder) {
+      const soNumMatch = safeOrder.orderNo && String(safeOrder.orderNo).match(/\d+$/);
+      if (soNumMatch) {
+        const parsedNum = parseInt(soNumMatch[0], 10);
+        if (!isNaN(parsedNum) && parsedNum >= 1000 && parsedNum < 100000 && parsedNum !== 7528) {
+          await db.query(
+            "UPDATE document_sequences SET next_number = GREATEST(next_number, ?), updated_at = NOW() WHERE id = 'sales_order'",
+            [parsedNum + 1]
+          );
+        }
       }
     }
 
@@ -8378,6 +8387,21 @@ app.put('/api/finished-goods-orders/:id', async (req, res) => {
 
     const [colRows]: any = await db.query('SHOW COLUMNS FROM finished_goods_orders');
     const validCols = new Set(colRows.map((c: any) => c.Field));
+    const reworkAlterCols = [
+      { col: 'isRework', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN isRework TINYINT(1) DEFAULT 0' },
+      { col: 'parentOrderId', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN parentOrderId VARCHAR(50) DEFAULT NULL' },
+      { col: 'parentOrderNo', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN parentOrderNo VARCHAR(100) DEFAULT NULL' },
+      { col: 'reworkReason', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN reworkReason TEXT DEFAULT NULL' },
+      { col: 'reworkBillingMode', sql: 'ALTER TABLE finished_goods_orders ADD COLUMN reworkBillingMode VARCHAR(30) DEFAULT NULL' },
+    ];
+    for (const q of reworkAlterCols) {
+      if (!validCols.has(q.col)) {
+        try {
+          await db.query(q.sql);
+          validCols.add(q.col);
+        } catch (e) {}
+      }
+    }
     const safeData: any = {};
     for (const [k, v] of Object.entries(data)) {
       if (validCols.has(k)) {
@@ -19439,36 +19463,42 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
       );
 
       const activeOpIds: string[] = [];
-      let stepNum = 1;
 
-      for (const op of allOps) {
+      for (let idx = 0; idx < allOps.length; idx++) {
+        const op = allOps[idx];
+        const stepNo = Number(op.stepNo || idx + 1);
+        const opName = op.displayOpName || (processedBoms.length > 1 && op.partTitle ? `${op.partTitle}: ${op.procName}` : op.procName);
+        const routeNotes = op.notes || op.instruction || `Step ${stepNo}: ${op.partTitle || ''}`;
+
         const matched = existingOps.find((ex: any) =>
-          (op.id && ex.id === op.id) ||
-          ex.operationName.toLowerCase() === op.procName.toLowerCase() ||
-          ex.operationName.toLowerCase().includes(op.procName.toLowerCase()) ||
-          op.procName.toLowerCase().includes(ex.operationName.toLowerCase())
+          !activeOpIds.includes(ex.id) &&
+          ((op.id && ex.id === op.id) ||
+           (op.matchedOpId && ex.id === op.matchedOpId) ||
+           ex.operationName.toLowerCase() === String(opName || '').toLowerCase() ||
+           ex.operationName.toLowerCase() === String(op.procName || '').toLowerCase())
         );
 
-        const plannedHrs = op.estHr > 0 ? op.estHr : (op.quoHr || 1);
+        const plannedHrs = Number(op.estHr > 0 ? op.estHr : (op.quoHr || 0.25));
 
         if (matched) {
           activeOpIds.push(matched.id);
           await db.query(
             `UPDATE work_order_operations 
-             SET plannedHours = ?, hourlyLaborRate = ?, hourlyMachineRate = ?, machineId = COALESCE(?, machineId), notes = ? 
+             SET stepNumber = ?, operationName = ?, plannedHours = ?, hourlyLaborRate = ?, hourlyMachineRate = ?, machineId = COALESCE(?, machineId), notes = ? 
              WHERE id = ?`,
             [
+              stepNo,
+              opName,
               plannedHrs,
-              op.hrRate || 0,
-              op.machineRate || 0,
+              op.hrRate || 750,
+              op.machineRate || 1200,
               op.machineId || null,
-              `Adjusted from BOM: ${op.partTitle || ''}`,
+              routeNotes,
               matched.id
             ]
           );
         } else {
-          const newOpId = `op-${Date.now()}-${stepNum}-${Math.random().toString(36).slice(2, 5)}`;
-          const opName = processedBoms.length > 1 ? `${op.partTitle}: ${op.procName}` : op.procName;
+          const newOpId = `op-${Date.now()}-${stepNo}-${Math.random().toString(36).slice(2, 5)}`;
           activeOpIds.push(newOpId);
           await db.query(
             `INSERT INTO work_order_operations 
@@ -19477,16 +19507,15 @@ app.post('/api/production/work-orders/:id/adjust-full-bom', async (req, res) => 
             [
               newOpId,
               id,
-              existingOps.length + stepNum,
+              stepNo,
               opName,
               op.machineId || null,
               plannedHrs,
-              op.hrRate || 0,
-              op.machineRate || 0,
-              `Added from Adjusted BOM: ${op.partTitle || ''}`
+              op.hrRate || 750,
+              op.machineRate || 1200,
+              routeNotes
             ]
           );
-          stepNum++;
         }
       }
 

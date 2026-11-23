@@ -310,12 +310,14 @@ export const WorkOrderDetail: React.FC = () => {
 
           return {
             id: m.id || `auto-${bIdx}-${mIdx}`,
+            matNumber: m.matNumber || `Mat #${mIdx + 1}`,
+            inventoryId: m.inventoryId,
             material: activeMatName,
             originalMaterial: m.originalMaterial || activeMatName,
             isSubstituted: m.isSubstituted || Boolean(m.substitutionDetails),
             substitutionDetails: m.substitutionDetails,
             substituteRequest: m.substituteRequest,
-            spec: m.spec || '',
+            spec: m.rawSpec !== undefined ? m.rawSpec : (m.spec || ''),
             profile: m.profile || 'Raw Stock',
             qty: activeQty,
             unit: activeUnit,
@@ -347,12 +349,14 @@ export const WorkOrderDetail: React.FC = () => {
 
           return {
             id: m.id || `manual-${bIdx}-${mIdx}`,
+            matNumber: m.matNumber || `Mat #${autoMats.length + mIdx + 1}`,
+            inventoryId: m.inventoryId,
             material: activeMatName,
             originalMaterial: m.originalMaterial || activeMatName,
             isSubstituted: m.isSubstituted || Boolean(m.substitutionDetails),
             substitutionDetails: m.substitutionDetails,
             substituteRequest: m.substituteRequest,
-            spec: m.spec || 'Standard Hardware',
+            spec: m.rawSpec !== undefined ? m.rawSpec : (m.spec || 'Standard Hardware'),
             profile: m.profile || 'Bought-out',
             qty: activeQty,
             unit: m.unit || 'pcs',
@@ -370,7 +374,7 @@ export const WorkOrderDetail: React.FC = () => {
           const estHr = Number(op.estHr !== undefined ? op.estHr : quoHr)
           const setTime = Number(op.setTime || 0)
           const hrRate = Number(op.hrRate || op.hourlyLaborRate || 750)
-          const machineRate = Number(op.machineRate || op.hourlyMachineRate || 1200)
+          const machineRate = Number(op.machineRate || op.hourlyMachineRate || 0)
           const setTimeRate = Number(op.setTimeRate || hrRate)
           const opCost = Number(op.cost !== undefined ? op.cost : (((estHr > 0 ? estHr : quoHr) * (hrRate + machineRate)) + (setTime * setTimeRate)))
 
@@ -378,14 +382,24 @@ export const WorkOrderDetail: React.FC = () => {
             const opNameLower = (o.operationName || '').toLowerCase()
             const procLower = procName.toLowerCase()
             const partLower = partTitle.toLowerCase()
-            return (o.id && op.id === o.id) ||
+            return (o.id && (op.id === o.id || op.matchedOpId === o.id)) ||
+                   (op.displayOpName && opNameLower === op.displayOpName.toLowerCase()) ||
                    (opNameLower.includes(procLower) && (opNameLower.includes(partLower) || opNameLower.includes(`part ${bIdx + 1}`))) ||
                    opNameLower === procLower
           })
 
           return {
             id: op.id || `proc-${bIdx}-${pIdx}`,
+            matchedOpId: op.matchedOpId || matchedOp?.id,
+            stepNo: op.stepNo || pIdx + 1,
             procName,
+            displayOpName: op.displayOpName,
+            materialRefs: op.materialRefs || [],
+            pieceNote: op.pieceNote || '',
+            durationValue: op.durationValue,
+            durationUnit: op.durationUnit,
+            instruction: op.instruction || '',
+            notes: op.notes || '',
             partPrefix: b.title ? `${b.title}: ` : '',
             quoHr,
             estHr,
@@ -1029,7 +1043,16 @@ export const WorkOrderDetail: React.FC = () => {
             </select>
           </div>
 
-          {/* Primary Action Button */}
+          {/* Primary Action Buttons */}
+          <Button 
+            variant="primary" 
+            size="sm" 
+            onClick={() => navigate(`/production/work-orders/${wo.id}/adjust`)}
+            className="text-xs rounded-none font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+          >
+            <Calculator size={13} className="mr-1.5"/> Adjust Work Order & Routes
+          </Button>
+
           <Button 
             variant="primary" 
             size="sm" 
@@ -1076,15 +1099,14 @@ export const WorkOrderDetail: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setShowActionsMenu(false)
-                    setAdjustBomPartIndex(0)
-                    setShowAdjustBomModal(true)
+                    navigate(`/production/work-orders/${wo.id}/adjust`)
                   }}
                   className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-surface2 text-primary cursor-pointer transition-colors"
                 >
                   <Calculator size={14} className="text-primary shrink-0" />
                   <div>
-                    <span className="font-semibold block">Adjust Full BOM & Costing</span>
-                    <span className="text-[10px] text-muted">Edit materials, ops & live recalculate costing</span>
+                    <span className="font-semibold block">Adjust Work Order & Routes</span>
+                    <span className="text-[10px] text-muted">Adjust BOM materials (Mat #1, #2) & step-by-step routes</span>
                   </div>
                 </button>
 
@@ -1596,14 +1618,11 @@ export const WorkOrderDetail: React.FC = () => {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => {
-                  setAdjustBomPartIndex(0)
-                  setShowAdjustBomModal(true)
-                }}
-                className="rounded-none text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs flex items-center gap-1.5"
+                onClick={() => navigate(`/production/work-orders/${wo.id}/adjust`)}
+                className="rounded-none text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs flex items-center gap-1.5"
               >
                 <Calculator size={13} />
-                <span>Adjust Full BOM & Costing</span>
+                <span>Adjust Work Order & Routes</span>
               </Button>
 
               <Button
@@ -1687,14 +1706,11 @@ export const WorkOrderDetail: React.FC = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setAdjustBomPartIndex(bIdx)
-                          setShowAdjustBomModal(true)
-                        }}
+                        onClick={() => navigate(`/production/work-orders/${wo.id}/adjust`)}
                         className="h-7 px-2.5 text-xs font-bold flex items-center gap-1.5 border-theme-subtle text-primary hover:bg-surface rounded-none shadow-2xs ml-1"
                       >
                         <Calculator size={13} className="text-primary" />
-                        <span>Adjust Part BOM</span>
+                        <span>Adjust Work Order & Routes</span>
                       </Button>
                     </div>
                   </div>
@@ -1739,7 +1755,11 @@ export const WorkOrderDetail: React.FC = () => {
 
                                 return (
                                   <tr key={mat.id || mIdx} className="hover:bg-surface2/30 transition-colors">
-                                    <td className="py-2.5 px-3 text-muted font-mono">{mIdx + 1}</td>
+                                    <td className="py-2.5 px-3 text-muted font-mono">
+                                      <span className="px-1.5 py-0.5 bg-indigo-600 text-white font-mono font-bold text-[10px]">
+                                        {mat.matNumber || `Mat #${mIdx + 1}`}
+                                      </span>
+                                    </td>
                                     <td className="py-2.5 px-3 font-semibold text-primary">
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <span>{mat.material}</span>
@@ -1935,9 +1955,24 @@ export const WorkOrderDetail: React.FC = () => {
 
                                   <div className="space-y-0.5 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
+                                      {Array.isArray(proc.materialRefs) && proc.materialRefs.length > 0 && (
+                                        <span className="px-1.5 py-0.5 bg-indigo-600 text-white font-mono font-bold text-[10px]">
+                                          {proc.materialRefs.join(' + ')}
+                                        </span>
+                                      )}
+                                      {proc.pieceNote && (
+                                        <span className="px-1.5 py-0.5 bg-surface2 text-secondary border border-theme-subtle text-[10px] font-medium">
+                                          {proc.pieceNote}
+                                        </span>
+                                      )}
                                       <span className="font-bold text-primary text-xs sm:text-sm">
                                         {proc.procName}
                                       </span>
+                                      {proc.durationValue && proc.durationUnit && (
+                                        <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono font-bold text-[10px]">
+                                          {proc.durationValue} {proc.durationUnit}
+                                        </span>
+                                      )}
                                       {isRunning && (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-600 border border-blue-500/30 animate-pulse">
                                           <Play size={9} className="fill-blue-500"/> Machining Now (${matchedOp.actualHours || 0}h)
@@ -1960,14 +1995,20 @@ export const WorkOrderDetail: React.FC = () => {
                                       )}
                                     </div>
 
+                                    {(proc.instruction || matchedOp?.notes) && (
+                                      <div className="text-xs text-secondary font-medium">
+                                        {proc.instruction || matchedOp?.notes}
+                                      </div>
+                                    )}
+
                                     <div className="flex items-center gap-3 text-[11px] text-muted font-mono flex-wrap">
-                                      <span>Quoted: <strong className="text-primary">{proc.quoHr.toFixed(1)}h</strong></span>
+                                      <span>Planned: <strong className="text-primary">{proc.durationValue && proc.durationUnit ? `${proc.durationValue} ${proc.durationUnit}` : `${proc.quoHr.toFixed(2)}h`}</strong></span>
                                       {proc.setTime > 0 && <span>Setup: {proc.setTime.toFixed(1)}h</span>}
                                       <span>Rate: {formatCurrency(proc.hrRate)}/h</span>
                                       <span>Subtotal: <strong className="text-primary">{formatCurrency(proc.cost)}</strong></span>
                                       {matchedOp && (
                                         <span className="text-secondary font-sans font-medium">
-                                          (${matchedOp.machineName || 'Machine'} · ${matchedOp.employeeName || 'Tech'})
+                                          ({matchedOp.machineName || 'Machine'} · {matchedOp.employeeName || 'Tech'})
                                         </span>
                                       )}
                                     </div>
@@ -2795,18 +2836,20 @@ export const WorkOrderDetail: React.FC = () => {
         </form>
       </Modal>
 
-      {/* ── MANUAL BOM & MACHINE HOURS EDITOR (QUOTATION STYLE) ──────── */}
+      {/* ── ADJUST WORK ORDER BOM & PRODUCTION ROUTES STUDIO ──────── */}
       {showAdjustBomModal && (
         <WorkOrderManualBomEditorModal
           isOpen={showAdjustBomModal}
           onClose={() => setShowAdjustBomModal(false)}
           workOrder={wo}
           initialBoms={parsedBoms}
+          linkedQuote={linkedQuote}
+          machineries={machineries}
           onSuccess={() => {
             loadData()
             setToastMsg({
               type: 'success',
-              text: 'Manual BOM & Machine Hours submitted! Required materials are now released to Stores.'
+              text: 'Work Order BOM & Production Routes saved and synced to Stores & Shop Floor!'
             })
           }}
         />

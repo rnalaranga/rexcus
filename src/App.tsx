@@ -66,6 +66,7 @@ const Machinery = lazy(() => import('@/pages/production/Machinery').then(m => ({
 const WorkshopPlanning = lazy(() => import('@/pages/production/WorkshopPlanning').then(m => ({ default: m.WorkshopPlanning })))
 const WorkOrders = lazy(() => import('@/pages/production/WorkOrders').then(m => ({ default: m.WorkOrders })))
 const WorkOrderDetail = lazy(() => import('@/pages/production/WorkOrderDetail').then(m => ({ default: m.WorkOrderDetail })))
+const WorkOrderAdjustPage = lazy(() => import('@/pages/production/WorkOrderAdjustPage').then(m => ({ default: m.WorkOrderAdjustPage })))
 const ServiceInspectionHub = lazy(() => import('@/pages/production/ServiceInspectionHub').then(m => ({ default: m.ServiceInspectionHub })))
 
 // Lazy-loaded HR Pages
@@ -215,7 +216,9 @@ function AppRoutes() {
             {/* Production */}
             <Route path="/production" element={<WorkOrders />} />
             <Route path="/production/work-orders" element={<WorkOrders />} />
+            <Route path="/production/work-orders/:id/adjust" element={<WorkOrderAdjustPage />} />
             <Route path="/production/work-orders/:id" element={<WorkOrderDetail />} />
+            <Route path="/production/:id/adjust" element={<WorkOrderAdjustPage />} />
             <Route path="/production/:id" element={<WorkOrderDetail />} />
             <Route path="/production/service-jobs" element={<ServiceInspectionHub />} />
             <Route path="/production/service-inspection" element={<ServiceInspectionHub />} />
