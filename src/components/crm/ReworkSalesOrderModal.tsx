@@ -210,8 +210,8 @@ export const ReworkSalesOrderModal: React.FC<ReworkSalesOrderModalProps> = ({
       return { subtotal, ssclAmount: 0, vatAmount: 0, taxAmount: 0, taxRate: 0, totalPrice: subtotal };
     }
 
-    const ssclRate = Number(profile.ssclRate || 0);
-    const vatRate = Number(profile.vatRate ?? profile.rate ?? 0);
+    const ssclRate = Number(profile.tax1_rate ?? profile.ssclRate ?? 0);
+    const vatRate = Number(profile.tax2_rate ?? profile.vatRate ?? profile.rate ?? 0);
     const ssclAmount = Number(((subtotal * ssclRate) / 100).toFixed(2));
     const vatBase = subtotal + ssclAmount;
     const vatAmount = Number(((vatBase * vatRate) / 100).toFixed(2));
@@ -579,11 +579,15 @@ export const ReworkSalesOrderModal: React.FC<ReworkSalesOrderModalProps> = ({
                 className="sm:w-72 px-3 py-1.5 text-xs font-bold bg-surface border border-rex-500/40 rounded-lg text-primary focus:outline-none focus:border-rex-500"
               >
                 <option value="">No Tax / VAT Exempt (0%)</option>
-                {(taxProfiles || []).map((tp: any) => (
-                  <option key={tp.id} value={tp.id}>
-                    {tp.name} ({tp.ssclRate ? `SSCL ${tp.ssclRate}% + ` : ''}VAT {tp.vatRate ?? tp.rate ?? 0}%)
-                  </option>
-                ))}
+                {(taxProfiles || []).map((tp: any) => {
+                  const sRate = Number(tp.tax1_rate ?? tp.ssclRate ?? 0);
+                  const vRate = Number(tp.tax2_rate ?? tp.vatRate ?? tp.rate ?? 0);
+                  return (
+                    <option key={tp.id} value={tp.id}>
+                      {tp.name} ({sRate > 0 ? `SSCL ${sRate}% + ` : ''}VAT {vRate}%)
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}
