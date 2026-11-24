@@ -813,130 +813,171 @@ export const PurchasingHub: React.FC = () => {
     );
   };
 
+  const parseItemsArray = (raw: any): any[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [];
+  };
+
+  const renderItemPill = (rawItems: any, fallbackLabel = 'Items') => {
+    const items = parseItemsArray(rawItems);
+    const first = items[0];
+    const label = first?.description || first?.name || first?.itemName || first?.materialName || fallbackLabel;
+    const extraCount = Math.max(0, items.length - 1);
+    return (
+      <div className="flex items-center gap-1.5 max-w-[240px]">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-500/5 border border-blue-500/20 text-xs text-primary min-w-0 flex-1">
+          <Package size={12} className="text-blue-500 shrink-0" />
+          <span className="truncate font-medium">{label}</span>
+        </div>
+        {extraCount > 0 && (
+          <span className="px-1.5 py-0.5 rounded bg-surface2 border border-theme-subtle text-[10px] font-mono font-bold text-muted shrink-0">
+            +{extraCount}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const renderTaxPills = (row: any) => {
+    let sscl = 0;
+    let vat = 0;
+    if (row.taxBreakdown) {
+      try {
+        const tb = typeof row.taxBreakdown === 'string' ? JSON.parse(row.taxBreakdown) : row.taxBreakdown;
+        sscl = Number(tb?.tax1Amount || tb?.sscl || 0);
+        vat = Number(tb?.tax2Amount || tb?.vat || 0);
+      } catch {}
+    }
+    if (sscl === 0 && vat === 0 && Number(row.taxAmount || 0) > 0) {
+      vat = Number(row.taxAmount || 0);
+    }
+    if (sscl <= 0 && vat <= 0) return null;
+    return (
+      <div className="flex items-center justify-end gap-1 flex-wrap mt-1">
+        {sscl > 0 && (
+          <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+            SSCL: {formatCurrency(sscl, true)}
+          </span>
+        )}
+        {vat > 0 && (
+          <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">
+            VAT: {formatCurrency(vat, true)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const generateColumns = (): Column<any>[] => {
     if (activeTab === 'po') {
       return [
         {
-          key: 'supplier', header: 'Vendor / PO', sortable: true,
-          render: (_, row) => (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center">
-                <FileText size={14} className="text-secondary" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-primary truncate leading-snug">{getSupplierName(row.supplierId)}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-xs text-muted font-mono">{row.id}</span>
-                  {(() => {
-                    const linkedMrList: string[] = Array.isArray(row.mrIds)
-                      ? row.mrIds
-                      : (typeof row.mrIds === 'string'
-                          ? (() => { try { const m = JSON.parse(row.mrIds); return Array.isArray(m) ? m : [row.mrIds]; } catch { return [row.mrIds]; } })()
-                          : (row.mrId ? [row.mrId] : []));
-                    return linkedMrList.map((mrNum: string) => (
-                      <span 
-                        key={mrNum}
-                        onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
-                        className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
-                        title="View Originating Material Request"
-                      >
-                        MR: {mrNum}
-                      </span>
-                    ));
-                  })()}
-                  {(() => {
-                    const invList: string[] = Array.isArray(row.invoiceNos)
-                      ? row.invoiceNos
-                      : (typeof row.invoiceNos === 'string'
-                          ? (() => { try { const p = JSON.parse(row.invoiceNos); return Array.isArray(p) ? p : [row.invoiceNos]; } catch { return [row.invoiceNos]; } })()
-                          : []);
-                    if (invList.length === 0) return null;
-                    return invList.map((invNum: string) => (
-                      <span 
-                        key={invNum}
-                        onClick={(e) => { e.stopPropagation(); setActiveTab('bill'); setSearch(invNum); }}
-                        className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
-                        title={`Vendor Invoice ${invNum}`}
-                      >
-                        INV: {invNum}
-                      </span>
-                    ));
-                  })()}
-                  {(() => {
-                    const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
-                    if (poGrns.length === 0) return null;
-                    return poGrns.slice(0, 2).map((g: any) => (
+          key: 'id', header: 'PO # & Date', sortable: true,
+          render: (_, row) => {
+            const linkedMrList: string[] = Array.isArray(row.mrIds)
+              ? row.mrIds
+              : (typeof row.mrIds === 'string'
+                  ? (() => { try { const m = JSON.parse(row.mrIds); return Array.isArray(m) ? m : [row.mrIds]; } catch { return [row.mrIds]; } })()
+                  : (row.mrId ? [row.mrId] : []));
+            const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
+            return (
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                    {row.id}
+                  </span>
+                  {linkedMrList.slice(0, 2).map((mrNum: string) => (
+                    <span
+                      key={mrNum}
+                      onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
+                      className="text-[10px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle cursor-pointer"
+                      title="View Material Request"
+                    >
+                      MR: {mrNum}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {poGrns.length > 0 ? (
+                    poGrns.slice(0, 2).map((g: any) => (
                       <span
                         key={g.id}
                         onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/grn-builder/${g.id}`); }}
-                        className="text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 px-1.5 py-0.5 font-mono font-bold border border-emerald-500/30 cursor-pointer"
-                        title={`Goods Receipt ${g.id}`}
+                        className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 font-mono font-bold border border-emerald-500/30 cursor-pointer"
                       >
                         GRN: {g.id}
                       </span>
-                    ));
-                  })()}
+                    ))
+                  ) : (
+                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 font-mono font-semibold border border-amber-500/25">
+                      GRN Pending
+                    </span>
+                  )}
                 </div>
-              </div>
-            </div>
-          )
-        },
-        { key: 'contact', header: 'Contact', width: '140px', sortable: true, render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
-        {
-          key: 'status', header: 'GRN / Receipt', width: '130px', sortable: true,
-          render: (v, row) => {
-            const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
-            return (
-              <div>
-                <Badge value={String(v)} size="sm" />
-                <div className="text-[10px] text-muted font-mono mt-0.5">
-                  {poGrns.length > 0 ? `${poGrns.length} GRN Received` : 'Awaiting GRN'}
+                <div className="text-[10.5px] text-muted font-mono">
+                  {formatDate(row.date)}{row.expectedDate ? ` • Exp ${formatDate(row.expectedDate)}` : ''}
                 </div>
               </div>
             );
           }
         },
-        { 
-          key: 'billingStatus', header: 'Billed / Paid', width: '160px', 
+        {
+          key: 'supplier', header: 'Supplier', sortable: true,
+          render: (_, row) => (
+            <div className="min-w-0 max-w-[190px]">
+              <p className="text-xs font-bold text-primary uppercase truncate">{getSupplierName(row.supplierId)}</p>
+              <p className="text-[11px] text-muted truncate mt-0.5">{getSupplierContact(row.supplierId)}</p>
+            </div>
+          )
+        },
+        {
+          key: 'items', header: 'Items Ordered',
+          render: (_, row) => renderItemPill(row.items, 'Purchase Order Items')
+        },
+        {
+          key: 'qty', header: 'Qty & Receipt', align: 'right',
           render: (_, row) => {
-            const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
-            const billed = matchedBills.length > 0
-              ? matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0)
-              : Number(row.billedAmount || 0);
-            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
-            const total = Number(row.totalAmount || 0);
-            const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
-            const pStatus = paid >= billed - 0.01 && billed > 0 ? 'Paid' : paid > 0 ? 'Partial Paid' : 'Unpaid';
+            const items = parseItemsArray(row.items);
+            const totalQty = items.reduce((s: number, it: any) => s + Number(it.qty || it.quantity || 0), 0);
+            const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
+            const recQty = poGrns.reduce((s: number, g: any) => {
+              const gItems = parseItemsArray(g.items);
+              return s + gItems.reduce((gs: number, gi: any) => gs + Number(gi.receivedQty || gi.qty || gi.quantity || 0), 0);
+            }, 0);
             return (
-              <div className="space-y-1">
-                <div className="flex items-center gap-1 flex-wrap">
-                  <Badge 
-                    value={bStatus === 'billed' ? 'Billed' : bStatus === 'partially_billed' ? 'Part. Billed' : 'Unbilled'} 
-                    size="sm" 
-                  />
-                  {billed > 0 && (
-                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${
-                      pStatus === 'Paid'
-                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                        : pStatus === 'Partial Paid'
-                        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-                        : 'bg-rose-500/10 text-rose-600 border-rose-500/30'
-                    }`}>
-                      {pStatus}
-                    </span>
-                  )}
-                </div>
-                {billed > 0 && (
-                  <div className="text-[10px] text-muted font-mono">
-                    Paid: {formatCurrency(paid, true)} / {formatCurrency(billed, true)}
-                  </div>
+              <div className="text-right font-mono">
+                <span className="text-xs font-bold text-primary block">{totalQty > 0 ? `${totalQty.toFixed(2)} pcs` : `${items.length} line(s)`}</span>
+                <span className="text-[10.5px] text-muted block mt-0.5">
+                  {totalQty > 0 ? `${recQty} / ${totalQty} received` : `${poGrns.length} GRN(s)`}
+                </span>
+              </div>
+            );
+          }
+        },
+        {
+          key: 'totalAmount', header: 'Value & Tax / Paid', align: 'right', sortable: true,
+          render: (v, row) => {
+            const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
+            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            return (
+              <div className="text-right">
+                <span className="text-xs font-black font-mono text-primary block">{formatCurrency(Number(v || 0))}</span>
+                {renderTaxPills(row)}
+                {paid > 0 && (
+                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
+                    Paid: {formatCurrency(paid, true)}
+                  </span>
                 )}
               </div>
             );
           }
         },
-        { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
-        { key: 'date', header: 'Order Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         {
           key: 'traceability', header: 'Traceability', align: 'center',
           render: (_: any, row: any) => {
@@ -1021,66 +1062,109 @@ export const PurchasingHub: React.FC = () => {
             );
           }
         },
-        { key: 'actions', header: 'Actions', align: 'right', render: (_, row) => renderActionsDropdown('po', row) }
+        {
+          key: 'status', header: 'Status', align: 'center',
+          render: (v, row) => {
+            const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
+            const billed = matchedBills.length > 0
+              ? matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0)
+              : Number(row.billedAmount || 0);
+            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const total = Number(row.totalAmount || 0);
+            const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
+            const pStatus = paid >= billed - 0.01 && billed > 0 ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
+            return (
+              <div className="flex flex-col items-center gap-1">
+                <Badge value={String(v)} size="sm" />
+                <span className={`px-1.5 py-0.5 text-[9.5px] font-bold rounded border ${
+                  bStatus === 'billed'
+                    ? 'bg-blue-500/10 text-blue-600 border-blue-500/25'
+                    : bStatus === 'partially_billed'
+                    ? 'bg-amber-500/10 text-amber-600 border-amber-500/25'
+                    : 'bg-surface2 text-muted border-theme-subtle'
+                }`}>
+                  {bStatus === 'billed' ? `Billed • ${pStatus}` : bStatus === 'partially_billed' ? `Part. Billed • ${pStatus}` : 'Unbilled'}
+                </span>
+              </div>
+            );
+          }
+        },
+        {
+          key: 'actions', header: 'Actions', align: 'right',
+          render: (_, row) => (
+            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+              {row.status !== 'received' && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/purchasing/grn-builder?poId=${encodeURIComponent(row.id)}`)}
+                  className="px-2.5 py-1 rounded bg-rex-600 hover:bg-rex-700 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+                >
+                  <Truck size={12} /> Receive GRN
+                </button>
+              )}
+              {renderActionsDropdown('po', row)}
+            </div>
+          )
+        }
       ];
     }
     if (activeTab === 'mr') {
       return [
         {
-          key: 'mr', header: 'Material Request', sortable: true,
-          render: (_, row) => (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center">
-                <GitPullRequest size={14} className="text-secondary" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-xs text-muted">{row.department} Dept</span>
-                  {(() => {
-                    const linkedWoList: string[] = Array.isArray(row.workOrderNos)
-                      ? row.workOrderNos
-                      : (typeof row.workOrderNos === 'string'
-                          ? (() => { try { const w = JSON.parse(row.workOrderNos); return Array.isArray(w) ? w : [row.workOrderNos]; } catch { return [row.workOrderNos]; } })()
-                          : (row.workOrderNo ? [row.workOrderNo] : []));
-                    return linkedWoList.map((woNum: string) => (
-                      <span 
-                        key={woNum}
-                        onClick={(e) => { e.stopPropagation(); navigate('/production/work-orders'); }}
-                        className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-300 hover:text-purple-400 px-2 py-0.5 rounded-none font-mono border border-purple-500/30 cursor-pointer font-medium"
-                        title={`Linked Work Order ${woNum}`}
-                      >
-                        WO: {woNum}
-                      </span>
-                    ));
-                  })()}
-                  {(() => {
-                    const linkedPoList: string[] = Array.isArray(row.poIds) 
-                      ? row.poIds 
-                      : (typeof row.poIds === 'string'
-                          ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
-                          : (row.poId ? [row.poId] : []));
-                    return (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {linkedPoList.map((poNum: string) => (
-                          <span 
-                            key={poNum}
-                            onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${poNum}`); }}
-                            className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
-                            title={`View Purchase Order ${poNum}`}
-                          >
-                            PO: {poNum}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
+          key: 'id', header: 'MR # & Date', sortable: true,
+          render: (_, row) => {
+            const linkedWoList: string[] = Array.isArray(row.workOrderNos)
+              ? row.workOrderNos
+              : (typeof row.workOrderNos === 'string'
+                  ? (() => { try { const w = JSON.parse(row.workOrderNos); return Array.isArray(w) ? w : [row.workOrderNos]; } catch { return [row.workOrderNos]; } })()
+                  : (row.workOrderNo ? [row.workOrderNo] : []));
+            const linkedPoList: string[] = Array.isArray(row.poIds)
+              ? row.poIds
+              : (typeof row.poIds === 'string'
+                  ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                  : (row.poId ? [row.poId] : []));
+            return (
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400">{row.id}</span>
+                  {linkedWoList.slice(0, 2).map((woNum: string) => (
+                    <span
+                      key={woNum}
+                      onClick={(e) => { e.stopPropagation(); navigate('/production/work-orders'); }}
+                      className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 font-mono font-bold border border-purple-500/30 cursor-pointer"
+                    >
+                      WO: {woNum}
+                    </span>
+                  ))}
+                  {linkedPoList.slice(0, 2).map((poNum: string) => (
+                    <span
+                      key={poNum}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${poNum}`); }}
+                      className="text-[10px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle cursor-pointer"
+                    >
+                      PO: {poNum}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-[10.5px] text-muted font-mono">
+                  {formatDate(row.date)} • {row.department || 'General'} Dept
                 </div>
               </div>
+            );
+          }
+        },
+        {
+          key: 'requestedBy', header: 'Requester', width: '140px', sortable: true,
+          render: v => (
+            <div>
+              <p className="text-xs font-bold text-primary uppercase truncate">{String(v || 'Staff')}</p>
             </div>
           )
         },
-        { key: 'requestedBy', header: 'Requester', width: '140px', sortable: true, render: v => <span className="text-xs text-secondary">{String(v)}</span> },
+        {
+          key: 'items', header: 'Requested Items',
+          render: (_, row) => renderItemPill(row.items, 'Material Request Items')
+        },
         { key: 'status', header: 'Status', width: '110px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
         {
           key: 'fulfillment', header: 'PO / GRN Pipeline', width: '140px',
@@ -1217,7 +1301,11 @@ export const PurchasingHub: React.FC = () => {
             </div>
           )
         },
-        { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
+        { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs font-bold text-primary uppercase truncate block max-w-[170px]">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
+        {
+          key: 'items', header: 'Items Received',
+          render: (_, row) => renderItemPill(row.items, row.isCustomerSample ? 'Customer Sample' : 'Received Items')
+        },
         { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
         {
           key: 'billing', header: 'Billed / Paid', width: '140px',
@@ -1383,17 +1471,26 @@ export const PurchasingHub: React.FC = () => {
           </div>
         )
       },
-      { key: 'supplier', header: 'Vendor', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierName(row.supplierId)}</span> },
+      { key: 'supplier', header: 'Vendor', width: '180px', render: (_, row) => <span className="text-xs font-bold text-primary uppercase truncate block max-w-[170px]">{getSupplierName(row.supplierId)}</span> },
+      {
+        key: 'items', header: 'Billed Items',
+        render: (_, row) => renderItemPill(row.items, row.billCategory || 'Vendor Bill')
+      },
       { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
       {
-        key: 'amount', header: 'Amount / Paid', align: 'right', sortable: true,
+        key: 'amount', header: 'Value & Tax / Paid', align: 'right', sortable: true,
         render: (v, row) => {
           const total = Number(v || 0);
           const paid = Number(row.paidAmount || 0);
           return (
             <div className="text-right">
-              <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono block">{formatCurrency(total, true)}</span>
-              {paid > 0 && <span className="text-[10px] font-mono text-emerald-600">Paid: {formatCurrency(paid, true)}</span>}
+              <span className="text-xs font-black font-mono text-primary block">{formatCurrency(total, true)}</span>
+              {renderTaxPills(row)}
+              {paid > 0 && (
+                <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
+                  Paid: {formatCurrency(paid, true)}
+                </span>
+              )}
             </div>
           );
         }
