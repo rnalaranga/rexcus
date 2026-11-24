@@ -459,6 +459,11 @@ export const AccountingHub: React.FC = () => {
                         <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                           {j.status || 'POSTED'}
                         </span>
+                        {/\(realis?ed\b/i.test(j.description || '') && (
+                          <span className="text-[10px] bg-teal-500/15 text-teal-600 dark:text-teal-300 border border-teal-500/30 px-2 py-0.5 rounded-full font-bold tracking-wider">
+                            (Realised)
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted mt-0.5 truncate">{j.description || 'No description'}</p>
                     </div>

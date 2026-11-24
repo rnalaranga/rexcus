@@ -113,7 +113,7 @@ export const DailyCashbook: React.FC = () => {
   React.useEffect(() => {
     if (payeeCategory === 'supplier' && selectedSupplierId) {
       setLoadingSupplierBills(true);
-      fetch(`/api/purchasing/bills?supplierId=${encodeURIComponent(selectedSupplierId)}&status=unpaid`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/purchasing/bills?supplierId=${encodeURIComponent(selectedSupplierId)}&status=unpaid`)
         .then(r => r.json())
         .then(res => {
           const list = Array.isArray(res) ? res : (res.bills || []);

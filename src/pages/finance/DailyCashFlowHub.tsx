@@ -245,7 +245,7 @@ export const DailyCashFlowHub: React.FC = () => {
   useEffect(() => {
     if (voucherForm.payeeType === 'supplier' && voucherForm.payeeId) {
       setLoadingSupplierBills(true);
-      fetch(`/api/purchasing/bills?supplierId=${encodeURIComponent(voucherForm.payeeId)}&status=unpaid`)
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/purchasing/bills?supplierId=${encodeURIComponent(voucherForm.payeeId)}&status=unpaid`)
         .then(r => r.json())
         .then(res => {
           const bills = Array.isArray(res) ? res : (res.bills || []);
@@ -2433,7 +2433,7 @@ export const DailyCashFlowHub: React.FC = () => {
                   setLinkingBusy(true);
                   try {
                     const reference = linkingTx.refNo || linkingTx.voucherNo || linkingTx.chequeNo || linkingTx.id;
-                    const res = await fetch('/api/finance/daily-cash-flow/link-journal', {
+                    const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/daily-cash-flow/link-journal`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ reference, journalId: linkJournalId.trim() }),

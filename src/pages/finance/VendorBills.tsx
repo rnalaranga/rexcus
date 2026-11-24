@@ -80,7 +80,7 @@ export const VendorBills: React.FC = () => {
   const handleSyncGL = async () => {
     try {
       setIsSyncingGL(true);
-      const res = await fetch('/api/finance/bills/sync-gl', { method: 'POST' });
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/bills/sync-gl`, { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
         toast(`Sync Complete! ${data.syncedBills} bills synced, ${data.glEntriesCreated} GL entries updated, Input VAT: Rs. ${Number(data.vatReceivableTotal || 0).toLocaleString()}`, 'success');
@@ -975,7 +975,7 @@ export const VendorBills: React.FC = () => {
                         onClick={async () => {
                           try {
                             setLinkingVoucherId(v.id);
-                            const res = await fetch(`/api/finance/payment-vouchers/${encodeURIComponent(v.id)}/link-bill`, {
+                            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/payment-vouchers/${encodeURIComponent(v.id)}/link-bill`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ billId: linkBill.id, billNo: linkBill.invoiceNo || linkBill.id })

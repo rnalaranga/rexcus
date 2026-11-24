@@ -86,7 +86,7 @@ export const TaxReport: React.FC = () => {
                        <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
                          <td className="p-2">{new Date(line.date).toLocaleDateString()}</td>
                          <td className="p-2 font-mono text-[10px]">{line.reference}</td>
-                         <td className="p-2">{line.accountId}</td>
+                         <td className="p-2">{line.accountCode ? `${line.accountCode} - ${line.accountName || ''}` : (line.accountName || line.accountId)}</td>
                          <td className="p-2 text-right font-mono">{line.debit > 0 ? formatCurrency(line.debit) : '-'}</td>
                          <td className="p-2 text-right font-mono">{line.credit > 0 ? formatCurrency(line.credit) : '-'}</td>
                        </tr>

@@ -11162,9 +11162,12 @@ app.post('/api/invoices', async (req, res) => {
       }
 
       const isProformaInvoice = Boolean(data.isProforma || data.invoiceType === 'proforma' || data.status === 'proforma');
+      const isDraftInvoice = String(data.status || '').toLowerCase() === 'draft';
       const isOpeningInvoice = Boolean(data.invoiceType === 'opening' || data.isOpeningBalance || data.status === 'opening');
 
-      if (isOpeningInvoice && arAcc.length > 0) {
+      if (isDraftInvoice) {
+        // Draft invoices do not recognize revenue or AR in GL until issued/sent
+      } else if (isOpeningInvoice && arAcc.length > 0) {
         // LKAS 1 / LKAS 8 Opening AR Recognition:
         // Debit: Accounts Receivable (1200)
         // Credit: Opening Balance Equity / Retained Earnings (3900)
@@ -11300,7 +11303,7 @@ app.post('/api/invoices', async (req, res) => {
 
         await db.query('INSERT INTO journal_entries SET ?', {
           id: jeId,
-          date: data.date,
+          date: safeData.date || data.date,
           reference: data.invoiceNo || data.id,
           description: `Auto GL: Invoice Issued (${data.invoiceNo || data.id})`,
           totalAmount: invTotal
@@ -11563,7 +11566,92 @@ app.put('/api/invoices/:id', async (req, res) => {
           'UPDATE payment_receipts SET reference = ? WHERE reference = ? OR reference = ?',
           [targetInvoiceNo, oldId, oldNo]
         );
+        await db.query(
+          'UPDATE payment_receipts SET invoiceId = ?, invoiceNo = ? WHERE invoiceId = ? OR invoiceNo = ? OR invoiceId = ? OR invoiceNo = ?',
+          [targetInvoiceNo, targetInvoiceNo, oldId, oldId, oldNo, oldNo]
+        );
       } catch (e) { console.error('Error cascading invoice change to payment receipts:', e); }
+    }
+
+    // Re-sync Invoice Recognition GL if total/subtotal/tax/status changed (without touching payment JEs)
+    try {
+      const [updatedRows]: any = await db.query('SELECT * FROM invoices WHERE id = ? LIMIT 1', [targetInvoiceNo || oldId]);
+      if (updatedRows && updatedRows.length > 0) {
+        const inv = updatedRows[0];
+        const isProf = Boolean(inv.isProforma || inv.invoiceType === 'proforma' || inv.status === 'proforma' || String(inv.invoiceNo || '').startsWith('PI-'));
+        const isDraft = String(inv.status || '').toLowerCase() === 'draft';
+        const financialChanged =
+          data.total !== undefined ||
+          data.subtotal !== undefined ||
+          data.taxAmount !== undefined ||
+          data.status !== undefined;
+
+        if (financialChanged && !isProf) {
+          const refKeys = Array.from(new Set([oldId, oldNo, inv.id, inv.invoiceNo].filter(Boolean)));
+          const [existingJes]: any = await db.query(
+            'SELECT id FROM journal_entries WHERE reference IN (?) AND (description LIKE "Auto GL: Invoice%" OR description LIKE "Auto GL: Customer Opening%")',
+            [refKeys]
+          );
+          for (const je of (existingJes || [])) {
+            const [lines]: any = await db.query('SELECT accountId, debit, credit FROM journal_lines WHERE entryId = ?', [je.id]);
+            for (const l of lines) {
+              const [accRows]: any = await db.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [l.accountId]);
+              if (!accRows.length) continue;
+              const isDebitNormal = accRows[0].type === 'Asset' || accRows[0].type === 'Expense';
+              const delta = Number(l.debit || 0) - Number(l.credit || 0);
+              await db.query(
+                `UPDATE chart_of_accounts SET balance = balance ${isDebitNormal ? '-' : '+'} ? WHERE id = ?`,
+                [delta, l.accountId]
+              );
+            }
+            await db.query('DELETE FROM journal_lines WHERE entryId = ?', [je.id]);
+            await db.query('DELETE FROM journal_entries WHERE id = ?', [je.id]);
+          }
+
+          if (!isDraft && Number(inv.total || inv.amount || 0) > 0) {
+            const invTotal = Number(inv.total || inv.amount || 0);
+            const taxAmt = Number(inv.taxAmount || 0);
+            let invSub = Number(inv.subtotal || 0);
+            if (invSub <= 0 || (taxAmt > 0 && invSub >= invTotal)) {
+              invSub = Math.max(0, Math.round((invTotal - taxAmt) * 100) / 100);
+            }
+            const [arAcc]: any = await db.query(
+              'SELECT id FROM chart_of_accounts WHERE (id = "ACC-002" OR code = "1200" OR name LIKE "%Accounts Receivable%" OR name LIKE "%Receivable%") AND type = "Asset" ORDER BY CASE WHEN id = "ACC-002" THEN 1 WHEN code = "1200" THEN 2 ELSE 3 END LIMIT 1'
+            );
+            const [salesAcc]: any = await db.query(
+              'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Sales%" OR name LIKE "%Revenue%") AND type = "Revenue" LIMIT 1'
+            );
+            if (arAcc.length > 0 && salesAcc.length > 0) {
+              const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
+              const invDate = inv.date ? String(inv.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+              await db.query('INSERT INTO journal_entries SET ?', {
+                id: jeId,
+                date: invDate,
+                reference: inv.invoiceNo || inv.id,
+                description: `Auto GL: Invoice Issued (${inv.invoiceNo || inv.id})`,
+                totalAmount: invTotal
+              });
+              const customerPartyId = inv.customerId || inv.leadId || null;
+              const newLines: any[] = [
+                [`JL-${jeId}-1`, jeId, arAcc[0].id, invTotal, 0, customerPartyId, 'Customer'],
+                [`JL-${jeId}-2`, jeId, salesAcc[0].id, 0, invSub, null, null]
+              ];
+              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invTotal, arAcc[0].id]);
+              await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [invSub, salesAcc[0].id]);
+              const taxDiff = Math.round((invTotal - invSub) * 100) / 100;
+              if (taxDiff > 0) {
+                const [vatAcc]: any = await db.query('SELECT id FROM chart_of_accounts WHERE code = "2210" OR name LIKE "%Output VAT%" OR name LIKE "%Tax Payable%" LIMIT 1');
+                const taxAccId = vatAcc.length > 0 ? vatAcc[0].id : 'acc_2200';
+                newLines.push([`JL-${jeId}-3`, jeId, taxAccId, 0, taxDiff, null, null]);
+                await db.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [taxDiff, taxAccId]);
+              }
+              await db.query('INSERT INTO journal_lines (id, entryId, accountId, debit, credit, partyId, partyType) VALUES ?', [newLines]);
+            }
+          }
+        }
+      }
+    } catch (eGlSync) {
+      console.error('Error re-syncing invoice GL on update:', eGlSync);
     }
 
     res.json({ success: true, id: targetInvoiceNo || oldId, invoiceNo: targetInvoiceNo || oldNo });
@@ -11871,6 +11959,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       console.warn('Could not sync payment status to finished_goods_orders:', orderSyncErr);
     }
 
+    let paymentJeId: string | null = null;
     // Auto GL: Ensure Accounts Receivable, Sales Account, and Cash/Bank are properly balanced
     try {
       let [arAcc]: any = await db.query(
@@ -11910,6 +11999,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       // Record Payment: Debit Bank/Cash Account or Offset Account (Customer Advances/Liability), Credit Accounts Receivable
       if (depositAccountId && arAcc && arAcc.length > 0) {
         const jeId = 'JE-' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 100);
+        paymentJeId = jeId;
         const isOffset = (payment.method || '').toLowerCase().includes('setoff') || (payment.method || '').toLowerCase().includes('set off') || (payment.method || '').toLowerCase().includes('advance offset') || (payment.method || '').toLowerCase().includes('prior advance');
         const jeDesc = isOffset
           ? `Auto GL: Customer Prior Advance Set-off against Invoice (${invoice.invoiceNo || invoice.id}) -> Offset Account: ${depositAccountName || 'Customer Advances'}`
@@ -11981,7 +12071,7 @@ app.post('/api/invoices/:id/payments', async (req, res) => {
       receivedBy: payment.receivedBy || 'Accounts Officer',
       notes: payment.notes || `Payment received for Invoice #${invoice.invoiceNo || invoice.id}`,
       status: 'Received',
-      journalEntryId: `JE-${newPayment.id}`,
+      journalEntryId: paymentJeId || `JE-${newPayment.id}`,
       createdAt: defaultMysqlDate,
       updatedAt: defaultMysqlDate
     };
@@ -15875,91 +15965,133 @@ app.put('/api/finance/cheques/:id/realize', async (req, res) => {
       }
     }
 
-    // Create Official Journal Entry for Realization
-    const jeId = `JE-REAL-${chq.id.replace(/[^A-Za-z0-9_-]/g, '')}`;
-    const jeData = {
-      id: jeId,
-      date: actualRealizedDate,
-      reference: `CHQ-${chq.chequeNo}`,
-      description: `Cheque Realization (${actualRealizedDate}): #${chq.chequeNo} (${direction === 'IN' ? 'Inward' : 'Outward'}) - ${chq.payeeName}`,
-      totalAmount: numAmount,
-      createdBy: 'Accounts Realization',
-      status: 'posted',
-      createdAt: nowIso
-    };
-
-    // Remove any previous realization journal entry if reverting/re-clearing
+    // Check if an existing GL Journal Entry already exists for this cheque (posted when cheque was received/issued)
+    let existingJe: any = null;
     try {
-      await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [jeId]);
-      await conn.query('DELETE FROM journal_entries WHERE id = ?', [jeId]);
+      const candidateRefs = [
+        chq.sourceRef,
+        chq.voucherNo,
+        chq.chequeNo,
+        `CHQ-${chq.chequeNo}`
+      ].filter(Boolean);
+
+      // 1. Check linked payment_receipts.journalEntryId
+      if (chq.sourceTable === 'payment_receipts' || chq.direction === 'IN') {
+        const [prJeRows]: any = await conn.query(
+          `SELECT je.id, je.description FROM payment_receipts pr
+           JOIN journal_entries je ON pr.journalEntryId = je.id
+           WHERE pr.id = ? OR pr.receiptNo = ? OR (pr.chequeNo IS NOT NULL AND pr.chequeNo = ?)
+           LIMIT 1`,
+          [id, chq.sourceRef || id, chq.chequeNo]
+        );
+        if (prJeRows && prJeRows.length > 0) existingJe = prJeRows[0];
+      }
+
+      // 2. Check realizedJournalEntryId on cheques_register
+      if (!existingJe && chq.realizedJournalEntryId) {
+        const [rJeRows]: any = await conn.query('SELECT id, description FROM journal_entries WHERE id = ? LIMIT 1', [chq.realizedJournalEntryId]);
+        if (rJeRows && rJeRows.length > 0) existingJe = rJeRows[0];
+      }
+
+      // 3. Fallback: match by reference or cheque number in journal_entries
+      if (!existingJe && candidateRefs.length > 0) {
+        const [refJeRows]: any = await conn.query(
+          'SELECT id, description FROM journal_entries WHERE reference IN (?) LIMIT 1',
+          [candidateRefs]
+        );
+        if (refJeRows && refJeRows.length > 0) existingJe = refJeRows[0];
+      }
     } catch (e) {}
 
-    await conn.query('INSERT INTO journal_entries SET ?', jeData);
+    let jeId = existingJe ? existingJe.id : `JE-REAL-${chq.id.replace(/[^A-Za-z0-9_-]/g, '')}`;
 
-    if (direction === 'IN') {
-      // Inward Cheque Realization:
-      // Debit: Bank Account (Funds entered bank on realization date)
-      await conn.query('INSERT INTO journal_lines SET ?', {
-        id: `JL-${jeId}-1`,
-        entryId: jeId,
-        accountId: finalRealizedAccId,
-        partyType: 'Customer',
-        partyId: chq.partyId || null,
-        description: `Inward Cheque #${chq.chequeNo} Realized in Bank`,
-        debit: numAmount,
-        credit: 0
-      });
-      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, finalRealizedAccId]);
-
-      // Credit: Customer Receivable / Advance / Cheque Clearing Account
-      let creditAccId = chq.clearingAccountId;
-      if (!creditAccId) {
-        const [arAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR name LIKE "%Customer Advance%") LIMIT 1');
-        creditAccId = arAcc && arAcc.length > 0 ? arAcc[0].id : 'acc_1500';
-      }
-      await conn.query('INSERT INTO journal_lines SET ?', {
-        id: `JL-${jeId}-2`,
-        entryId: jeId,
-        accountId: creditAccId,
-        partyType: 'Customer',
-        partyId: chq.partyId || null,
-        description: `Customer AR Credit for Realized Cheque #${chq.chequeNo}`,
-        debit: 0,
-        credit: numAmount
-      });
-      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, creditAccId]);
+    if (existingJe) {
+      // Cheque was already posted to GL upon receipt/issue -> do NOT duplicate GL!
+      // Append (Realised) in brackets to the existing GL entry description.
+      const prevDesc = String(existingJe.description || '').trim();
+      const hasRealised = /\(realis?ed\b/i.test(prevDesc);
+      const updatedDesc = hasRealised ? prevDesc : `${prevDesc ? prevDesc + ' ' : ''}(Realised)`;
+      await conn.query('UPDATE journal_entries SET description = ? WHERE id = ?', [updatedDesc, jeId]);
     } else {
-      // Outward Cheque Realization:
-      // Debit: Vendor Accounts Payable / Clearing Account
-      let debitAccId = chq.clearingAccountId;
-      if (!debitAccId) {
-        const [apAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Payable%" OR name LIKE "%Creditor%") LIMIT 1');
-        debitAccId = apAcc && apAcc.length > 0 ? apAcc[0].id : 'acc_2000';
-      }
-      await conn.query('INSERT INTO journal_lines SET ?', {
-        id: `JL-${jeId}-1`,
-        entryId: jeId,
-        accountId: debitAccId,
-        partyType: 'Supplier',
-        partyId: chq.partyId || null,
-        description: `AP Settlement on Realization for Cheque #${chq.chequeNo}`,
-        debit: numAmount,
-        credit: 0
-      });
-      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, debitAccId]);
+      // Standalone cheque with no prior GL entry -> create GL entry now with (Realised)
+      const jeData = {
+        id: jeId,
+        date: actualRealizedDate,
+        reference: `CHQ-${chq.chequeNo}`,
+        description: `Cheque Realization (${actualRealizedDate}): #${chq.chequeNo} (${direction === 'IN' ? 'Inward' : 'Outward'}) - ${chq.payeeName} (Realised)`,
+        totalAmount: numAmount,
+        createdBy: 'Accounts Realization',
+        status: 'posted',
+        createdAt: nowIso
+      };
 
-      // Credit: Bank Account (Funds leave bank on realization date)
-      await conn.query('INSERT INTO journal_lines SET ?', {
-        id: `JL-${jeId}-2`,
-        entryId: jeId,
-        accountId: finalRealizedAccId,
-        partyType: 'Supplier',
-        partyId: chq.partyId || null,
-        description: `Outward Cheque #${chq.chequeNo} Cleared from Bank`,
-        debit: 0,
-        credit: numAmount
-      });
-      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, finalRealizedAccId]);
+      await conn.query('INSERT INTO journal_entries SET ?', jeData);
+
+      if (direction === 'IN') {
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-1`,
+          entryId: jeId,
+          accountId: finalRealizedAccId,
+          partyType: 'Customer',
+          partyId: chq.partyId || null,
+          description: `Inward Cheque #${chq.chequeNo} (Realised) in Bank`,
+          debit: numAmount,
+          credit: 0
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, finalRealizedAccId]);
+
+        let creditAccId = chq.clearingAccountId;
+        if (!creditAccId) {
+          const [arAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Receivable%" OR name LIKE "%Customer Advance%") LIMIT 1');
+          creditAccId = arAcc && arAcc.length > 0 ? arAcc[0].id : 'acc_1500';
+        }
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-2`,
+          entryId: jeId,
+          accountId: creditAccId,
+          partyType: 'Customer',
+          partyId: chq.partyId || null,
+          description: `Customer AR Credit for Cheque #${chq.chequeNo} (Realised)`,
+          debit: 0,
+          credit: numAmount
+        });
+        const [cAccRows]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [creditAccId]);
+        const cType = cAccRows && cAccRows.length > 0 ? String(cAccRows[0].type || '') : 'Asset';
+        const cDelta = (cType === 'Asset' || cType === 'Expense') ? -numAmount : numAmount;
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [cDelta, creditAccId]);
+      } else {
+        let debitAccId = chq.clearingAccountId;
+        if (!debitAccId) {
+          const [apAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE (name LIKE "%Payable%" OR name LIKE "%Creditor%") LIMIT 1');
+          debitAccId = apAcc && apAcc.length > 0 ? apAcc[0].id : 'acc_2000';
+        }
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-1`,
+          entryId: jeId,
+          accountId: debitAccId,
+          partyType: 'Supplier',
+          partyId: chq.partyId || null,
+          description: `AP Settlement on Realization for Cheque #${chq.chequeNo} (Realised)`,
+          debit: numAmount,
+          credit: 0
+        });
+        const [dAccRows]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [debitAccId]);
+        const dType = dAccRows && dAccRows.length > 0 ? String(dAccRows[0].type || '') : 'Liability';
+        const dDelta = (dType === 'Asset' || dType === 'Expense') ? numAmount : -numAmount;
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [dDelta, debitAccId]);
+
+        await conn.query('INSERT INTO journal_lines SET ?', {
+          id: `JL-${jeId}-2`,
+          entryId: jeId,
+          accountId: finalRealizedAccId,
+          partyType: 'Supplier',
+          partyId: chq.partyId || null,
+          description: `Outward Cheque #${chq.chequeNo} (Realised) Cleared from Bank`,
+          debit: 0,
+          credit: numAmount
+        });
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, finalRealizedAccId]);
+      }
     }
 
     // Update statuses across all related tables
@@ -16411,8 +16543,11 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
         debit: 0,
         credit: amountVal
       });
-      // Update AR/Advance balance
-      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [amountVal, creditAccountId]);
+      // Update AR/Advance balance based on account normal balance
+      const [creditAccRows]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [creditAccountId]);
+      const creditAccType = creditAccRows && creditAccRows.length > 0 ? String(creditAccRows[0].type || '') : 'Asset';
+      const creditDelta = (creditAccType === 'Asset' || creditAccType === 'Expense') ? -amountVal : amountVal;
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [creditDelta, creditAccountId]);
     } catch (jeErr) {
       console.warn('Auto journal entry for payment receipt partially skipped:', jeErr);
     }
@@ -16542,11 +16677,15 @@ app.delete('/api/finance/payment-receipts/:id', async (req, res) => {
     if (receipt.journalEntryId) {
       const [lines]: any = await conn.query('SELECT * FROM journal_lines WHERE entryId = ?', [receipt.journalEntryId]);
       for (const line of lines) {
-        if (Number(line.debit) > 0) {
-          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [Number(line.debit), line.accountId]);
-        }
-        if (Number(line.credit) > 0) {
-          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [Number(line.credit), line.accountId]);
+        const [accRows]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [line.accountId]);
+        if (!accRows || accRows.length === 0) continue;
+        const accType = String(accRows[0].type || '');
+        const isDebitNormal = accType === 'Asset' || accType === 'Expense';
+        const balanceChange = Number(line.debit || 0) - Number(line.credit || 0);
+        if (isDebitNormal) {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [balanceChange, line.accountId]);
+        } else {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [balanceChange, line.accountId]);
         }
       }
       await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [receipt.journalEntryId]);
@@ -16853,7 +16992,7 @@ app.get('/api/finance/dashboard', async (req, res) => {
       const name = acc.name ? String(acc.name).toLowerCase() : '';
       const bal = Number(acc.balance) || 0;
       
-      if (subtype.includes('bank') || subtype.includes('cash') || name.includes('bank') || name.includes('cash')) {
+      if (type === 'asset' && (subtype.includes('bank') || subtype.includes('cash') || name.includes('bank') || name.includes('cash'))) {
         totalCash += bal;
         cashAccounts.push({
           id: acc.id,
@@ -17238,18 +17377,148 @@ app.get('/api/finance/reports/aged', async (req, res) => {
 // ==========================================
 app.get('/api/finance/reports/tax', async (req, res) => {
   try {
-    // Basic tax report logic: Get all tax accounts and their balances
+    // Get all tax accounts and their balances
     const [taxAccounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE isTaxAccount = true');
     // Also get journal lines hitting tax accounts for detailed breakdown
-    const [taxLines]: any = await db.query('SELECT jl.*, je.date, je.reference FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC');
+    const [taxLines]: any = await db.query(
+      'SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode, ca.type as accountType FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC'
+    );
     
+    // Net Tax Liability = Output Tax Liabilities (Credit-normal) minus Input Tax Receivables (Asset/Debit-normal)
     let totalTaxPayable = 0;
     taxAccounts.forEach((acc: any) => {
-      totalTaxPayable += Number(acc.balance);
+      const bal = Number(acc.balance) || 0;
+      const t = String(acc.type || '').toLowerCase();
+      if (t === 'asset' || t === 'expense') {
+        totalTaxPayable -= bal;
+      } else {
+        totalTaxPayable += bal;
+      }
     });
 
     res.json({ taxAccounts, taxLines, totalTaxPayable });
   } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ==========================================
+// BANK RECONCILIATION ENGINE
+// ==========================================
+async function ensureBankReconciliationTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS bank_reconciliation_matches (
+      id VARCHAR(64) PRIMARY KEY,
+      accountId VARCHAR(64) NOT NULL,
+      journalLineId VARCHAR(64) NOT NULL,
+      statementDate VARCHAR(30) NULL,
+      statementDesc VARCHAR(255) NULL,
+      statementRef VARCHAR(100) NULL,
+      statementAmount DECIMAL(15,2) DEFAULT 0.00,
+      reconciledAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reconciledBy VARCHAR(100) NULL,
+      UNIQUE KEY uniq_bank_rec_jl (journalLineId)
+    )
+  `);
+}
+
+app.get('/api/finance/bank-reconciliation/ledger', async (req, res) => {
+  try {
+    await ensureBankReconciliationTable();
+    const { accountId, startDate, endDate } = req.query as Record<string, string>;
+    if (!accountId) {
+      return res.status(400).json({ error: 'accountId is required' });
+    }
+
+    const [accRows]: any = await db.query('SELECT * FROM chart_of_accounts WHERE id = ? LIMIT 1', [accountId]);
+    if (!accRows || accRows.length === 0) {
+      return res.status(404).json({ error: 'Bank account not found' });
+    }
+
+    let query = `
+      SELECT jl.id, jl.entryId, jl.accountId, jl.debit, jl.credit, jl.description as lineDescription,
+             je.date, je.reference, je.description as entryDescription,
+             brm.id as matchId, brm.statementDate, brm.statementDesc, brm.statementRef, brm.statementAmount, brm.reconciledAt
+      FROM journal_lines jl
+      JOIN journal_entries je ON jl.entryId = je.id
+      LEFT JOIN bank_reconciliation_matches brm ON jl.id = brm.journalLineId
+      WHERE jl.accountId = ?
+    `;
+    const params: any[] = [accountId];
+    if (startDate) {
+      query += ' AND DATE(je.date) >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND DATE(je.date) <= ?';
+      params.push(endDate);
+    }
+    query += ' ORDER BY je.date DESC, jl.id DESC';
+
+    const [lines]: any = await db.query(query, params);
+    res.json({
+      account: accRows[0],
+      lines: (lines || []).map((l: any) => ({
+        ...l,
+        debit: Number(l.debit || 0),
+        credit: Number(l.credit || 0),
+        isReconciled: Boolean(l.matchId)
+      }))
+    });
+  } catch (error: any) {
+    console.error('Bank reconciliation ledger error:', error);
+    res.status(500).json({ error: error.message || 'Failed to load bank ledger' });
+  }
+});
+
+app.post('/api/finance/bank-reconciliation/match', async (req, res) => {
+  try {
+    await ensureBankReconciliationTable();
+    const { accountId, matches, reconciledBy } = req.body;
+    if (!accountId || !Array.isArray(matches) || matches.length === 0) {
+      return res.status(400).json({ error: 'accountId and matches array are required' });
+    }
+
+    for (const m of matches) {
+      if (!m.journalLineId) continue;
+      const matchId = `BREC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 6)}`;
+      await db.query(
+        `INSERT INTO bank_reconciliation_matches
+         (id, accountId, journalLineId, statementDate, statementDesc, statementRef, statementAmount, reconciledBy)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           statementDate = VALUES(statementDate),
+           statementDesc = VALUES(statementDesc),
+           statementRef = VALUES(statementRef),
+           statementAmount = VALUES(statementAmount),
+           reconciledAt = CURRENT_TIMESTAMP,
+           reconciledBy = VALUES(reconciledBy)`,
+        [
+          matchId,
+          accountId,
+          m.journalLineId,
+          m.statementDate || null,
+          m.statementDesc ? String(m.statementDesc).slice(0, 255) : null,
+          m.statementRef ? String(m.statementRef).slice(0, 100) : null,
+          Number(m.statementAmount || 0),
+          reconciledBy || 'Finance'
+        ]
+      );
+    }
+
+    res.json({ success: true, count: matches.length });
+  } catch (error: any) {
+    console.error('Bank reconciliation match error:', error);
+    res.status(500).json({ error: error.message || 'Failed to save reconciliation matches' });
+  }
+});
+
+app.delete('/api/finance/bank-reconciliation/match/:journalLineId', async (req, res) => {
+  try {
+    await ensureBankReconciliationTable();
+    await db.query('DELETE FROM bank_reconciliation_matches WHERE journalLineId = ?', [req.params.journalLineId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to unmatch line' });
+  }
 });
 
 app.post('/api/finance/reports/custom', async (req, res) => {

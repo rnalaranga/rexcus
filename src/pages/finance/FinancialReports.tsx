@@ -1677,7 +1677,12 @@ export const FinancialReports: React.FC = () => {
                                   <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">{d}</td>
                                   <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{ref}</td>
                                   <td className="py-2.5 px-4 font-medium text-slate-800">
-                                    {desc}
+                                    <span>{desc.replace(/\s*\(Realis?ed\)/gi, '')}</span>
+                                    {/\(realis?ed\b/i.test(desc) && (
+                                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-teal-100 text-teal-800 border border-teal-300">
+                                        (Realised)
+                                      </span>
+                                    )}
                                     {l.lineDescription && l.entryDescription && l.lineDescription !== l.entryDescription && (
                                       <span className="block text-[10px] text-slate-500 font-normal mt-0.5">{l.lineDescription}</span>
                                     )}
