@@ -862,28 +862,73 @@ export const PurchasingHub: React.FC = () => {
                       </span>
                     ));
                   })()}
+                  {(() => {
+                    const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
+                    if (poGrns.length === 0) return null;
+                    return poGrns.slice(0, 2).map((g: any) => (
+                      <span
+                        key={g.id}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/grn-builder/${g.id}`); }}
+                        className="text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 px-1.5 py-0.5 font-mono font-bold border border-emerald-500/30 cursor-pointer"
+                        title={`Goods Receipt ${g.id}`}
+                      >
+                        GRN: {g.id}
+                      </span>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>
           )
         },
-        { key: 'contact', header: 'Contact', width: '160px', sortable: true, render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
-        { key: 'status', header: 'Receipt Status', width: '110px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
-        { 
-          key: 'billingStatus', header: 'Invoicing', width: '130px', 
-          render: (_, row) => {
-            const billed = Number(row.billedAmount || 0);
-            const total = Number(row.totalAmount || 0);
-            const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
+        { key: 'contact', header: 'Contact', width: '140px', sortable: true, render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierContact(row.supplierId)}</span> },
+        {
+          key: 'status', header: 'GRN / Receipt', width: '130px', sortable: true,
+          render: (v, row) => {
+            const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
             return (
               <div>
-                <Badge 
-                  value={bStatus === 'billed' ? 'Fully Billed' : bStatus === 'partially_billed' ? 'Partially Billed' : 'Unbilled'} 
-                  size="sm" 
-                />
+                <Badge value={String(v)} size="sm" />
+                <div className="text-[10px] text-muted font-mono mt-0.5">
+                  {poGrns.length > 0 ? `${poGrns.length} GRN Received` : 'Awaiting GRN'}
+                </div>
+              </div>
+            );
+          }
+        },
+        { 
+          key: 'billingStatus', header: 'Billed / Paid', width: '160px', 
+          render: (_, row) => {
+            const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
+            const billed = matchedBills.length > 0
+              ? matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0)
+              : Number(row.billedAmount || 0);
+            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const total = Number(row.totalAmount || 0);
+            const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
+            const pStatus = paid >= billed - 0.01 && billed > 0 ? 'Paid' : paid > 0 ? 'Partial Paid' : 'Unpaid';
+            return (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <Badge 
+                    value={bStatus === 'billed' ? 'Billed' : bStatus === 'partially_billed' ? 'Part. Billed' : 'Unbilled'} 
+                    size="sm" 
+                  />
+                  {billed > 0 && (
+                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${
+                      pStatus === 'Paid'
+                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                        : pStatus === 'Partial Paid'
+                        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                        : 'bg-rose-500/10 text-rose-600 border-rose-500/30'
+                    }`}>
+                      {pStatus}
+                    </span>
+                  )}
+                </div>
                 {billed > 0 && (
-                  <div className="text-xs text-muted font-mono mt-0.5">
-                    {formatCurrency(billed, true)} / {formatCurrency(total, true)}
+                  <div className="text-[10px] text-muted font-mono">
+                    Paid: {formatCurrency(paid, true)} / {formatCurrency(billed, true)}
                   </div>
                 )}
               </div>
@@ -954,12 +999,14 @@ export const PurchasingHub: React.FC = () => {
 
             const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
             matchedBills.forEach((b: any) => {
+              const bTotal = Number(b.totalAmount || b.amount || 0);
+              const bPaid = Number(b.paidAmount || 0);
               traces.push({
                 type: 'bill',
                 title: 'Vendor Bill',
                 reference: b.invoiceNo || b.id,
-                subtitle: `Bill: ${formatCurrency(Number(b.totalAmount || b.amount || 0))}`,
-                statusBadge: { label: b.status || 'Billed', variant: 'warning' },
+                subtitle: `Bill: ${formatCurrency(bTotal)} | Paid: ${formatCurrency(bPaid)}`,
+                statusBadge: { label: bPaid >= bTotal - 0.01 && bTotal > 0 ? 'Paid' : bPaid > 0 ? 'Partial Paid' : (b.status || 'Unpaid'), variant: bPaid >= bTotal - 0.01 && bTotal > 0 ? 'success' : 'warning' },
                 navigateUrl: `/purchasing/bill-builder/${b.id}`
               });
             });
@@ -1033,8 +1080,28 @@ export const PurchasingHub: React.FC = () => {
             </div>
           )
         },
-        { key: 'requestedBy', header: 'Requester', width: '150px', sortable: true, render: v => <span className="text-xs text-secondary">{String(v)}</span> },
-        { key: 'status', header: 'Status', width: '120px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
+        { key: 'requestedBy', header: 'Requester', width: '140px', sortable: true, render: v => <span className="text-xs text-secondary">{String(v)}</span> },
+        { key: 'status', header: 'Status', width: '110px', sortable: true, render: v => <Badge value={String(v)} size="sm" /> },
+        {
+          key: 'fulfillment', header: 'PO / GRN Pipeline', width: '140px',
+          render: (_, row) => {
+            const linkedPos = pos.filter((p: any) => {
+              const pMrIds = Array.isArray(p.mrIds) ? p.mrIds : (typeof p.mrIds === 'string' ? (() => { try { return JSON.parse(p.mrIds || '[]'); } catch { return []; } })() : []);
+              return p.mrId === row.id || pMrIds.includes(row.id);
+            });
+            const linkedGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && linkedPos.some((p: any) => p.id === g.poId));
+            return (
+              <div className="text-[10.5px] font-mono space-y-0.5">
+                <div className={linkedPos.length > 0 ? 'text-blue-500 font-bold' : 'text-muted'}>
+                  {linkedPos.length > 0 ? `${linkedPos.length} PO(s) Issued` : 'No PO Yet'}
+                </div>
+                <div className={linkedGrns.length > 0 ? 'text-emerald-600 font-semibold' : 'text-muted'}>
+                  {linkedGrns.length > 0 ? `${linkedGrns.length} GRN Received` : 'Pending GRN'}
+                </div>
+              </div>
+            );
+          }
+        },
         { key: 'priority', header: 'Priority', width: '90px', sortable: true, render: v => <span className={`text-xs font-semibold uppercase ${v === 'High' ? 'text-red-500' : 'text-muted'}`}>{String(v)}</span> },
         { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
         {
@@ -1152,6 +1219,29 @@ export const PurchasingHub: React.FC = () => {
         },
         { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
         { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
+        {
+          key: 'billing', header: 'Billed / Paid', width: '140px',
+          render: (_, row) => {
+            if (row.isCustomerSample) return <span className="text-[10px] text-muted">Sample</span>;
+            const matchedBills = bills.filter((b: any) => b.grnId === row.id || (row.poId && b.poId === row.poId));
+            if (matchedBills.length === 0) {
+              return <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface2 text-muted border border-theme-subtle font-semibold">Unbilled</span>;
+            }
+            const totalB = matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0);
+            const totalP = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const isPaid = totalP >= totalB - 0.01 && totalB > 0;
+            return (
+              <div className="space-y-0.5">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20 font-bold">
+                  Billed ({matchedBills.length})
+                </span>
+                <div className={`text-[10px] font-mono font-semibold ${isPaid ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {isPaid ? 'Paid' : totalP > 0 ? `Paid ${formatCurrency(totalP, true)}` : 'Unpaid'}
+                </div>
+              </div>
+            );
+          }
+        },
         { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-xs text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
         { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
         {
@@ -1279,6 +1369,15 @@ export const PurchasingHub: React.FC = () => {
                     PO: {row.poId}
                   </span>
                 )}
+                {row.grnId && (
+                  <span 
+                    onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/grn-builder/${row.grnId}`); }}
+                    className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-none font-mono font-bold border border-emerald-500/30 cursor-pointer"
+                    title={`View Linked GRN ${row.grnId}`}
+                  >
+                    GRN: {row.grnId}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1286,7 +1385,19 @@ export const PurchasingHub: React.FC = () => {
       },
       { key: 'supplier', header: 'Vendor', width: '180px', render: (_, row) => <span className="text-xs text-secondary truncate">{getSupplierName(row.supplierId)}</span> },
       { key: 'status', header: 'Status', width: '90px', render: v => <Badge value={String(v)} size="sm" /> },
-      { key: 'amount', header: 'Amount', align: 'right', sortable: true, render: v => <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono">{formatCurrency(Number(v), true)}</span> },
+      {
+        key: 'amount', header: 'Amount / Paid', align: 'right', sortable: true,
+        render: (v, row) => {
+          const total = Number(v || 0);
+          const paid = Number(row.paidAmount || 0);
+          return (
+            <div className="text-right">
+              <span className="text-xs font-semibold text-rex-600 dark:text-rex-300 font-mono block">{formatCurrency(total, true)}</span>
+              {paid > 0 && <span className="text-[10px] font-mono text-emerald-600">Paid: {formatCurrency(paid, true)}</span>}
+            </div>
+          );
+        }
+      },
       { key: 'date', header: 'Date', sortable: true, render: v => <span className="text-xs text-muted">{String(v).split('T')[0]}</span> },
       {
         key: 'traceability', header: 'Traceability', align: 'center',

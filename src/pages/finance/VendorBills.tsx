@@ -24,6 +24,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
+import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
 
 type StatusFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'overdue';
 type SourceFilter = 'all' | 'grn' | 'manual';
@@ -241,8 +242,24 @@ export const VendorBills: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="text-[10.5px] text-muted flex items-center gap-1.5 mt-0.5">
-            <Calendar size={11} /> {formatDate(row.date)}
+          <div className="text-[10.5px] text-muted flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="inline-flex items-center gap-1"><Calendar size={11} /> {formatDate(row.date)}</span>
+            {row.poId && (
+              <span
+                onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.poId}`); }}
+                className="text-[10px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle cursor-pointer"
+              >
+                PO: {row.poId}
+              </span>
+            )}
+            {row.grnId && (
+              <span
+                onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/grn-builder/${row.grnId}`); }}
+                className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 font-mono font-bold border border-emerald-500/30 cursor-pointer"
+              >
+                GRN: {row.grnId}
+              </span>
+            )}
           </div>
         </div>
       )
@@ -326,6 +343,60 @@ export const VendorBills: React.FC = () => {
           return <Badge value="Partial" variant="warning" size="sm" />;
         }
         return <Badge value="Unpaid" variant="danger" size="sm" />;
+      }
+    },
+    {
+      key: 'traceability',
+      header: 'Traceability',
+      align: 'center',
+      render: (val, row) => {
+        const traces: TraceNode[] = [];
+        if (row.poId) {
+          traces.push({
+            type: 'po',
+            title: 'Purchase Order',
+            reference: row.poId,
+            subtitle: 'Originating PO',
+            statusBadge: { label: 'PO Linked', variant: 'info' },
+            navigateUrl: `/purchasing/po-builder/${row.poId}`
+          });
+        }
+        if (row.grnId) {
+          traces.push({
+            type: 'grn',
+            title: 'Goods Receipt',
+            reference: row.grnId,
+            subtitle: 'Goods Received Note',
+            statusBadge: { label: 'GRN', variant: 'success' },
+            navigateUrl: `/purchasing/grn-builder/${row.grnId}`
+          });
+        }
+        const linkedVouchers = vouchers.filter((v: any) => v.relatedBillId === row.id || (row.invoiceNo && v.relatedBillNo === row.invoiceNo));
+        linkedVouchers.forEach((v: any) => {
+          traces.push({
+            type: 'receipt',
+            title: 'Payment Voucher',
+            reference: v.voucherNo || v.id,
+            subtitle: `${v.paymentMethod || 'Payment'}: ${formatCurrency(Number(v.amount || 0))}`,
+            statusBadge: { label: 'Paid', variant: 'success' },
+            navigateUrl: `/finance/cash-flow`
+          });
+        });
+        if (row.supplierId) {
+          traces.push({
+            type: 'receipt',
+            title: 'Vendor Ledger',
+            reference: getSupplierName(row.supplierId),
+            subtitle: 'Supplier Account',
+            statusBadge: { label: 'Vendor', variant: 'neutral' },
+            navigateUrl: `/inventory/suppliers/${row.supplierId}`
+          });
+        }
+        return (
+          <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+            <TraceabilityDropdown title={`Bill #${row.billNo || row.id}`} traces={traces} />
+          </div>
+        );
       }
     },
     {

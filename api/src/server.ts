@@ -17427,27 +17427,190 @@ app.get('/api/finance/reports/aged', async (req, res) => {
 // ==========================================
 app.get('/api/finance/reports/tax', async (req, res) => {
   try {
-    // Get all tax accounts and their balances
-    const [taxAccounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE isTaxAccount = true');
-    // Also get journal lines hitting tax accounts for detailed breakdown
-    const [taxLines]: any = await db.query(
-      'SELECT jl.*, je.date, je.reference, ca.name as accountName, ca.code as accountCode, ca.type as accountType FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id JOIN chart_of_accounts ca ON jl.accountId = ca.id WHERE ca.isTaxAccount = true ORDER BY je.date DESC'
+    const { startDate, endDate, accountId, taxCategory } = req.query as Record<string, string>;
+
+    // 1. Resolve configured tax account IDs from settings
+    const [taxSettings]: any = await db.query(
+      "SELECT val FROM settings WHERE id IN ('default_vat_output_account_id', 'default_vat_input_account_id', 'default_sscl_payable_account_id', 'default_sscl_expense_account_id') AND val IS NOT NULL AND val != ''"
     );
-    
-    // Net Tax Liability = Output Tax Liabilities (Credit-normal) minus Input Tax Receivables (Asset/Debit-normal)
-    let totalTaxPayable = 0;
+    const configuredIds = (taxSettings || []).map((r: any) => r.val).filter(Boolean);
+
+    // 2. Fetch all tax-related accounts (isTaxAccount = true OR configured in settings OR VAT/SSCL/Tax codes/names)
+    let accQuery = `
+      SELECT * FROM chart_of_accounts
+      WHERE isTaxAccount = 1
+         OR code IN ('1300', '1690', '2200', '2210', '2220', '5010')
+         OR name LIKE '%VAT%'
+         OR name LIKE '%SSCL%'
+         OR name LIKE '%Tax Payable%'
+         OR name LIKE '%Tax Receivable%'
+         OR subtype LIKE '%Tax%'
+    `;
+    const accParams: any[] = [];
+    if (configuredIds.length > 0) {
+      accQuery += ' OR id IN (?)';
+      accParams.push(configuredIds);
+    }
+    accQuery += ' ORDER BY code ASC';
+
+    const [rawTaxAccounts]: any = await db.query(accQuery, accParams);
+
+    const classifyTax = (acc: any): 'vat' | 'sscl' | 'other' => {
+      const n = `${acc.name || ''} ${acc.code || ''}`.toLowerCase();
+      if (n.includes('vat') || acc.code === '1300' || acc.code === '1690' || acc.code === '2210') return 'vat';
+      if (n.includes('sscl') || acc.code === '2220' || acc.code === '5010') return 'sscl';
+      return 'other';
+    };
+
+    let taxAccounts = (rawTaxAccounts || []).map((acc: any) => ({
+      ...acc,
+      taxCategory: classifyTax(acc)
+    }));
+
+    if (taxCategory && taxCategory !== 'all') {
+      taxAccounts = taxAccounts.filter((a: any) => a.taxCategory === taxCategory);
+    }
+    if (accountId && accountId !== 'all') {
+      taxAccounts = taxAccounts.filter((a: any) => a.id === accountId);
+    }
+
+    const taxAccountIds = taxAccounts.map((a: any) => a.id);
+
+    // 3. If date range is provided, compute period movement for each tax account from journal_lines
+    if (taxAccountIds.length > 0 && (startDate || endDate)) {
+      let sumQ = `
+        SELECT jl.accountId, COALESCE(SUM(jl.debit), 0) as sumDr, COALESCE(SUM(jl.credit), 0) as sumCr
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.entryId = je.id
+        WHERE jl.accountId IN (?)
+      `;
+      const sumParams: any[] = [taxAccountIds];
+      if (startDate) { sumQ += ' AND DATE(je.date) >= ?'; sumParams.push(startDate); }
+      if (endDate) { sumQ += ' AND DATE(je.date) <= ?'; sumParams.push(endDate); }
+      sumQ += ' GROUP BY jl.accountId';
+
+      const [sums]: any = await db.query(sumQ, sumParams);
+      const sumMap = new Map<string, { dr: number; cr: number }>();
+      (sums || []).forEach((s: any) => sumMap.set(s.accountId, { dr: Number(s.sumDr || 0), cr: Number(s.sumCr || 0) }));
+
+      taxAccounts = taxAccounts.map((acc: any) => {
+        const s = sumMap.get(acc.id) || { dr: 0, cr: 0 };
+        const t = String(acc.type || '').toLowerCase();
+        const isDebitNormal = t === 'asset' || t === 'expense';
+        return {
+          ...acc,
+          periodDebit: s.dr,
+          periodCredit: s.cr,
+          balance: isDebitNormal ? (s.dr - s.cr) : (s.cr - s.dr)
+        };
+      });
+    }
+
+    // 4. Fetch detailed journal lines for the selected tax accounts
+    let taxLines: any[] = [];
+    if (taxAccountIds.length > 0) {
+      let lineQ = `
+        SELECT jl.*, je.date, je.reference, je.description as entryDescription,
+               ca.name as accountName, ca.code as accountCode, ca.type as accountType
+        FROM journal_lines jl
+        JOIN journal_entries je ON jl.entryId = je.id
+        JOIN chart_of_accounts ca ON jl.accountId = ca.id
+        WHERE jl.accountId IN (?)
+      `;
+      const lineParams: any[] = [taxAccountIds];
+      if (startDate) { lineQ += ' AND DATE(je.date) >= ?'; lineParams.push(startDate); }
+      if (endDate) { lineQ += ' AND DATE(je.date) <= ?'; lineParams.push(endDate); }
+      lineQ += ' ORDER BY je.date DESC, jl.id DESC';
+      const [rows]: any = await db.query(lineQ, lineParams);
+      taxLines = rows || [];
+    }
+
+    // 5. Compute structured VAT & SSCL summary
+    let outputVat = 0;
+    let inputVat = 0;
+    let ssclPayable = 0;
+    let ssclExpense = 0;
+    let otherTaxPayable = 0;
+
     taxAccounts.forEach((acc: any) => {
       const bal = Number(acc.balance) || 0;
       const t = String(acc.type || '').toLowerCase();
-      if (t === 'asset' || t === 'expense') {
-        totalTaxPayable -= bal;
+      if (acc.taxCategory === 'vat') {
+        if (t === 'asset') inputVat += bal;
+        else outputVat += bal;
+      } else if (acc.taxCategory === 'sscl') {
+        if (t === 'expense') ssclExpense += bal;
+        else if (t === 'asset') ssclPayable -= bal;
+        else ssclPayable += bal;
       } else {
-        totalTaxPayable += bal;
+        if (t === 'asset') otherTaxPayable -= bal;
+        else if (t !== 'expense') otherTaxPayable += bal;
       }
     });
 
-    res.json({ taxAccounts, taxLines, totalTaxPayable });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+    const netVatPayable = outputVat - inputVat;
+    const totalTaxPayable = netVatPayable + ssclPayable + otherTaxPayable;
+
+    // 6. Cross-check totals from Commercial Invoices & Vendor Bills in the same period
+    let invoiceTaxSummary = { count: 0, totalSales: 0, totalTax: 0 };
+    let billTaxSummary = { count: 0, totalPurchases: 0, totalTax: 0 };
+    try {
+      let invQ = `
+        SELECT COUNT(*) as cnt, COALESCE(SUM(total), 0) as totalSales, COALESCE(SUM(taxAmount), 0) as totalTax
+        FROM invoices
+        WHERE (isProforma IS NULL OR isProforma = 0)
+          AND (invoiceNo NOT LIKE 'PI-%' OR invoiceNo IS NULL)
+          AND (status IS NULL OR status != 'draft')
+      `;
+      const invP: any[] = [];
+      if (startDate) { invQ += ' AND DATE(date) >= ?'; invP.push(startDate); }
+      if (endDate) { invQ += ' AND DATE(date) <= ?'; invP.push(endDate); }
+      const [invRes]: any = await db.query(invQ, invP);
+      if (invRes && invRes[0]) {
+        invoiceTaxSummary = {
+          count: Number(invRes[0].cnt || 0),
+          totalSales: Number(invRes[0].totalSales || 0),
+          totalTax: Number(invRes[0].totalTax || 0)
+        };
+      }
+    } catch (e) {}
+
+    try {
+      let billQ = `
+        SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as totalPurchases, COALESCE(SUM(taxAmount), 0) as totalTax
+        FROM supplier_bills
+        WHERE 1=1
+      `;
+      const billP: any[] = [];
+      if (startDate) { billQ += ' AND DATE(date) >= ?'; billP.push(startDate); }
+      if (endDate) { billQ += ' AND DATE(date) <= ?'; billP.push(endDate); }
+      const [billRes]: any = await db.query(billQ, billP);
+      if (billRes && billRes[0]) {
+        billTaxSummary = {
+          count: Number(billRes[0].cnt || 0),
+          totalPurchases: Number(billRes[0].totalPurchases || 0),
+          totalTax: Number(billRes[0].totalTax || 0)
+        };
+      }
+    } catch (e) {}
+
+    res.json({
+      taxAccounts,
+      taxLines,
+      summary: {
+        outputVat,
+        inputVat,
+        netVatPayable,
+        ssclPayable,
+        ssclExpense,
+        otherTaxPayable,
+        totalTaxPayable
+      },
+      invoiceTaxSummary,
+      billTaxSummary,
+      totalTaxPayable
+    });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 // ==========================================
@@ -17568,6 +17731,389 @@ app.delete('/api/finance/bank-reconciliation/match/:journalLineId', async (req, 
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to unmatch line' });
+  }
+});
+
+// AI-Assisted Bank Reconciliation Matching & Unmatched Item Classification
+app.post('/api/finance/bank-reconciliation/ai-match', async (req, res) => {
+  try {
+    await ensureBankReconciliationTable();
+    const { statementLines = [], ledgerLines = [] } = req.body;
+
+    const [coaRows]: any = await db.query(
+      'SELECT id, code, name, type, subtype FROM chart_of_accounts ORDER BY code ASC'
+    );
+
+    const [settingsRows]: any = await db.query(
+      "SELECT id, val FROM settings WHERE id IN ('ai_provider', 'gemini_api_key', 'gemini_model', 'groq_api_key', 'groq_model', 'openai_api_key', 'openai_model', 'deepseek_api_key', 'deepseek_model', 'ai_enabled')"
+    );
+    const settingsMap = (settingsRows || []).reduce((acc: any, r: any) => ({ ...acc, [r.id]: r.val }), {});
+
+    const geminiKey = (settingsMap.gemini_api_key || process.env.GEMINI_API_KEY || '').trim();
+    const groqKey = (settingsMap.groq_api_key || process.env.GROQ_API_KEY || '').trim();
+    const openAiKey = (settingsMap.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+    const deepseekKey = (settingsMap.deepseek_api_key || process.env.DEEPSEEK_API_KEY || '').trim();
+    let provider = (settingsMap.ai_provider || (geminiKey ? 'gemini' : (groqKey ? 'groq' : (deepseekKey ? 'deepseek' : 'openai')))).trim();
+    let apiKey = provider === 'gemini' ? geminiKey : provider === 'groq' ? groqKey : provider === 'deepseek' ? deepseekKey : openAiKey;
+    if (!apiKey) {
+      apiKey = geminiKey || groqKey || deepseekKey || openAiKey;
+      if (geminiKey) provider = 'gemini';
+      else if (groqKey) provider = 'groq';
+      else if (deepseekKey) provider = 'deepseek';
+      else if (openAiKey) provider = 'openai';
+    }
+
+    let aiMatches: any[] = [];
+    let aiSuggestions: any[] = [];
+    let usedAiProvider: string | null = null;
+
+    if (apiKey && settingsMap.ai_enabled !== 'false' && statementLines.length > 0) {
+      try {
+        const isGemini = provider === 'gemini' || apiKey.startsWith('AIzaSy');
+        const isGroq = provider === 'groq' || apiKey.startsWith('gsk_');
+        const isDeepSeek = provider === 'deepseek';
+        const endpointUrl = isGemini
+          ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+          : isGroq
+          ? 'https://api.groq.com/openai/v1/chat/completions'
+          : isDeepSeek
+          ? 'https://api.deepseek.com/chat/completions'
+          : 'https://api.openai.com/v1/chat/completions';
+
+        const modelName = isGemini
+          ? (settingsMap.gemini_model || 'gemini-2.0-flash').trim()
+          : isGroq
+          ? (settingsMap.groq_model || 'llama-3.3-70b-versatile').trim()
+          : isDeepSeek
+          ? (settingsMap.deepseek_model || 'deepseek-chat').trim()
+          : (settingsMap.openai_model || 'gpt-4o-mini').trim();
+
+        const compactStmt = statementLines.slice(0, 60).map((s: any) => ({
+          id: s.id,
+          date: s.date,
+          desc: s.description,
+          ref: s.reference,
+          inflow: s.credit || 0,
+          outflow: s.debit || 0
+        }));
+        const compactGl = ledgerLines.slice(0, 80).map((g: any) => ({
+          id: g.id,
+          date: String(g.date || '').slice(0, 10),
+          ref: g.reference,
+          desc: g.entryDescription || g.lineDescription,
+          inflow: g.debit || 0,
+          outflow: g.credit || 0
+        }));
+        const compactCoa = (coaRows || []).map((a: any) => ({
+          id: a.id,
+          code: a.code,
+          name: a.name,
+          type: a.type
+        }));
+
+        const prompt = `You are an expert Sri Lankan Chartered Accountant (CA Sri Lanka / LKAS) reconciling a bank statement against General Ledger bank lines.
+Return STRICT JSON ONLY (no markdown fences) with two arrays:
+{
+  "matches": [
+    { "statementId": "...", "journalLineId": "...", "confidence": 0.95, "reason": "Exact amount + matching ref/cheque/date" }
+  ],
+  "unmatchedSuggestions": [
+    { "statementId": "...", "category": "Bank Charges|Interest Income|Customer Receipt|Supplier Payment|Standing Order|Other", "suggestedAccountId": "...", "suggestedAccountName": "...", "reason": "..." }
+  ]
+}
+Rules:
+1. Match bank statement inflow (credit) to GL inflow (debit), and statement outflow (debit) to GL outflow (credit).
+2. Allow up to 14 days date difference for cheque clearing, or fuzzy reference/payee matching, or small bank fee differences (< 2%).
+3. Never match one statementId or journalLineId more than once.
+4. For any statement line that has NO match in GL, add an entry to unmatchedSuggestions picking the best offset accountId from chartOfAccounts (e.g. Bank Charges expense for fees, Interest Income for interest, AR for customer deposits, AP for vendor debits).
+
+statementLines: ${JSON.stringify(compactStmt)}
+ledgerLines: ${JSON.stringify(compactGl)}
+chartOfAccounts: ${JSON.stringify(compactCoa)}`;
+
+        const aiResp = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1
+          })
+        });
+
+        if (aiResp.ok) {
+          const aiJson: any = await aiResp.json();
+          const rawText = String(aiJson?.choices?.[0]?.message?.content || '').trim();
+          const jsonStr = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+          const parsed = JSON.parse(jsonStr);
+          if (Array.isArray(parsed.matches)) aiMatches = parsed.matches;
+          if (Array.isArray(parsed.unmatchedSuggestions)) aiSuggestions = parsed.unmatchedSuggestions;
+          usedAiProvider = `${provider} (${modelName})`;
+        }
+      } catch (aiErr) {
+        console.warn('AI bank reconciliation fallback to rule engine:', aiErr);
+      }
+    }
+
+    // Rule-based fallback if AI returned empty or wasn't configured
+    if (aiMatches.length === 0 && statementLines.length > 0 && ledgerLines.length > 0) {
+      const usedGl = new Set<string>();
+      for (const s of statementLines) {
+        const match = ledgerLines.find((g: any) => {
+          if (usedGl.has(g.id)) return false;
+          const amtOk =
+            (s.credit > 0 && Math.abs(Number(g.debit) - Number(s.credit)) < 0.01) ||
+            (s.debit > 0 && Math.abs(Number(g.credit) - Number(s.debit)) < 0.01);
+          if (!amtOk) return false;
+          if (s.reference && g.reference && String(g.reference).toLowerCase().includes(String(s.reference).toLowerCase())) return true;
+          if (s.date && g.date) {
+            const d1 = new Date(s.date).getTime();
+            const d2 = new Date(String(g.date).slice(0, 10)).getTime();
+            if (!isNaN(d1) && !isNaN(d2)) return Math.abs(d1 - d2) <= 14 * 86400000;
+          }
+          return true;
+        });
+        if (match) {
+          usedGl.add(match.id);
+          aiMatches.push({
+            statementId: s.id,
+            journalLineId: match.id,
+            confidence: 0.85,
+            reason: 'Matched by amount & date/reference'
+          });
+        }
+      }
+    }
+
+    if (aiSuggestions.length === 0 && statementLines.length > 0) {
+      const matchedStmtIds = new Set(aiMatches.map(m => m.statementId));
+      const bankChargeAcc = (coaRows || []).find((a: any) => /bank charge|bank fee/i.test(a.name || '')) ||
+        (coaRows || []).find((a: any) => String(a.type).toLowerCase() === 'expense');
+      const interestAcc = (coaRows || []).find((a: any) => /interest|other income/i.test(a.name || '')) ||
+        (coaRows || []).find((a: any) => String(a.type).toLowerCase() === 'revenue');
+      const arAcc = (coaRows || []).find((a: any) => /receivable/i.test(a.name || '') && String(a.type).toLowerCase() === 'asset');
+
+      for (const s of statementLines) {
+        if (matchedStmtIds.has(s.id)) continue;
+        const d = String(s.description || '').toLowerCase();
+        if (s.debit > 0 && (d.includes('charge') || d.includes('fee') || d.includes('sms') || d.includes('commission') || d.includes('stamp'))) {
+          aiSuggestions.push({
+            statementId: s.id,
+            category: 'Bank Charges',
+            suggestedAccountId: bankChargeAcc?.id || '',
+            suggestedAccountName: bankChargeAcc ? `${bankChargeAcc.code} - ${bankChargeAcc.name}` : 'Expense Account',
+            reason: 'Bank fee / charge detected on statement'
+          });
+        } else if (s.credit > 0 && d.includes('interest')) {
+          aiSuggestions.push({
+            statementId: s.id,
+            category: 'Interest Income',
+            suggestedAccountId: interestAcc?.id || '',
+            suggestedAccountName: interestAcc ? `${interestAcc.code} - ${interestAcc.name}` : 'Revenue Account',
+            reason: 'Bank interest credit detected'
+          });
+        } else if (s.credit > 0) {
+          aiSuggestions.push({
+            statementId: s.id,
+            category: 'Customer Receipt / Direct Deposit',
+            suggestedAccountId: arAcc?.id || interestAcc?.id || '',
+            suggestedAccountName: arAcc ? `${arAcc.code} - ${arAcc.name}` : 'Accounts Receivable',
+            reason: 'Unrecorded bank deposit — post to AR or Income'
+          });
+        } else {
+          aiSuggestions.push({
+            statementId: s.id,
+            category: 'Unrecorded Bank Debit',
+            suggestedAccountId: bankChargeAcc?.id || '',
+            suggestedAccountName: bankChargeAcc ? `${bankChargeAcc.code} - ${bankChargeAcc.name}` : 'Expense / AP Account',
+            reason: 'Unrecorded bank withdrawal — post adjustment to GL'
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      usedAiProvider: usedAiProvider || 'Rule Engine',
+      matches: aiMatches,
+      unmatchedSuggestions: aiSuggestions
+    });
+  } catch (error: any) {
+    console.error('AI bank reconciliation error:', error);
+    res.status(500).json({ error: error.message || 'AI reconciliation failed' });
+  }
+});
+
+// Post GL Adjustment for Unmatched Bank Statement Line & Mark Reconciled
+app.post('/api/finance/bank-reconciliation/post-adjustment', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await ensureBankReconciliationTable();
+    const { accountId, offsetAccountId, date, description, reference, debit, credit, createdBy } = req.body;
+    const inflow = Number(credit || 0); // Statement Credit = Bank Debit (Money In)
+    const outflow = Number(debit || 0); // Statement Debit = Bank Credit (Money Out)
+    const amount = inflow > 0 ? inflow : outflow;
+
+    if (!accountId || !offsetAccountId || amount <= 0) {
+      conn.release();
+      return res.status(400).json({ error: 'Bank account, offset account, and amount > 0 are required.' });
+    }
+
+    await conn.beginTransaction();
+    const jeId = `JE-BREC-${Date.now().toString().slice(-6)}`;
+    const cleanDate = date ? String(date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: jeId,
+      date: `${cleanDate} 12:00:00`,
+      reference: reference || jeId,
+      description: `Bank Rec Adjustment: ${description || 'Unmatched Bank Statement Item'}`,
+      totalAmount: amount,
+      createdBy: createdBy || 'Bank Reconciliation',
+      status: 'posted',
+      createdAt: nowIso
+    });
+
+    const bankLineId = `JL-${jeId}-1`;
+    const offsetLineId = `JL-${jeId}-2`;
+
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: bankLineId,
+      entryId: jeId,
+      accountId,
+      debit: inflow > 0 ? amount : 0,
+      credit: outflow > 0 ? amount : 0,
+      description: description || 'Bank Statement Adjustment'
+    });
+
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: offsetLineId,
+      entryId: jeId,
+      accountId: offsetAccountId,
+      debit: outflow > 0 ? amount : 0,
+      credit: inflow > 0 ? amount : 0,
+      description: description || 'Bank Statement Adjustment'
+    });
+
+    // Update Bank Account balance (Asset: debit increases, credit decreases)
+    const bankDelta = inflow > 0 ? amount : -amount;
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [bankDelta, accountId]);
+
+    // Update Offset Account balance
+    const [offAcc]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [offsetAccountId]);
+    const offType = String(offAcc?.[0]?.type || 'Expense').toLowerCase();
+    const offIsDebitNormal = offType === 'asset' || offType === 'expense';
+    const offDebit = outflow > 0 ? amount : 0;
+    const offCredit = inflow > 0 ? amount : 0;
+    const offDelta = offIsDebitNormal ? (offDebit - offCredit) : (offCredit - offDebit);
+    await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [offDelta, offsetAccountId]);
+
+    // Mark the newly created bank GL line as reconciled
+    const matchId = `BREC-${Date.now().toString().slice(-6)}`;
+    await conn.query(
+      `INSERT INTO bank_reconciliation_matches
+       (id, accountId, journalLineId, statementDate, statementDesc, statementRef, statementAmount, reconciledBy)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [matchId, accountId, bankLineId, cleanDate, String(description || '').slice(0, 255), reference || null, inflow > 0 ? amount : -amount, createdBy || 'Bank Reconciliation']
+    );
+
+    await conn.commit();
+    res.json({ success: true, journalEntryId: jeId, journalLineId: bankLineId });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Post bank rec adjustment error:', error);
+    res.status(500).json({ error: error.message || 'Failed to post adjustment' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Reconciled Reports History
+app.get('/api/finance/bank-reconciliation/reports', async (req, res) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS bank_reconciliation_reports (
+        id VARCHAR(64) PRIMARY KEY,
+        accountId VARCHAR(64) NOT NULL,
+        accountCode VARCHAR(32) NULL,
+        accountName VARCHAR(150) NULL,
+        startDate VARCHAR(20) NULL,
+        endDate VARCHAR(20) NULL,
+        bookBalance DECIMAL(15,2) DEFAULT 0.00,
+        statementClosingBalance DECIMAL(15,2) DEFAULT 0.00,
+        reconciledCount INT DEFAULT 0,
+        unmatchedStatementCount INT DEFAULT 0,
+        unmatchedGlCount INT DEFAULT 0,
+        difference DECIMAL(15,2) DEFAULT 0.00,
+        status VARCHAR(30) DEFAULT 'Reconciled',
+        notes TEXT NULL,
+        createdBy VARCHAR(100) NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    const { accountId } = req.query as Record<string, string>;
+    let q = 'SELECT * FROM bank_reconciliation_reports';
+    const params: any[] = [];
+    if (accountId && accountId !== 'all') {
+      q += ' WHERE accountId = ?';
+      params.push(accountId);
+    }
+    q += ' ORDER BY createdAt DESC';
+    const [rows]: any = await db.query(q, params);
+    res.json(rows || []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to load reconciliation reports' });
+  }
+});
+
+app.post('/api/finance/bank-reconciliation/reports', async (req, res) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS bank_reconciliation_reports (
+        id VARCHAR(64) PRIMARY KEY,
+        accountId VARCHAR(64) NOT NULL,
+        accountCode VARCHAR(32) NULL,
+        accountName VARCHAR(150) NULL,
+        startDate VARCHAR(20) NULL,
+        endDate VARCHAR(20) NULL,
+        bookBalance DECIMAL(15,2) DEFAULT 0.00,
+        statementClosingBalance DECIMAL(15,2) DEFAULT 0.00,
+        reconciledCount INT DEFAULT 0,
+        unmatchedStatementCount INT DEFAULT 0,
+        unmatchedGlCount INT DEFAULT 0,
+        difference DECIMAL(15,2) DEFAULT 0.00,
+        status VARCHAR(30) DEFAULT 'Reconciled',
+        notes TEXT NULL,
+        createdBy VARCHAR(100) NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    const d = req.body;
+    const id = `RECREP-${Date.now().toString().slice(-6)}`;
+    await db.query('INSERT INTO bank_reconciliation_reports SET ?', {
+      id,
+      accountId: d.accountId,
+      accountCode: d.accountCode || null,
+      accountName: d.accountName || null,
+      startDate: d.startDate || null,
+      endDate: d.endDate || null,
+      bookBalance: Number(d.bookBalance || 0),
+      statementClosingBalance: Number(d.statementClosingBalance || 0),
+      reconciledCount: Number(d.reconciledCount || 0),
+      unmatchedStatementCount: Number(d.unmatchedStatementCount || 0),
+      unmatchedGlCount: Number(d.unmatchedGlCount || 0),
+      difference: Number(d.difference || 0),
+      status: Number(d.unmatchedStatementCount || 0) === 0 ? 'Reconciled' : 'Partial',
+      notes: d.notes || null,
+      createdBy: d.createdBy || 'Finance'
+    });
+    res.json({ success: true, id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to save reconciliation report' });
   }
 });
 
