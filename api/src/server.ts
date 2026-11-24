@@ -16888,8 +16888,19 @@ app.get('/api/finance/reports/account-ledger', async (req, res) => {
 });
 app.get('/api/finance/reports/trial-balance', async (req, res) => {
   try {
+    const { startDate, endDate } = req.query as Record<string, string>;
     const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts ORDER BY code ASC');
-    const [lines]: any = await db.query('SELECT accountId, SUM(debit) as totalDebit, SUM(credit) as totalCredit FROM journal_lines GROUP BY accountId');
+
+    let linesQuery = 'SELECT jl.accountId, SUM(jl.debit) as totalDebit, SUM(jl.credit) as totalCredit FROM journal_lines jl';
+    const params: any[] = [];
+    if (startDate || endDate) {
+      linesQuery += ' JOIN journal_entries je ON jl.entryId = je.id WHERE 1=1';
+      if (startDate) { linesQuery += ' AND DATE(je.date) >= ?'; params.push(startDate); }
+      if (endDate) { linesQuery += ' AND DATE(je.date) <= ?'; params.push(endDate); }
+    }
+    linesQuery += ' GROUP BY jl.accountId';
+
+    const [lines]: any = await db.query(linesQuery, params);
     
     let totalDebit = 0;
     let totalCredit = 0;
@@ -16908,7 +16919,7 @@ app.get('/api/finance/reports/trial-balance', async (req, res) => {
       return { ...acc, debit: netDebit, credit: netCredit };
     });
     
-    res.json({ accounts: result.filter((a: any) => a.debit > 0 || a.credit > 0), totalDebit, totalCredit });
+    res.json({ accounts: result.filter((a: any) => a.debit > 0 || a.credit > 0), totalDebit, totalCredit, startDate: startDate || null, endDate: endDate || null });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -16916,36 +16927,75 @@ app.get('/api/finance/reports/expenses', async (req, res) => { try { const [line
 
 app.get('/api/finance/reports/pnl', async (req, res) => {
   try {
+    const { startDate, endDate } = req.query as Record<string, string>;
     const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Revenue", "Expense") ORDER BY code ASC');
+
+    let computedAccounts = accounts;
+    if (startDate || endDate) {
+      let q = 'SELECT jl.accountId, COALESCE(SUM(jl.debit), 0) as sumDr, COALESCE(SUM(jl.credit), 0) as sumCr FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE 1=1';
+      const params: any[] = [];
+      if (startDate) { q += ' AND DATE(je.date) >= ?'; params.push(startDate); }
+      if (endDate) { q += ' AND DATE(je.date) <= ?'; params.push(endDate); }
+      q += ' GROUP BY jl.accountId';
+      const [sums]: any = await db.query(q, params);
+      const sumMap = new Map<string, { dr: number; cr: number }>();
+      (sums || []).forEach((s: any) => sumMap.set(s.accountId, { dr: Number(s.sumDr || 0), cr: Number(s.sumCr || 0) }));
+      computedAccounts = accounts.map((acc: any) => {
+        const s = sumMap.get(acc.id) || { dr: 0, cr: 0 };
+        const bal = acc.type === 'Revenue' ? (s.cr - s.dr) : (s.dr - s.cr);
+        return { ...acc, balance: bal };
+      });
+    }
+
     let totalRevenue = 0;
     let totalExpense = 0;
     
-    accounts.forEach((acc: any) => {
+    computedAccounts.forEach((acc: any) => {
       if (acc.type === 'Revenue') totalRevenue += Number(acc.balance);
       if (acc.type === 'Expense') totalExpense += Number(acc.balance);
     });
     
     res.json({
-      revenue: accounts.filter((a: any) => a.type === 'Revenue'),
-      expenses: accounts.filter((a: any) => a.type === 'Expense'),
+      revenue: computedAccounts.filter((a: any) => a.type === 'Revenue'),
+      expenses: computedAccounts.filter((a: any) => a.type === 'Expense'),
       totalRevenue,
       totalExpense,
-      netProfit: totalRevenue - totalExpense
+      netProfit: totalRevenue - totalExpense,
+      startDate: startDate || null,
+      endDate: endDate || null
     });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/finance/reports/balance-sheet', async (req, res) => {
   try {
+    const { startDate, endDate } = req.query as Record<string, string>;
     const [accounts]: any = await db.query('SELECT * FROM chart_of_accounts WHERE type IN ("Asset", "Liability", "Equity", "Revenue", "Expense") AND (includeInBalanceSheet IS NULL OR includeInBalanceSheet = 1) ORDER BY code ASC');
-    
+
+    let computedAccounts = accounts;
+    if (startDate || endDate) {
+      let q = 'SELECT jl.accountId, COALESCE(SUM(jl.debit), 0) as sumDr, COALESCE(SUM(jl.credit), 0) as sumCr FROM journal_lines jl JOIN journal_entries je ON jl.entryId = je.id WHERE 1=1';
+      const params: any[] = [];
+      if (startDate) { q += ' AND DATE(je.date) >= ?'; params.push(startDate); }
+      if (endDate) { q += ' AND DATE(je.date) <= ?'; params.push(endDate); }
+      q += ' GROUP BY jl.accountId';
+      const [sums]: any = await db.query(q, params);
+      const sumMap = new Map<string, { dr: number; cr: number }>();
+      (sums || []).forEach((s: any) => sumMap.set(s.accountId, { dr: Number(s.sumDr || 0), cr: Number(s.sumCr || 0) }));
+      computedAccounts = accounts.map((acc: any) => {
+        const s = sumMap.get(acc.id) || { dr: 0, cr: 0 };
+        const isDebitNormal = acc.type === 'Asset' || acc.type === 'Expense';
+        const bal = isDebitNormal ? (s.dr - s.cr) : (s.cr - s.dr);
+        return { ...acc, balance: bal };
+      });
+    }
+
     let totalAssets = 0;
     let totalLiabilities = 0;
     let totalEquity = 0;
-    
     let netProfit = 0;
-    
-    accounts.forEach((acc: any) => {
+
+    computedAccounts.forEach((acc: any) => {
       if (acc.type === 'Revenue') netProfit += Number(acc.balance);
       if (acc.type === 'Expense') netProfit -= Number(acc.balance);
       

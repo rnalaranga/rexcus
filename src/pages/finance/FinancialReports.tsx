@@ -135,7 +135,11 @@ export const FinancialReports: React.FC = () => {
     } else {
       // Traditional Financial Statements (pnl, bs, tb, exp)
       const endpoints: Record<string, string> = { pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', exp: 'expenses' };
-      fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/reports/${endpoints[activeTab]}`)
+      const q = new URLSearchParams();
+      if (startDate) q.set('startDate', startDate);
+      if (endDate) q.set('endDate', endDate);
+      const qStr = q.toString() ? `?${q.toString()}` : '';
+      fetch(`${import.meta.env.VITE_API_URL || '/api'}/finance/reports/${endpoints[activeTab]}${qStr}`)
         .then(res => res.json())
         .then(res => {
           setFinancialStatementData(res);
@@ -745,7 +749,7 @@ export const FinancialReports: React.FC = () => {
       </div>
 
       {/* QuickBooks-Style Dynamic Filter Bar */}
-      {['invoices', 'unpaid', 'vendor_bills', 'cashbook', 'tax', 'account_ledger'].includes(activeTab) && (
+      {['invoices', 'unpaid', 'vendor_bills', 'cashbook', 'tax', 'account_ledger', 'pnl', 'bs', 'tb', 'exp'].includes(activeTab) && (
         <GlassCard className="p-4 space-y-3">
           {/* Top Row: Quick Preset Buttons */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1861,7 +1865,9 @@ export const FinancialReports: React.FC = () => {
                       1. Revenue & Income
                     </h3>
                     <div className="space-y-1.5">
-                      {(financialStatementData.revenue || []).map((acc: any) => (
+                      {(financialStatementData.revenue || [])
+                        .filter((acc: any) => !search || `${acc.code} ${acc.name}`.toLowerCase().includes(search.toLowerCase()))
+                        .map((acc: any) => (
                         <div key={acc.id} className="flex justify-between items-center py-1 border-b border-dashed border-slate-200 text-xs">
                           <span className="font-medium text-slate-800">{acc.code} - {acc.name}</span>
                           <span className="font-mono font-bold text-slate-900">{formatCurrency(acc.balance)}</span>
@@ -1879,7 +1885,9 @@ export const FinancialReports: React.FC = () => {
                       2. Operating Expenses
                     </h3>
                     <div className="space-y-1.5">
-                      {(financialStatementData.expenses || []).map((acc: any) => (
+                      {(financialStatementData.expenses || [])
+                        .filter((acc: any) => !search || `${acc.code} ${acc.name}`.toLowerCase().includes(search.toLowerCase()))
+                        .map((acc: any) => (
                         <div key={acc.id} className="flex justify-between items-center py-1 border-b border-dashed border-slate-200 text-xs">
                           <span className="font-medium text-slate-800">{acc.code} - {acc.name}</span>
                           <span className="font-mono font-bold text-slate-900">{formatCurrency(acc.balance)}</span>
@@ -1907,7 +1915,9 @@ export const FinancialReports: React.FC = () => {
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 border-b border-slate-300 pb-1">
                       Assets
                     </h3>
-                    {(financialStatementData.assets || []).map((acc: any) => (
+                    {(financialStatementData.assets || [])
+                      .filter((acc: any) => !search || `${acc.code} ${acc.name}`.toLowerCase().includes(search.toLowerCase()))
+                      .map((acc: any) => (
                       <div key={acc.id} className="flex justify-between items-center py-1 border-b border-dashed border-slate-200 text-xs">
                         <span className="font-medium text-slate-800">{acc.code} - {acc.name}</span>
                         <span className="font-mono font-bold">{formatCurrency(acc.balance)}</span>
@@ -1950,7 +1960,9 @@ export const FinancialReports: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {(financialStatementData.accounts || []).map((acc: any) => (
+                    {(financialStatementData.accounts || [])
+                      .filter((acc: any) => !search || `${acc.code} ${acc.name}`.toLowerCase().includes(search.toLowerCase()))
+                      .map((acc: any) => (
                       <tr key={acc.id} className="hover:bg-slate-50">
                         <td className="py-2 px-3 font-mono font-bold text-slate-900">{acc.code}</td>
                         <td className="py-2 px-4 text-slate-800">{acc.name}</td>

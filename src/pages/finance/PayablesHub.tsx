@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable, Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useBills, usePurchaseOrders, useGRNs, useMaterialRequests } from '@/hooks/usePurchasing';
@@ -37,6 +38,10 @@ export const PayablesHub: React.FC = () => {
   const [vouchers, setVouchers] = useState<any[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [printVoucher, setPrintVoucher] = useState<any | null>(null);
+  const [billsPage, setBillsPage] = useState(1);
+  const [posPage, setPosPage] = useState(1);
+  const [vouchersPage, setVouchersPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     setLoadingVouchers(true);
@@ -569,7 +574,7 @@ export const PayablesHub: React.FC = () => {
               <p className="text-xs text-muted mt-1">All supplier accounts and vendor bills are settled.</p>
             </div>
           ) : (
-            <DataTable columns={agingColumns} data={filteredAging} keyExtractor={row => row.partyId || row.partyName} />
+            <DataTable columns={agingColumns} data={filteredAging} keyExtractor={row => row.partyId || row.partyName} pagination itemsPerPage={25} />
           )}
         </GlassCard>
       )}
@@ -580,6 +585,7 @@ export const PayablesHub: React.FC = () => {
           {loadingBills ? (
             <div className="p-12 text-center text-muted animate-pulse">Loading supplier bills...</div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -596,7 +602,7 @@ export const PayablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle/50">
-                  {filteredAndSortedBills.map((b: any) => {
+                  {filteredAndSortedBills.slice((billsPage - 1) * pageSize, billsPage * pageSize).map((b: any) => {
                     const total = Number(b.amount || 0);
                     const paid = Number(b.paidAmount || 0);
                     const bal = Math.max(0, total - paid);
@@ -634,6 +640,8 @@ export const PayablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={billsPage} totalItems={filteredAndSortedBills.length} pageSize={pageSize} onPageChange={setBillsPage} onPageSizeChange={setPageSize} itemLabel="bills" />
+            </>
           )}
         </GlassCard>
       )}
@@ -644,6 +652,7 @@ export const PayablesHub: React.FC = () => {
           {loadingPOs ? (
             <div className="p-12 text-center text-muted animate-pulse">Loading purchase orders...</div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -656,7 +665,7 @@ export const PayablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle/50">
-                  {filteredAndSortedPOs.map((p: any) => (
+                  {filteredAndSortedPOs.slice((posPage - 1) * pageSize, posPage * pageSize).map((p: any) => (
                     <tr key={p.id} className="hover:bg-surface2/40 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-primary">{p.poNo || p.id}</td>
                       <td className="py-3 px-4 font-mono text-muted">{formatDate(p.date)}</td>
@@ -677,6 +686,8 @@ export const PayablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={posPage} totalItems={filteredAndSortedPOs.length} pageSize={pageSize} onPageChange={setPosPage} onPageSizeChange={setPageSize} itemLabel="purchase orders" />
+            </>
           )}
         </GlassCard>
       )}
@@ -687,6 +698,7 @@ export const PayablesHub: React.FC = () => {
           {loadingVouchers ? (
             <div className="p-12 text-center text-muted animate-pulse">Loading payment receipts...</div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -712,6 +724,7 @@ export const PayablesHub: React.FC = () => {
                         (v.chequeNo || '').toLowerCase().includes(q)
                       );
                     })
+                    .slice((vouchersPage - 1) * pageSize, vouchersPage * pageSize)
                     .map((v: any) => (
                       <tr key={v.id || v.voucherNo} className="hover:bg-surface2/40 transition-colors">
                         <td className="py-3 px-4 font-mono font-bold text-primary">{v.voucherNo || v.id}</td>
@@ -769,6 +782,24 @@ export const PayablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={vouchersPage}
+              totalItems={vouchers.filter((v: any) => {
+                if (!search) return true;
+                const q = search.toLowerCase();
+                return (
+                  (v.voucherNo || v.id || '').toLowerCase().includes(q) ||
+                  (v.payeeName || v.supplierName || '').toLowerCase().includes(q) ||
+                  (v.relatedBillNo || v.relatedBillId || '').toLowerCase().includes(q) ||
+                  (v.chequeNo || '').toLowerCase().includes(q)
+                );
+              }).length}
+              pageSize={pageSize}
+              onPageChange={setVouchersPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="vouchers"
+            />
+            </>
           )}
         </GlassCard>
       )}

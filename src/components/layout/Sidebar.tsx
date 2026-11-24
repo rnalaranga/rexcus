@@ -71,6 +71,7 @@ const navGroups: NavGroup[] = [
       { label: 'Daily Cash Flow & Cheques', path: '/finance/cash-flow', icon: ArrowRightLeft, permission: 'finance.accounting.view' },
       { label: 'Daily Cashbook', path: '/finance/cashbook',      icon: Wallet,           permission: 'finance.accounting.view' },
       { label: 'Banking',        path: '/finance/banking',       icon: Landmark,         permission: 'finance.banking.view' },
+      { label: 'Bank Reconciliation', path: '/finance/bank-rec', icon: CheckSquare,      permission: 'finance.banking.view' },
       { label: 'Invoices',     path: '/finance/invoices',      icon: FileText,         permission: 'finance.invoices.view' },
       { label: 'Accounting',   path: '/finance',               icon: DollarSign,       permission: 'finance.accounting.view' },
       { label: 'Receivables',  path: '/finance/receivables',   icon: ArrowUpRight,     permission: 'finance.receivables.view' },

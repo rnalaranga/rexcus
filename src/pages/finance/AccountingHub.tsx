@@ -6,6 +6,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable, Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useAccounts, useTaxes, useTaxProfiles, useJournals } from '@/hooks/useFinance';
@@ -49,6 +50,8 @@ export const AccountingHub: React.FC = () => {
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<{ url: string; title: string } | null>(null);
   const [expandedJournal, setExpandedJournal] = useState<string | null>(null);
+  const [journalPage, setJournalPage] = useState(1);
+  const [journalPageSize, setJournalPageSize] = useState(25);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editTax, setEditTax] = useState<any>(null);
 
@@ -438,7 +441,7 @@ export const AccountingHub: React.FC = () => {
               <p className="text-muted text-sm">No journal entries found.</p>
             </GlassCard>
           ) : (
-            filteredJournals.map((j: any) => {
+            filteredJournals.slice((journalPage - 1) * journalPageSize, journalPage * journalPageSize).map((j: any) => {
               const expanded = expandedJournal === j.id;
               return (
                 <GlassCard key={j.id} className="p-0 overflow-hidden border border-theme-subtle">
@@ -586,6 +589,14 @@ export const AccountingHub: React.FC = () => {
               );
             })
           )}
+          <Pagination
+            currentPage={journalPage}
+            totalItems={filteredJournals.length}
+            pageSize={journalPageSize}
+            onPageChange={setJournalPage}
+            onPageSizeChange={setJournalPageSize}
+            itemLabel="journal entries"
+          />
         </div>
       )}
 

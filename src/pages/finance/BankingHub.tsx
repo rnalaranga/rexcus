@@ -95,6 +95,7 @@ export const BankingHub: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" icon={Wallet} onClick={() => navigate('/finance/cashbook')} className="border border-theme-subtle text-amber-500 font-medium">Daily Cashbook</Button>
+          <Button variant="ghost" size="sm" icon={ArrowRightLeft} onClick={() => navigate('/finance/bank-rec')} className="border border-theme-subtle text-emerald-500 font-medium">Bank Reconciliation</Button>
           <Button variant="ghost" size="sm" icon={ArrowRightLeft} onClick={() => setShowTransfer(true)} className="border border-theme-subtle text-blue-500">Bank Transfer</Button>
           <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowAddBank(true)} className="bg-blue-600 hover:bg-blue-700">Add Bank Account</Button>
         </div>

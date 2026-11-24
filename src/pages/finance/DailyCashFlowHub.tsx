@@ -11,6 +11,7 @@ import {
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Pagination } from '@/components/ui/Pagination';
 import { Modal } from '@/components/ui/Modal';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
@@ -104,6 +105,9 @@ export const DailyCashFlowHub: React.FC = () => {
   const [viewingSlip, setViewingSlip] = useState<{ url: string; title: string; tx?: any } | null>(null);
   const [isUploadingVoucherSlip, setIsUploadingVoucherSlip] = useState(false);
   const [ledgerPage, setLedgerPage] = useState(1);
+  const [transferPage, setTransferPage] = useState(1);
+  const [voucherPage, setVoucherPage] = useState(1);
+  const [cashFlowPageSize, setCashFlowPageSize] = useState(25);
   const LEDGER_PER_PAGE = 25;
 
   // Reference hooks
@@ -1249,7 +1253,7 @@ export const DailyCashFlowHub: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransfers.map((tr: any, idx: number) => {
+                  filteredTransfers.slice((transferPage - 1) * cashFlowPageSize, transferPage * cashFlowPageSize).map((tr: any, idx: number) => {
                     const isIn = tr.type === 'IN';
                     return (
                       <tr key={tr.id || idx} className="hover:bg-surface2/40 transition-colors">
@@ -1294,6 +1298,7 @@ export const DailyCashFlowHub: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <Pagination currentPage={transferPage} totalItems={filteredTransfers.length} pageSize={cashFlowPageSize} onPageChange={setTransferPage} onPageSizeChange={setCashFlowPageSize} itemLabel="transfers" />
         </GlassCard>
       )}
 
@@ -1341,7 +1346,7 @@ export const DailyCashFlowHub: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    vouchers.map((v: any) => (
+                    vouchers.slice((voucherPage - 1) * cashFlowPageSize, voucherPage * cashFlowPageSize).map((v: any) => (
                       <tr key={v.id} className="hover:bg-surface2/40 transition-colors">
                         <td className="py-2.5 px-3 font-mono font-bold text-rex-400">
                           {v.voucherNo}
@@ -1453,6 +1458,7 @@ export const DailyCashFlowHub: React.FC = () => {
               </div>
             )}
             </div>
+            <Pagination currentPage={voucherPage} totalItems={vouchers.length} pageSize={cashFlowPageSize} onPageChange={setVoucherPage} onPageSizeChange={setCashFlowPageSize} itemLabel="vouchers" />
           </GlassCard>
         </div>
       )}

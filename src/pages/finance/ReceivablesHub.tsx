@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { DataTable, Column } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -33,6 +34,10 @@ type ActiveTab = 'aging' | 'invoices' | 'proformas' | 'receipts';
 
 export const ReceivablesHub: React.FC = () => {
   const navigate = useNavigate();
+  const [invPage, setInvPage] = useState(1);
+  const [piPage, setPiPage] = useState(1);
+  const [recPage, setRecPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const { user, can } = useAuth();
   const isAdmin = Boolean(
     user?.role === 'admin' ||
@@ -1158,7 +1163,7 @@ export const ReceivablesHub: React.FC = () => {
               <p className="text-xs text-muted mt-1">All customer accounts are currently fully settled.</p>
             </div>
           ) : (
-            <DataTable columns={agingColumns} data={filteredAging} keyExtractor={row => row.partyId || row.partyName} />
+            <DataTable columns={agingColumns} data={filteredAging} keyExtractor={row => row.partyId || row.partyName} pagination itemsPerPage={25} />
           )}
         </GlassCard>
       )}
@@ -1175,6 +1180,7 @@ export const ReceivablesHub: React.FC = () => {
               <p className="text-xs text-muted mt-1">All posted sales invoices have been completely collected.</p>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -1248,7 +1254,7 @@ export const ReceivablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {sortedInvoices.map((inv: any) => {
+                  {sortedInvoices.slice((invPage - 1) * pageSize, invPage * pageSize).map((inv: any) => {
                     const tot = Number(inv.total || inv.amount || 0);
                     const paid = Number(inv.paidAmount || 0);
                     const due = Math.max(0, tot - paid);
@@ -1334,6 +1340,8 @@ export const ReceivablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={invPage} totalItems={sortedInvoices.length} pageSize={pageSize} onPageChange={setInvPage} onPageSizeChange={setPageSize} itemLabel="invoices" />
+            </>
           )}
         </GlassCard>
       )}
@@ -1358,6 +1366,7 @@ export const ReceivablesHub: React.FC = () => {
               </Button>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -1440,7 +1449,7 @@ export const ReceivablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {sortedProformas.map((pi: any) => {
+                  {sortedProformas.slice((piPage - 1) * pageSize, piPage * pageSize).map((pi: any) => {
                     const tot = Number(pi.total || pi.amount || 0);
                     const paid = Number(pi.paidAmount || 0);
                     const due = Math.max(0, tot - paid);
@@ -1584,11 +1593,13 @@ export const ReceivablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={piPage} totalItems={sortedProformas.length} pageSize={pageSize} onPageChange={setPiPage} onPageSizeChange={setPageSize} itemLabel="proformas" />
+            </>
           )}
         </GlassCard>
       )}
 
-      {/* TAB 4: CUSTOMER PAYMENT RECEIPTS (ADVANCE VOUCHERS) */}
+      {/* TAB 4: CUSTOMER PAYMENT RECEIPTS */}
       {activeTab === 'receipts' && (
         <GlassCard className="overflow-hidden p-0 border border-theme-subtle">
           {loadingReceipts ? (
@@ -1609,6 +1620,7 @@ export const ReceivablesHub: React.FC = () => {
               </Button>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -1658,7 +1670,7 @@ export const ReceivablesHub: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme-subtle text-xs">
-                  {sortedReceipts.map((rec: any) => {
+                  {sortedReceipts.slice((recPage - 1) * pageSize, recPage * pageSize).map((rec: any) => {
                     const isRecUSD = Boolean(
                       rec.currency === 'USD' ||
                       rec.currency === '$' ||
@@ -1755,6 +1767,8 @@ export const ReceivablesHub: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={recPage} totalItems={sortedReceipts.length} pageSize={pageSize} onPageChange={setRecPage} onPageSizeChange={setPageSize} itemLabel="receipts" />
+            </>
           )}
         </GlassCard>
       )}
