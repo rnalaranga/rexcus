@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer, Paperclip } from 'lucide-react';
+import { Download, Plus, Filter, FileText, Truck, CreditCard, GitPullRequest, Package, Trash2, ChevronDown, Eye, ShoppingCart, PackageCheck, Printer, Paperclip, Edit } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerGRNPrintView } from '@/components/CustomerGRNPrintView';
 import { POPrintView } from '@/components/purchasing/POPrintView';
@@ -399,11 +399,27 @@ export const PurchasingHub: React.FC = () => {
                 <button
                   type="button"
                   data-no-row-click="true"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/po-builder/${row.id}`); }}
-                  className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDropdown();
+                    const supp = suppliers.find((s: any) => s.id === row.supplierId);
+                    setPrintPoData({ po: row, supplier: supp });
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                 >
                   <Eye size={13} className="text-zinc-400" />
-                  <span>View / Edit PO</span>
+                  <span>View PO</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/po-builder/${row.id}`); }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <Edit size={13} className="text-indigo-500" />
+                  <span>Edit PO</span>
                 </button>
 
                 <button
@@ -418,7 +434,7 @@ export const PurchasingHub: React.FC = () => {
                   }}
                   className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                 >
-                  <FileText size={13} className="text-blue-500" />
+                  <Printer size={13} className="text-blue-500" />
                   <span>View PDF / Print PO</span>
                 </button>
 
@@ -477,11 +493,21 @@ export const PurchasingHub: React.FC = () => {
                   <button
                     type="button"
                     data-no-row-click="true"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/mr-builder/${row.id}`); }}
-                    className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); setPrintMrData(row); }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                   >
                     <Eye size={13} className="text-zinc-400" />
                     <span>View MR</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/mr-builder/${row.id}`); }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                  >
+                    <Edit size={13} className="text-indigo-500" />
+                    <span>Edit MR</span>
                   </button>
 
                   <button
@@ -495,7 +521,7 @@ export const PurchasingHub: React.FC = () => {
                     }}
                     className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                   >
-                    <FileText size={13} className="text-blue-500" />
+                    <Printer size={13} className="text-blue-500" />
                     <span>View PDF / Print MR</span>
                   </button>
 
@@ -610,11 +636,27 @@ export const PurchasingHub: React.FC = () => {
                     <button
                       type="button"
                       data-no-row-click="true"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/grn-builder/${row.id}`); }}
-                      className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        const supp = suppliers.find((s: any) => s.id === row.supplierId);
+                        setPrintSupplierGrnData({ grn: row, supplier: supp });
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                     >
                       <Eye size={13} className="text-zinc-400" />
-                      <span>View GRN Details</span>
+                      <span>View GRN</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeDropdown(); navigate(`/purchasing/grn-builder/${row.id}`); }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                    >
+                      <Edit size={13} className="text-indigo-500" />
+                      <span>Edit GRN</span>
                     </button>
 
                     <button
@@ -629,7 +671,7 @@ export const PurchasingHub: React.FC = () => {
                       }}
                       className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                     >
-                      <FileText size={13} className="text-blue-500" />
+                      <Printer size={13} className="text-blue-500" />
                       <span>View PDF / Print GRN</span>
                     </button>
 
@@ -694,9 +736,24 @@ export const PurchasingHub: React.FC = () => {
                     closeDropdown();
                     setPrintGatePassData(row);
                   }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                >
+                  <Eye size={13} className="text-zinc-400" />
+                  <span>View Gate Pass</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDropdown();
+                    setPrintGatePassData(row);
+                  }}
                   className="w-full text-left px-3.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
                 >
-                  <FileText size={13} className="text-blue-500" />
+                  <Printer size={13} className="text-blue-500" />
                   <span>View PDF / Print Gate Pass</span>
                 </button>
 
@@ -1252,87 +1309,132 @@ export const PurchasingHub: React.FC = () => {
     if (activeTab === 'grn') {
       return [
         {
-          key: 'grn', header: 'Goods Receipt (GRN)', sortable: true,
-          render: (_, row) => (
-            <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-lg flex-shrink-0 bg-surface2 border border-theme-subtle text-secondary flex items-center justify-center`}>
-                {row.isCustomerSample ? <Package size={14} className="text-secondary" /> : <Truck size={14} className="text-secondary" />}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-primary truncate leading-snug">{row.id}</p>
-                {(() => {
-                    if (row.isCustomerSample) {
-                      return <p className="text-xs text-muted truncate mt-0.5 font-mono">Ref: {row.quoNo || row.leadId || 'Customer Sample'}</p>;
-                    }
-                    const linkedPoList: string[] = Array.isArray(row.poIds)
-                      ? row.poIds
-                      : (typeof row.poIds === 'string'
-                          ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
-                          : (row.poId ? [row.poId] : []));
-                    return (
-                      <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                        <span className="text-xs text-muted font-mono">PO:</span>
-                        {linkedPoList.length > 0 ? linkedPoList.map((pNum: string) => (
-                          <span 
-                            key={pNum}
-                            onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${pNum}`); }}
-                            className="text-xs bg-surface2 text-secondary hover:text-primary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle cursor-pointer font-bold"
-                          >
-                            {pNum}
-                          </span>
-                        )) : <span className="text-xs bg-surface2 text-secondary px-2 py-0.5 rounded-none font-mono font-medium border border-theme-subtle font-bold">Direct Receipt</span>}
-
-                        {row.billAttachment && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openDataUriOrUrl(row.billAttachment, `Vendor Document - ${row.id}`);
-                            }}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono transition-colors cursor-pointer"
-                            title={`View Attached Vendor Document (${row.billAttachmentName || 'Document'})`}
-                          >
-                            <Paperclip size={10} /> Vendor Doc
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
-              </div>
-            </div>
-          )
-        },
-        { key: 'supplier', header: 'Source', width: '180px', render: (_, row) => <span className="text-xs font-bold text-primary uppercase truncate block max-w-[170px]">{row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}</span> },
-        {
-          key: 'items', header: 'Items Received',
-          render: (_, row) => renderItemPill(row.items, row.isCustomerSample ? 'Customer Sample' : 'Received Items')
-        },
-        { key: 'status', header: 'Status', width: '90px', render: (_, row) => row.isCustomerSample ? <Badge value="Sample" size="sm" /> : <Badge value={String(row.status)} size="sm" /> },
-        {
-          key: 'billing', header: 'Billed / Paid', width: '140px',
+          key: 'id', header: 'GRN # & Date', sortable: true,
           render: (_, row) => {
-            if (row.isCustomerSample) return <span className="text-[10px] text-muted">Sample</span>;
-            const matchedBills = bills.filter((b: any) => b.grnId === row.id || (row.poId && b.poId === row.poId));
-            if (matchedBills.length === 0) {
-              return <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface2 text-muted border border-theme-subtle font-semibold">Unbilled</span>;
-            }
-            const totalB = matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0);
-            const totalP = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
-            const isPaid = totalP >= totalB - 0.01 && totalB > 0;
+            const linkedPoList: string[] = Array.isArray(row.poIds)
+              ? row.poIds
+              : (typeof row.poIds === 'string'
+                  ? (() => { try { const p = JSON.parse(row.poIds); return Array.isArray(p) ? p : [row.poIds]; } catch { return [row.poIds]; } })()
+                  : (row.poId ? [row.poId] : []));
+            const rawDate = row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '');
             return (
-              <div className="space-y-0.5">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20 font-bold">
-                  Billed ({matchedBills.length})
-                </span>
-                <div className={`text-[10px] font-mono font-semibold ${isPaid ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  {isPaid ? 'Paid' : totalP > 0 ? `Paid ${formatCurrency(totalP, true)}` : 'Unpaid'}
+              <div className="min-w-0 leading-tight space-y-0.5">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (row.isCustomerSample) {
+                        setPrintGrnData({ grn: row, group: { quoNo: row.quoNo, leadId: row.leadId, leadName: row.customerName || row.leadName } });
+                      } else {
+                        navigate(`/purchasing/grn-builder/${row.id}`);
+                      }
+                    }}
+                    className="text-xs font-mono font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {row.id}
+                  </span>
+                  {row.isCustomerSample ? (
+                    <span className="text-[9.5px] bg-purple-500/10 text-purple-600 dark:text-purple-300 px-1 py-0 font-mono font-bold border border-purple-500/30">
+                      {row.quoNo || 'Sample'}
+                    </span>
+                  ) : linkedPoList.length > 0 ? (
+                    linkedPoList.slice(0, 1).map((pNum: string) => (
+                      <span
+                        key={pNum}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${pNum}`); }}
+                        className="text-[9.5px] bg-surface2 text-secondary hover:text-primary px-1 py-0 font-mono font-bold border border-theme-subtle cursor-pointer"
+                      >
+                        PO:{pNum}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[9.5px] bg-surface2 text-muted px-1 py-0 font-mono border border-theme-subtle">
+                      Direct
+                    </span>
+                  )}
+                  {row.billAttachment && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openDataUriOrUrl(row.billAttachment, `Vendor Document - ${row.id}`); }}
+                      className="inline-flex items-center gap-0.5 px-1 py-0 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[9.5px] font-bold font-mono cursor-pointer"
+                      title="View Attached Vendor Document"
+                    >
+                      <Paperclip size={9} /> Doc
+                    </button>
+                  )}
+                </div>
+                <div className="text-[10px] text-muted font-mono">
+                  {rawDate ? formatDate(rawDate) : '-'}
                 </div>
               </div>
             );
           }
         },
-        { key: 'vehicleNo', header: 'Carrier / Receiver', width: '120px', render: (_, row) => <span className="text-xs text-muted font-mono">{row.isCustomerSample ? (row.receivedBy || 'System') : String(row.vehicleNo)}</span> },
-        { key: 'date', header: 'Receipt Date', sortable: true, render: (_, row) => <span className="text-xs text-muted">{(row.isCustomerSample ? (row.receivedAt || row.createdAt || '') : (row.date || row.createdAt || '')).split('T')[0]}</span> },
+        {
+          key: 'supplier', header: 'Source / Carrier', width: '180px',
+          render: (_, row) => (
+            <div className="min-w-0 max-w-[175px]">
+              <p className="text-xs font-bold text-primary uppercase truncate">
+                {row.isCustomerSample ? (row.customerName || row.leadName || 'Customer') : getSupplierName(row.supplierId)}
+              </p>
+              <p className="text-[10.5px] text-muted font-mono truncate mt-0.5">
+                {row.isCustomerSample ? (row.receivedBy || 'System') : (row.vehicleNo || 'Vendor Delivery')}
+              </p>
+            </div>
+          )
+        },
+        {
+          key: 'items', header: 'Items Received',
+          render: (_, row) => renderItemPill(row.items, row.isCustomerSample ? 'Customer Sample' : 'Received Items')
+        },
+        {
+          key: 'qty', header: 'Qty Received', align: 'right',
+          render: (_, row) => {
+            const items = parseItemsArray(row.items);
+            const recQty = items.reduce((s: number, it: any) => s + Number(it.receivedQty || it.qty || it.quantity || 0), 0);
+            return (
+              <div className="text-right font-mono">
+                <span className="text-xs font-bold text-primary block">{recQty > 0 ? `${recQty.toFixed(2)} pcs` : `${items.length} line(s)`}</span>
+                <span className="text-[10px] text-muted block">{items.length} item(s)</span>
+              </div>
+            );
+          }
+        },
+        {
+          key: 'status', header: 'Status & Billing', align: 'center',
+          render: (_, row) => {
+            if (row.isCustomerSample) {
+              return (
+                <div className="flex flex-col items-center gap-0.5">
+                  <Badge value="Sample" size="sm" />
+                  <span className="text-[9.5px] font-mono text-muted">{row.status || 'Received'}</span>
+                </div>
+              );
+            }
+            const matchedBills = bills.filter((b: any) => b.grnId === row.id || (row.poId && b.poId === row.poId));
+            const totalB = matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0);
+            const totalP = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const isPaid = totalP >= totalB - 0.01 && totalB > 0;
+            return (
+              <div className="flex flex-col items-center gap-0.5">
+                <Badge value={String(row.status || 'Received')} size="sm" />
+                {matchedBills.length > 0 ? (
+                  <span className={`px-1.5 py-0 text-[9.5px] font-bold rounded border ${
+                    isPaid
+                      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                      : 'bg-blue-500/10 text-blue-600 border-blue-500/25'
+                  }`}>
+                    Billed ({matchedBills.length}) • {isPaid ? 'Paid' : totalP > 0 ? 'Part. Paid' : 'Unpaid'}
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0 text-[9.5px] font-semibold rounded bg-amber-500/10 text-amber-600 border border-amber-500/25">
+                    Unbilled
+                  </span>
+                )}
+              </div>
+            );
+          }
+        },
         {
           key: 'traceability', header: 'Traceability', align: 'center',
           render: (_: any, row: any) => {
@@ -1583,17 +1685,29 @@ export const PurchasingHub: React.FC = () => {
     if (activeTab === 'gate_pass') {
       return [
         {
-          key: 'id', header: 'Gate Pass No', sortable: true,
+          key: 'id', header: 'Gate Pass # & Date', sortable: true,
           render: (val: any, row: any) => (
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center font-mono font-bold text-xs flex-shrink-0">
-                <Truck size={14} />
+            <div className="min-w-0 leading-tight space-y-0.5">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span
+                  onClick={(e) => { e.stopPropagation(); setPrintGatePassData(row); }}
+                  className="font-mono font-black text-blue-600 dark:text-blue-400 text-xs hover:underline cursor-pointer"
+                >
+                  {val}
+                </span>
+                {(row.quoNo || row.displayQuoNo) && (
+                  <span className="text-[9.5px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0 font-mono font-bold border border-blue-500/25">
+                    {row.quoNo || row.displayQuoNo}
+                  </span>
+                )}
+                {row.grnId && (
+                  <span className="text-[9.5px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1 py-0 font-mono font-bold border border-emerald-500/30">
+                    GRN:{row.grnId}
+                  </span>
+                )}
               </div>
-              <div>
-                <span className="font-mono font-bold text-primary text-xs">{val}</span>
-                <div className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
-                  <span>{formatDate(row.issuedDate || row.createdAt)}</span>
-                </div>
+              <div className="text-[10px] text-muted font-mono">
+                {formatDate(row.issuedDate || row.createdAt)}
               </div>
             </div>
           )
@@ -1601,71 +1715,81 @@ export const PurchasingHub: React.FC = () => {
         {
           key: 'customerCompany', header: 'Customer / Consignee',
           render: (val: any, row: any) => (
-            <div className="space-y-0.5">
-              <p className="font-bold text-primary text-xs">{val || row.customerName || 'N/A'}</p>
-              {row.attention && (
-                <p className="text-[11px] text-secondary">Attn: {row.attention}</p>
-              )}
-            </div>
-          )
-        },
-        {
-          key: 'quoNo', header: 'Reference',
-          render: (_: any, row: any) => (
-            <div className="space-y-0.5">
-              {row.quoNo || row.displayQuoNo ? (
-                <Badge variant="info" size="sm" className="font-mono text-[10px]">
-                  {row.quoNo || row.displayQuoNo}
-                </Badge>
-              ) : (
-                <span className="text-xs text-muted">-</span>
-              )}
-              {row.grnId && <div className="text-[10px] text-muted font-mono">GRN: {row.grnId}</div>}
-            </div>
-          )
-        },
-        {
-          key: 'carrier', header: 'Transport / Vehicle',
-          render: (val: any, row: any) => (
-            <div className="text-xs">
-              <span className="font-medium text-primary">{val || 'Hand Delivery'}</span>
-              {row.vehicleNo && <div className="text-[10px] text-muted font-mono">{row.vehicleNo}</div>}
+            <div className="min-w-0 max-w-[190px]">
+              <p className="font-bold text-primary text-xs uppercase truncate">{val || row.customerName || 'N/A'}</p>
+              <p className="text-[10.5px] text-muted truncate mt-0.5">
+                {row.attention ? `Attn: ${row.attention}` : (row.carrier || 'Hand Delivery')}
+              </p>
             </div>
           )
         },
         {
           key: 'items', header: 'Dispatched Items',
-          render: (val: any) => {
-            let itemsList: any[] = [];
-            try {
-              if (typeof val === 'string' && val.startsWith('[')) itemsList = JSON.parse(val);
-              else if (Array.isArray(val)) itemsList = val;
-              else if (val) itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
-            } catch {
-              itemsList = [{ description: val, qty: 1, unit: 'Nos' }];
-            }
+          render: (val: any) => renderItemPill(val, 'Dispatched Items')
+        },
+        {
+          key: 'qty', header: 'Qty', align: 'right',
+          render: (_: any, row: any) => {
+            const itemsList = parseItemsArray(row.items);
+            const totQty = itemsList.reduce((s: number, it: any) => s + Number(it.qty || it.quantity || 1), 0);
             return (
-              <div className="space-y-0.5 max-w-xs">
-                {itemsList.slice(0, 2).map((it: any, idx: number) => (
-                  <div key={idx} className="flex items-center gap-1.5 text-xs truncate">
-                    <span className="font-medium text-primary truncate">{it.description || it.name}</span>
-                    <span className="text-[10px] font-mono text-muted">x{Number(it.qty || 1)} {it.unit || 'Nos'}</span>
-                  </div>
-                ))}
-                {itemsList.length > 2 && (
-                  <span className="text-[10px] text-muted font-mono">+{itemsList.length - 2} more item(s)</span>
-                )}
+              <div className="text-right font-mono">
+                <span className="text-xs font-bold text-primary block">{totQty > 0 ? `${totQty} nos` : `${itemsList.length} item(s)`}</span>
+                <span className="text-[10px] text-muted block">{row.vehicleNo || row.carrier || 'Hand'}</span>
               </div>
             );
           }
         },
         {
-          key: 'status', header: 'Status', width: '90px',
+          key: 'traceability', header: 'Traceability', align: 'center',
+          render: (_: any, row: any) => {
+            const traces: TraceNode[] = [];
+            if (row.quoNo || row.displayQuoNo) {
+              const qNo = row.quoNo || row.displayQuoNo;
+              traces.push({
+                type: 'quotation',
+                title: 'Quotation',
+                reference: qNo,
+                subtitle: 'Source Quotation',
+                statusBadge: { label: 'Quote', variant: 'info' },
+                navigateUrl: `/crm/quotations?search=${encodeURIComponent(qNo)}`
+              });
+            }
+            if (row.grnId) {
+              traces.push({
+                type: 'grn',
+                title: 'Sample GRN',
+                reference: row.grnId,
+                subtitle: 'Linked Receipt',
+                statusBadge: { label: 'GRN', variant: 'success' },
+                navigateUrl: `/purchasing?tab=grn&search=${encodeURIComponent(row.grnId)}`
+              });
+            }
+            return (
+              <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
+                <TraceabilityDropdown title={`Gate Pass #${row.id}`} traces={traces} />
+              </div>
+            );
+          }
+        },
+        {
+          key: 'status', header: 'Status', align: 'center', width: '100px',
           render: (v: any) => <Badge variant="success" size="sm">{v || 'Dispatched'}</Badge>
         },
         {
           key: 'actions', header: 'Actions', align: 'right',
-          render: (_, row) => renderActionsDropdown('gate_pass', row)
+          render: (_, row) => (
+            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setPrintGatePassData(row)}
+                className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+              >
+                <Printer size={11} /> View PDF
+              </button>
+              {renderActionsDropdown('gate_pass', row)}
+            </div>
+          )
         }
       ];
     }
@@ -1876,7 +2000,7 @@ export const PurchasingHub: React.FC = () => {
           pagination
           itemsPerPage={25}
           itemLabel="purchasing records"
-          onRowClick={activeTab === 'po' ? undefined : (row => {
+          onRowClick={(activeTab === 'po' || activeTab === 'gate_pass') ? undefined : (row => {
             if (openActionId) return;
             if (activeTab === 'grn') {
               if (row.isCustomerSample) {
@@ -1888,8 +2012,6 @@ export const PurchasingHub: React.FC = () => {
               navigate(`/purchasing/mr-builder/${row.id}`);
             } else if (activeTab === 'bill') {
               navigate(`/purchasing/bill-builder?id=${row.id}`);
-            } else if (activeTab === 'gate_pass') {
-              setPrintGatePassData(row);
             }
           })}
         />
