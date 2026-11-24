@@ -1842,7 +1842,7 @@ export const PurchasingHub: React.FC = () => {
             <span className="text-xs text-muted flex items-center gap-1.5 font-bold uppercase tracking-wider mr-1">
               <Filter size={12} /> Module:
             </span>
-            {(['po', 'mr', 'grn', 'bill', 'gate_pass'] as Tab[]).map(t => (
+            {(['po', 'mr', 'grn', 'bill'] as Tab[]).map(t => (
               <button 
                 key={t} 
                 onClick={() => { setActiveTab(t); setStatusFilter('all'); setGrnSourceFilter('all'); }} 
@@ -1852,7 +1852,7 @@ export const PurchasingHub: React.FC = () => {
                     : 'bg-surface border border-theme-subtle text-muted hover:text-secondary hover:border-theme'
                 }`}
               >
-                {t === 'grn' ? 'GRN Receipts' : t === 'gate_pass' ? 'Gate Passes' : t.toUpperCase()}
+                {t === 'grn' ? 'GRN Receipts' : t.toUpperCase()}
               </button>
             ))}
           </div>
