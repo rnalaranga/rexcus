@@ -887,40 +887,41 @@ export const PurchasingHub: React.FC = () => {
                   : (row.mrId ? [row.mrId] : []));
             const poGrns = combinedGrns.filter((g: any) => !g.isCustomerSample && (g.poId === row.id || (Array.isArray(g.poIds) && g.poIds.includes(row.id))));
             return (
-              <div className="min-w-0 space-y-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+              <div className="min-w-0 leading-tight space-y-0.5">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span
+                    onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/po-builder/${row.id}`); }}
+                    className="text-xs font-mono font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
                     {row.id}
                   </span>
-                  {linkedMrList.slice(0, 2).map((mrNum: string) => (
+                  {linkedMrList.slice(0, 1).map((mrNum: string) => (
                     <span
                       key={mrNum}
                       onClick={(e) => { e.stopPropagation(); navigate('/purchasing/mr-builder/' + mrNum); }}
-                      className="text-[10px] bg-surface2 text-secondary hover:text-primary px-1.5 py-0.5 font-mono font-bold border border-theme-subtle cursor-pointer"
+                      className="text-[9.5px] bg-surface2 text-secondary hover:text-primary px-1 py-0 font-mono font-bold border border-theme-subtle cursor-pointer"
                       title="View Material Request"
                     >
-                      MR: {mrNum}
+                      MR:{mrNum}
                     </span>
                   ))}
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
                   {poGrns.length > 0 ? (
-                    poGrns.slice(0, 2).map((g: any) => (
+                    poGrns.slice(0, 1).map((g: any) => (
                       <span
                         key={g.id}
                         onClick={(e) => { e.stopPropagation(); navigate(`/purchasing/grn-builder/${g.id}`); }}
-                        className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 font-mono font-bold border border-emerald-500/30 cursor-pointer"
+                        className="text-[9.5px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1 py-0 font-mono font-bold border border-emerald-500/30 cursor-pointer"
                       >
-                        GRN: {g.id}
+                        GRN:{g.id}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 font-mono font-semibold border border-amber-500/25">
+                    <span className="text-[9.5px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 py-0 font-mono font-semibold border border-amber-500/25">
                       GRN Pending
                     </span>
                   )}
                 </div>
-                <div className="text-[10.5px] text-muted font-mono">
+                <div className="text-[10px] text-muted font-mono">
                   {formatDate(row.date)}{row.expectedDate ? ` • Exp ${formatDate(row.expectedDate)}` : ''}
                 </div>
               </div>
@@ -1875,7 +1876,7 @@ export const PurchasingHub: React.FC = () => {
           pagination
           itemsPerPage={25}
           itemLabel="purchasing records"
-          onRowClick={row => {
+          onRowClick={activeTab === 'po' ? undefined : (row => {
             if (openActionId) return;
             if (activeTab === 'grn') {
               if (row.isCustomerSample) {
@@ -1883,8 +1884,6 @@ export const PurchasingHub: React.FC = () => {
               } else {
                 navigate(`/purchasing/grn-builder/${row.id}`);
               }
-            } else if (activeTab === 'po') {
-              navigate(`/purchasing/po-builder/${row.id}`);
             } else if (activeTab === 'mr') {
               navigate(`/purchasing/mr-builder/${row.id}`);
             } else if (activeTab === 'bill') {
@@ -1892,7 +1891,7 @@ export const PurchasingHub: React.FC = () => {
             } else if (activeTab === 'gate_pass') {
               setPrintGatePassData(row);
             }
-          }}
+          })}
         />
       </GlassCard>
 
