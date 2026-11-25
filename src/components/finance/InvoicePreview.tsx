@@ -660,18 +660,27 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   let itemMultiplier = 1;
   let unitPriceDivisor = 1;
   if (isTaxInclusive) {
-    if (isSsclHidden && !isVatHidden) {
-      // Option 2: VAT separate, SSCL absorbed into supply value
-      unitPriceDivisor = 1 + t2Rate / 100;
-      itemMultiplier = 1;
-    } else if (isSsclSeparate && isVatSeparate) {
-      // Option 3: Both separate
+    if (isSsclSeparate && hasTax2 && isVatSeparate) {
+      // Option 3: Both SSCL & VAT separate
       unitPriceDivisor = taxProfile?.tax2_compound ? ((1 + t1Rate / 100) * (1 + t2Rate / 100)) : (1 + (t1Rate + t2Rate) / 100);
+      itemMultiplier = 1;
+    } else if (!isVatHidden && (isVatSeparate || taxAmount > 0)) {
+      // Option 2 (SSCL absorbed, VAT separate) or VAT-only separate (including when taxProfile is not attached)
+      unitPriceDivisor = 1 + t2Rate / 100;
       itemMultiplier = 1;
     } else {
       // Both absorbed or VAT absorbed: entered prices already include taxes
       unitPriceDivisor = 1;
       itemMultiplier = 1;
+    }
+
+    // Guard against double-dividing if line items were already stored tax-exclusive
+    if (unitPriceDivisor > 1.001 && rawItemsTotal > 0 && subtotal > 0) {
+      const dividedMatchesSub = Math.abs((rawItemsTotal / unitPriceDivisor) - (subtotal + (effectiveDiscountAmt / unitPriceDivisor)));
+      const rawMatchesSub = Math.abs(rawItemsTotal - (subtotal + effectiveDiscountAmt));
+      if (rawMatchesSub < dividedMatchesSub && rawItemsTotal < total - 0.05) {
+        unitPriceDivisor = 1;
+      }
     }
   } else {
     if (isSsclHidden && isVatHidden) {
