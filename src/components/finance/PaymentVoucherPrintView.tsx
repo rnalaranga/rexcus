@@ -324,7 +324,7 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
           </div>
 
           {/* 3-Box Signatures Block: Prepared, Approved (Accountant), Receiver */}
-          <div className="grid grid-cols-3 divide-x divide-black text-[10px] bg-white print-no-break">
+          <div className="grid grid-cols-[1fr_1fr_1.8fr] divide-x divide-black text-[10px] bg-white print-no-break">
             {/* 1. Prepared By */}
             <div className="p-2 flex flex-col justify-between" style={{ minHeight: '85px' }}>
               <div className="font-bold uppercase text-black text-[9px]">1. Prepared By</div>
@@ -345,19 +345,21 @@ export const PaymentVoucherPrintView: React.FC<PaymentVoucherPrintViewProps> = (
 
             {/* 3. Receiver Signature */}
             <div className="p-2 flex flex-col justify-between" style={{ minHeight: '85px' }}>
-              <div className="font-bold uppercase text-black text-[9px]">3. Payee / Receiver</div>
-              <div className="space-y-1 my-1">
-                <div className="flex items-end gap-1 text-[8px] text-gray-700">
-                  <span className="font-semibold shrink-0">Name:</span>
-                  <span className="flex-1 border-b border-dotted border-black h-3"></span>
-                </div>
-                <div className="flex items-end gap-1 text-[8px] text-gray-700">
-                  <span className="font-semibold shrink-0">NIC:</span>
-                  <span className="flex-1 border-b border-dotted border-black h-3"></span>
+              <div>
+                <div className="font-bold uppercase text-black text-[9px]">3. Payee / Receiver</div>
+                <div className="grid grid-cols-2 gap-2 mt-1.5">
+                  <div className="flex items-end gap-1 text-[8px] text-gray-700">
+                    <span className="font-semibold shrink-0">Name:</span>
+                    <span className="flex-1 border-b border-dotted border-black h-2.5"></span>
+                  </div>
+                  <div className="flex items-end gap-1 text-[8px] text-gray-700">
+                    <span className="font-semibold shrink-0">NIC:</span>
+                    <span className="flex-1 border-b border-dotted border-black h-2.5"></span>
+                  </div>
                 </div>
               </div>
-              <div className="pt-1">
-                <div className="border-b border-dotted border-black mb-0.5"></div>
+              <div className="mt-auto pt-3">
+                <div className="border-b border-dotted border-black mb-1"></div>
                 <div className="text-[8.5px] text-gray-700 font-semibold text-center">Signature & Stamp</div>
               </div>
             </div>
