@@ -99,28 +99,29 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
   const vatNumber = customer?.vat || order.customerVat || '';
   const tinNumber = customer?.tin || customer?.brNumber || order.customerTin || '';
 
-  const subtotal = Number(order.subtotal) || itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
-  const discountAmount = Number(order.discountAmount || (order.discountType === 'percent' ? ((subtotal * Number(order.discount || 0)) / 100) : order.discount) || 0);
+  const rawItemsSum = itemsList.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.unitPrice) || 0))), 0);
+  const rawSubtotal = Number(order.subtotal) || rawItemsSum;
+  const rawDiscountAmount = Number(order.discountAmount || (order.discountType === 'percent' ? ((rawSubtotal * Number(order.discount || 0)) / 100) : order.discount) || 0);
   let taxAmount = Number(order.taxAmount) || 0;
-  const totalPrice = Number(order.totalPrice) || Math.max(0, subtotal - discountAmount + taxAmount);
-  if (taxAmount === 0 && totalPrice > (subtotal - discountAmount)) {
-    taxAmount = totalPrice - (subtotal - discountAmount);
+  const totalPrice = Number(order.totalPrice) || Math.max(0, rawSubtotal - rawDiscountAmount + taxAmount);
+  if (taxAmount === 0 && totalPrice > (rawSubtotal - rawDiscountAmount)) {
+    taxAmount = totalPrice - (rawSubtotal - rawDiscountAmount);
   }
 
-  const isTaxInclusive = Boolean(order.isTaxInclusive);
+  const rawIsTaxInclusive = Boolean(order.isTaxInclusive);
   let vatAmount = Number(order.vatAmount || 0);
   let ssclAmount = Number(order.ssclAmount || 0);
 
   // If vatAmount / ssclAmount were not directly stored on older records, derive them from taxAmount & taxRate/taxProfile
   if (vatAmount === 0 && ssclAmount === 0 && taxAmount > 0) {
-    const netBase = Math.max(0, subtotal - discountAmount);
+    const netBase = Math.max(0, rawSubtotal - rawDiscountAmount);
     const taxRate = Number(order.taxRate) || 0;
     if (Math.abs(taxRate - 18) < 0.1) {
       vatAmount = taxAmount;
     } else if (Math.abs(taxRate - 2.5) < 0.1) {
       ssclAmount = taxAmount;
     } else if (taxRate >= 20 || String(order.taxProfileId || '').includes('sscl')) {
-      if (isTaxInclusive) {
+      if (rawIsTaxInclusive) {
         const base = totalPrice / 1.2095;
         ssclAmount = Number((base * 0.025).toFixed(2));
         vatAmount = Number((totalPrice - base - ssclAmount).toFixed(2));
@@ -130,6 +131,45 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
       }
     } else {
       vatAmount = taxAmount;
+    }
+  }
+
+  // When taxes (VAT/SSCL) are separate, normalize any tax-inclusive line items & discount to tax-exclusive
+  // so the Sales Order matches the Quotation (line items & subtotal excl. tax, then tax added separately).
+  const hasSeparateTax = vatAmount > 0 || ssclAmount > 0 || taxAmount > 0;
+  const isTaxInclusive = rawIsTaxInclusive && !hasSeparateTax;
+  const netSupplyBase = Math.max(0, totalPrice - taxAmount);
+  const taxDivisor = (rawIsTaxInclusive && hasSeparateTax && netSupplyBase > 0 && totalPrice > netSupplyBase)
+    ? (totalPrice / netSupplyBase)
+    : 1;
+
+  const itemsAreTaxInclusive = taxDivisor > 1.001 && rawItemsSum > 0 && (
+    Math.abs((rawItemsSum / taxDivisor) - rawSubtotal) < Math.abs(rawItemsSum - rawSubtotal) ||
+    Math.abs((rawItemsSum / taxDivisor) - (netSupplyBase + (rawDiscountAmount / taxDivisor))) < Math.max(2, rawItemsSum * 0.005)
+  );
+
+  const displayItems = itemsList.map((item: any) => {
+    const itemQty = Number(item.qty) || 1;
+    const rawUnitPrice = Number(item.unitPrice) || 0;
+    const rawLineTotal = Number(item.amount) || (itemQty * rawUnitPrice);
+    const unitPrice = itemsAreTaxInclusive ? Number((rawUnitPrice / taxDivisor).toFixed(2)) : rawUnitPrice;
+    const amount = itemsAreTaxInclusive ? Number((rawLineTotal / taxDivisor).toFixed(2)) : rawLineTotal;
+    return { ...item, qty: itemQty, unitPrice, amount };
+  });
+
+  const displayItemsSum = displayItems.reduce((acc, it) => acc + it.amount, 0);
+  const subtotal = itemsAreTaxInclusive
+    ? displayItemsSum
+    : (taxDivisor > 1.001 && Math.abs((rawSubtotal / taxDivisor) - netSupplyBase) < Math.abs(rawSubtotal - netSupplyBase)
+      ? Number((rawSubtotal / taxDivisor).toFixed(2))
+      : rawSubtotal);
+
+  let discountAmount = rawDiscountAmount;
+  if (rawDiscountAmount > 0 && taxDivisor > 1.001) {
+    const expectedExclDiscount = Math.max(0, subtotal - netSupplyBase);
+    const dividedDiscount = Number((rawDiscountAmount / taxDivisor).toFixed(2));
+    if (Math.abs(dividedDiscount - expectedExclDiscount) < Math.abs(rawDiscountAmount - expectedExclDiscount)) {
+      discountAmount = dividedDiscount;
     }
   }
 
@@ -458,7 +498,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
               </tr>
             </thead>
             <tbody>
-              {itemsList.map((item: any, idx: number) => {
+              {displayItems.map((item: any, idx: number) => {
                 const itemQty = Number(item.qty) || 1;
                 const itemUnitPrice = Number(item.unitPrice) || 0;
                 const lineTotal = Number(item.amount) || (itemQty * itemUnitPrice);

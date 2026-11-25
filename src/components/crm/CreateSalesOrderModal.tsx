@@ -276,7 +276,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
 
     const itemsSum = itemsList.reduce((acc: number, it: any) => acc + (Number(it.amount) || ((Number(it.qty) || 1) * Number(it.unitPrice || 0))), 0);
-    const subtotal = Number(quoteData.custTotals?.subtotal || quoteData.totals?.subtotal || quoteData.subtotal) || (itemsSum > 0 ? itemsSum : fallbackBasePrice);
+    let subtotal = Number(quoteData.custTotals?.subtotal || quoteData.totals?.subtotal || quoteData.subtotal) || (itemsSum > 0 ? itemsSum : fallbackBasePrice);
 
     const rawDiscountType: 'percent' | 'amount' = (quoteData.custDiscountType || quoteData.discountType) === 'percent' ? 'percent' : 'amount';
     let quoteDiscount = Number(quoteData.custDiscount || quoteData.discount || 0);
@@ -298,14 +298,14 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       }
     }
 
-    const discountVal = rawDiscountType === 'percent' ? quoteDiscount : quoteDiscountAmount;
+    let discountVal = rawDiscountType === 'percent' ? quoteDiscount : quoteDiscountAmount;
     const netBase = Number(quoteData.custTotals?.total) || Math.max(0, subtotal - quoteDiscountAmount);
 
     let vatAmount = quoteVat;
     let ssclAmount = quoteSscl;
     let taxAmount = initialTax;
 
-    const isQuoteTaxInclusive = Boolean(
+    let isQuoteTaxInclusive = Boolean(
       isProduct ||
       quoteData.isProductQuotation ||
       quoteData.isTaxInclusive ||
@@ -322,6 +322,39 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
     if (grandTotal === 0) {
       grandTotal = isQuoteTaxInclusive ? netBase : (netBase + taxAmount);
+    }
+
+    const hasSeparateTax = vatAmount > 0 || ssclAmount > 0 || taxAmount > 0;
+    if (isQuoteTaxInclusive && hasSeparateTax) {
+      const netSupplyBase = Math.max(0, grandTotal - taxAmount);
+      const divisor = (netSupplyBase > 0 && grandTotal > netSupplyBase) ? (grandTotal / netSupplyBase) : 1;
+      if (divisor > 1.001) {
+        const itemsAreTaxInclusive = itemsSum > 0 && (
+          Math.abs((itemsSum / divisor) - subtotal) < Math.abs(itemsSum - subtotal) ||
+          Math.abs((itemsSum / divisor) - (netSupplyBase + (quoteDiscountAmount / divisor))) < Math.max(2, itemsSum * 0.005)
+        );
+        if (itemsAreTaxInclusive) {
+          itemsList = itemsList.map((it: any) => {
+            const up = Number((Number(it.unitPrice || 0) / divisor).toFixed(2));
+            const amt = Number((Number(it.amount || (it.qty * it.unitPrice)) / divisor).toFixed(2));
+            return { ...it, unitPrice: up, amount: amt };
+          });
+          subtotal = itemsList.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0);
+        } else if (Math.abs((subtotal / divisor) - netSupplyBase) < Math.abs(subtotal - netSupplyBase)) {
+          subtotal = Number((subtotal / divisor).toFixed(2));
+        }
+        if (quoteDiscountAmount > 0) {
+          const expectedExclDiscount = Math.max(0, subtotal - netSupplyBase);
+          const dividedDiscount = Number((quoteDiscountAmount / divisor).toFixed(2));
+          if (Math.abs(dividedDiscount - expectedExclDiscount) < Math.abs(quoteDiscountAmount - expectedExclDiscount)) {
+            quoteDiscountAmount = dividedDiscount;
+            if (rawDiscountType === 'amount') {
+              discountVal = dividedDiscount;
+            }
+          }
+        }
+      }
+      isQuoteTaxInclusive = false;
     }
 
     const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
