@@ -161,6 +161,10 @@ export const Quotations: React.FC = () => {
   const [cloneConfirm, setCloneConfirm] = useState<{ url: string; quoNo: string } | null>(null)
   const [cloneCountdown, setCloneCountdown] = useState(5)
   const [cloneChecked, setCloneChecked] = useState(false)
+  const [changeCustomerTarget, setChangeCustomerTarget] = useState<{ quoNo: string; currentName: string; ids: string[]; currentCustomerId: string } | null>(null)
+  const [newCustomerId, setNewCustomerId] = useState<string>('')
+  const [newCustomerObj, setNewCustomerObj] = useState<any>(null)
+  const [savingCustomerChange, setSavingCustomerChange] = useState(false)
 
   useEffect(() => {
     if (!cloneConfirm || cloneCountdown <= 0) return;
@@ -1981,10 +1985,30 @@ export const Quotations: React.FC = () => {
               </>
             )}
 
-            {/* Delete Section - Admin Only */}
+            {/* Admin Only Section */}
             {isAdmin && (
               <>
                 <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenActionId(null);
+                    setActionCoords(null);
+                    const allIds = Array.from(new Set([...group.main, ...group.job, ...group.customer].map((q: any) => q.id).filter(Boolean)));
+                    setNewCustomerId(latestMain?.leadId || group.leadId || '');
+                    setNewCustomerObj(null);
+                    setChangeCustomerTarget({
+                      quoNo: group.quoNo,
+                      currentName: group.leadCompany || group.leadName || 'Unknown Customer',
+                      ids: allIds,
+                      currentCustomerId: latestMain?.leadId || group.leadId || ''
+                    });
+                  }}
+                  className="w-full px-3.5 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center gap-2.5 transition-colors text-left"
+                >
+                  <Building2 size={14} className="shrink-0" />
+                  <span>Change Customer (Admin)</span>
+                </button>
                 <button
                   type="button"
                   onClick={async () => {
@@ -4701,6 +4725,100 @@ export const Quotations: React.FC = () => {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Admin-Only Change Customer Modal */}
+      {isAdmin && changeCustomerTarget && (
+        <Modal
+          isOpen={!!changeCustomerTarget}
+          onClose={() => !savingCustomerChange && setChangeCustomerTarget(null)}
+          title={`Change Customer — ${changeCustomerTarget.quoNo}`}
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 rounded-lg bg-surface2/50 border border-theme-subtle">
+              <span className="text-[10px] uppercase font-bold text-muted block">Current Customer</span>
+              <span className="font-bold text-primary text-sm">{changeCustomerTarget.currentName}</span>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-muted mb-1.5">
+                Select New Customer
+              </label>
+              <CustomerAutocomplete
+                value={newCustomerId}
+                onChange={(id, custObj) => {
+                  setNewCustomerId(id);
+                  setNewCustomerObj(custObj || null);
+                }}
+                onSelectCustomer={(custObj) => {
+                  if (custObj) {
+                    setNewCustomerId(custObj.id);
+                    setNewCustomerObj(custObj);
+                  }
+                }}
+                placeholder="Search customer by name, company, phone..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={savingCustomerChange}
+                onClick={() => setChangeCustomerTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={savingCustomerChange || !newCustomerId || !newCustomerObj}
+                onClick={async () => {
+                  if (!changeCustomerTarget || !newCustomerObj) return;
+                  setSavingCustomerChange(true);
+                  try {
+                    const token = localStorage.getItem('rex_token');
+                    const targetId = changeCustomerTarget.ids[0] || changeCustomerTarget.quoNo;
+                    const res = await fetch(
+                      `${import.meta.env.VITE_API_URL || '/api'}/quotations/${encodeURIComponent(targetId)}/change-customer`,
+                      {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                          'x-user-role': user?.role || 'admin'
+                        },
+                        body: JSON.stringify({
+                          ids: changeCustomerTarget.ids,
+                          customer: {
+                            id: newCustomerObj.id,
+                            name: newCustomerObj.name || newCustomerObj.company || '',
+                            company: newCustomerObj.company || newCustomerObj.name || '',
+                            phone: newCustomerObj.phone || '',
+                            email: newCustomerObj.email || '',
+                            address: newCustomerObj.address || '',
+                            vat: newCustomerObj.vat || ''
+                          }
+                        })
+                      }
+                    );
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error || 'Failed to change customer');
+                    toast(`Customer updated for ${changeCustomerTarget.quoNo}`, 'success');
+                    setChangeCustomerTarget(null);
+                    refetch();
+                  } catch (err: any) {
+                    toast(err.message || 'Failed to change customer', 'error');
+                  } finally {
+                    setSavingCustomerChange(false);
+                  }
+                }}
+              >
+                {savingCustomerChange ? 'Saving...' : 'Save Customer'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   )

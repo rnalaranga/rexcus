@@ -5225,6 +5225,71 @@ app.put('/api/quotations/update/:id', async (req, res) => {
   }
 });
 
+// Admin-only: Change ONLY the customer on a quotation without altering anything else
+app.patch('/api/quotations/:id/change-customer', async (req, res) => {
+  try {
+    if (!checkIsAdminUser(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators can change quotation customer.' });
+    }
+    const { id } = req.params;
+    const { ids, customer } = req.body || {};
+    if (!customer || (!customer.id && !customer.name && !customer.company)) {
+      return res.status(400).json({ error: 'Please select a valid customer.' });
+    }
+
+    const targetIds: string[] = Array.isArray(ids) && ids.length > 0 ? ids : [id];
+    const newLeadId = customer.id || null;
+    const newName = customer.name || customer.company || '';
+    const newCompany = customer.company || customer.name || '';
+
+    for (const qId of targetIds) {
+      const [rows]: any = await db.query('SELECT id, leadId, data FROM quotations WHERE id = ? LIMIT 1', [qId]);
+      if (!rows || rows.length === 0) continue;
+
+      let parsedData: any = {};
+      try {
+        parsedData = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : (rows[0].data || {});
+      } catch {
+        parsedData = {};
+      }
+
+      if (parsedData && typeof parsedData === 'object') {
+        parsedData.leadId = newLeadId;
+        parsedData.customerId = newLeadId;
+        parsedData.customerName = newName;
+        parsedData.customerCompany = newCompany;
+        parsedData.company = newCompany;
+        if (customer.phone !== undefined) {
+          parsedData.customerPhone = customer.phone;
+          parsedData.phone = customer.phone;
+        }
+        if (customer.email !== undefined) {
+          parsedData.customerEmail = customer.email;
+          parsedData.email = customer.email;
+        }
+        if (customer.address !== undefined) {
+          parsedData.customerAddress = customer.address;
+          parsedData.address = customer.address;
+        }
+        if (customer.vat !== undefined) {
+          parsedData.customerVat = customer.vat;
+          parsedData.vat = customer.vat;
+        }
+      }
+
+      await db.query(
+        'UPDATE quotations SET leadId = ?, data = ? WHERE id = ?',
+        [newLeadId, JSON.stringify(parsedData), qId]
+      );
+    }
+
+    res.json({ success: true, updatedIds: targetIds });
+  } catch (error: any) {
+    console.error('Error changing quotation customer:', error);
+    res.status(500).json({ error: error.message || 'Failed to change quotation customer' });
+  }
+});
+
 app.put('/api/quotations/status/:id', async (req, res) => {
   try {
     const { id } = req.params;
