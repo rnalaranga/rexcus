@@ -22877,22 +22877,32 @@ app.get('/api/notifications', async (req, res) => {
     // 1. Overdue Invoices
     try {
       const [overdueInvoices] = await db.query(
-        `SELECT id, invoiceNo, total, paidAmount, dueDate, customerId, leadId 
-         FROM invoices 
-         WHERE status NOT IN ('paid', 'draft') AND dueDate IS NOT NULL AND dueDate < NOW()
-         ORDER BY dueDate ASC LIMIT 6`
+        `SELECT i.id, i.invoiceNo, i.total, i.paidAmount, i.dueDate, i.customerId, i.leadId,
+                COALESCE(c.company, c.name) AS customerName
+         FROM invoices i
+         LEFT JOIN customers c ON i.customerId = c.id
+         WHERE i.status NOT IN ('paid', 'draft', 'cancelled') AND i.dueDate IS NOT NULL AND i.dueDate < NOW()
+         ORDER BY i.dueDate ASC LIMIT 6`
       ) as any[];
       
       for (const inv of (overdueInvoices || [])) {
         const due = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
+        if (due <= 0) continue;
         const days = Math.max(1, Math.ceil((Date.now() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
+        const dueDateStr = new Date(inv.dueDate).toISOString().slice(0, 10);
         list.push({
           id: `overdue-inv-${inv.id}`,
           type: 'invoice',
+          category: 'Finance',
           severity: 'error',
-          title: `Overdue Invoice: ${inv.invoiceNo || inv.id}`,
-          message: `Overdue by ${days} days · Rs. ${due.toLocaleString()} pending settlement`,
-          time: `${days}d ago`,
+          title: `Overdue Invoice: ${inv.invoiceNo || inv.id}${inv.customerName ? ` — ${inv.customerName}` : ''}`,
+          message: `Overdue by ${days} day${days > 1 ? 's' : ''} (Due ${dueDateStr}). Balance Rs. ${due.toLocaleString()} pending out of Rs. ${Number(inv.total || 0).toLocaleString()}.`,
+          meta: [
+            ...(inv.customerName ? [{ label: 'Customer', value: inv.customerName }] : []),
+            { label: 'Balance Due', value: `Rs. ${due.toLocaleString()}` },
+            { label: 'Due Date', value: dueDateStr }
+          ],
+          time: `${days}d overdue`,
           link: '/finance/invoices',
           roles: ['admin', 'finance'],
           timestamp: new Date(inv.dueDate).getTime()
@@ -22903,25 +22913,34 @@ app.get('/api/notifications', async (req, res) => {
     // 1b. Upcoming / Aging Invoice Payment Reminders (due within 7 days)
     try {
       const [upcomingInvoices] = await db.query(
-        `SELECT id, invoiceNo, total, paidAmount, dueDate
-         FROM invoices
-         WHERE status NOT IN ('paid', 'draft', 'cancelled')
-           AND dueDate IS NOT NULL
-           AND dueDate >= CURDATE()
-           AND dueDate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-         ORDER BY dueDate ASC LIMIT 5`
+        `SELECT i.id, i.invoiceNo, i.total, i.paidAmount, i.dueDate,
+                COALESCE(c.company, c.name) AS customerName
+         FROM invoices i
+         LEFT JOIN customers c ON i.customerId = c.id
+         WHERE i.status NOT IN ('paid', 'draft', 'cancelled')
+           AND i.dueDate IS NOT NULL
+           AND i.dueDate >= CURDATE()
+           AND i.dueDate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+         ORDER BY i.dueDate ASC LIMIT 5`
       ) as any[];
 
       for (const inv of (upcomingInvoices || [])) {
         const due = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
         if (due <= 0) continue;
         const daysLeft = Math.max(0, Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        const dueDateStr = new Date(inv.dueDate).toISOString().slice(0, 10);
         list.push({
           id: `reminder-inv-${inv.id}`,
           type: 'invoice',
+          category: 'Finance',
           severity: 'warning',
-          title: `Invoice Payment Reminder: ${inv.invoiceNo || inv.id}`,
-          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`} · Rs. ${due.toLocaleString()} pending`,
+          title: `Invoice Due Reminder: ${inv.invoiceNo || inv.id}${inv.customerName ? ` — ${inv.customerName}` : ''}`,
+          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`} (${dueDateStr}). Rs. ${due.toLocaleString()} pending settlement.`,
+          meta: [
+            ...(inv.customerName ? [{ label: 'Customer', value: inv.customerName }] : []),
+            { label: 'Pending', value: `Rs. ${due.toLocaleString()}` },
+            { label: 'Due Date', value: dueDateStr }
+          ],
           time: daysLeft === 0 ? 'Due today' : `In ${daysLeft}d`,
           link: '/finance/invoices',
           roles: ['admin', 'finance'],
@@ -22945,13 +22964,20 @@ app.get('/api/notifications', async (req, res) => {
         const due = Math.max(0, Number(b.totalAmount || 0) - Number(b.paidAmount || 0));
         if (due <= 0) continue;
         const days = Math.max(1, Math.ceil((Date.now() - new Date(b.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
+        const dueDateStr = new Date(b.dueDate).toISOString().slice(0, 10);
         list.push({
           id: `overdue-bill-${b.id}`,
           type: 'bill',
+          category: 'Finance',
           severity: 'error',
-          title: `Overdue Bill: ${b.billNo || b.id}${b.supplierName ? ` (${b.supplierName})` : ''}`,
-          message: `Overdue by ${days} days · Rs. ${due.toLocaleString()} payable`,
-          time: `${days}d ago`,
+          title: `Overdue Supplier Bill: ${b.billNo || b.id}${b.supplierName ? ` (${b.supplierName})` : ''}`,
+          message: `Overdue by ${days} day${days > 1 ? 's' : ''} (Due ${dueDateStr}). Rs. ${due.toLocaleString()} payable.`,
+          meta: [
+            ...(b.supplierName ? [{ label: 'Supplier', value: b.supplierName }] : []),
+            { label: 'Payable', value: `Rs. ${due.toLocaleString()}` },
+            { label: 'Due Date', value: dueDateStr }
+          ],
+          time: `${days}d overdue`,
           link: '/purchasing/bills',
           roles: ['admin', 'finance'],
           timestamp: new Date(b.dueDate).getTime()
@@ -22972,12 +22998,19 @@ app.get('/api/notifications', async (req, res) => {
         const due = Math.max(0, Number(b.totalAmount || 0) - Number(b.paidAmount || 0));
         if (due <= 0) continue;
         const daysLeft = Math.max(0, Math.ceil((new Date(b.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        const dueDateStr = new Date(b.dueDate).toISOString().slice(0, 10);
         list.push({
           id: `reminder-bill-${b.id}`,
           type: 'bill',
+          category: 'Finance',
           severity: 'warning',
           title: `Bill Payment Reminder: ${b.billNo || b.id}${b.supplierName ? ` (${b.supplierName})` : ''}`,
-          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft}d`} · Rs. ${due.toLocaleString()} payable`,
+          message: `${daysLeft === 0 ? 'Due today' : `Due in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`} (${dueDateStr}). Rs. ${due.toLocaleString()} payable.`,
+          meta: [
+            ...(b.supplierName ? [{ label: 'Supplier', value: b.supplierName }] : []),
+            { label: 'Payable', value: `Rs. ${due.toLocaleString()}` },
+            { label: 'Due Date', value: dueDateStr }
+          ],
           time: daysLeft === 0 ? 'Due today' : `In ${daysLeft}d`,
           link: '/purchasing/bills',
           roles: ['admin', 'finance'],
@@ -22986,25 +23019,41 @@ app.get('/api/notifications', async (req, res) => {
       }
     } catch(e) {}
 
-    // 2. Low Stock Alerts
+    // 2. Low Stock Alerts (Grouped into ONE summary notification so critical alerts aren't buried)
     try {
       const [lowStock] = await db.query(
-        `SELECT id, sku, name, quantity, minQty, reorderLevel 
+        `SELECT id, sku, name, quantity, minQty, reorderLevel, unit
          FROM inventory 
          WHERE quantity <= COALESCE(minQty, reorderLevel, 5)
-         ORDER BY quantity ASC LIMIT 6`
+         ORDER BY quantity ASC LIMIT 50`
       ) as any[];
       
-      for (const item of (lowStock || [])) {
+      if (Array.isArray(lowStock) && lowStock.length > 0) {
+        const outOfStockCount = lowStock.filter((it: any) => Number(it.quantity || 0) <= 0).length;
+        const previewItems = lowStock.slice(0, 3).map((it: any) => {
+          const minReq = it.minQty || it.reorderLevel || 5;
+          return `${it.name || it.sku} (${Number(it.quantity || 0)}/${minReq}${it.unit ? ' ' + it.unit : ''})`;
+        });
+        const remaining = lowStock.length - previewItems.length;
         list.push({
-          id: `low-stock-${item.id}`,
+          id: `low-stock-summary-${lowStock.length}`,
           type: 'inventory',
+          category: 'Stock',
           severity: 'warning',
-          title: `Low Stock: ${item.name || item.sku}`,
-          message: `Only ${item.quantity || 0} left in stock (Min required: ${item.minQty || item.reorderLevel || 5})`,
-          time: 'Action required',
+          title: `Low Stock Summary: ${lowStock.length} item${lowStock.length > 1 ? 's' : ''} below reorder level`,
+          message: `${previewItems.join(', ')}${remaining > 0 ? ` + ${remaining} more` : ''}${outOfStockCount > 0 ? ` (${outOfStockCount} out of stock)` : ''}`,
+          meta: [
+            { label: 'Total Low', value: `${lowStock.length} items` },
+            ...(outOfStockCount > 0 ? [{ label: 'Out of Stock', value: `${outOfStockCount}` }] : [])
+          ],
+          details: lowStock.slice(0, 8).map((it: any) => ({
+            label: it.name || it.sku,
+            sublabel: it.sku ? `SKU: ${it.sku}` : undefined,
+            value: `${Number(it.quantity || 0)} / ${it.minQty || it.reorderLevel || 5}${it.unit ? ' ' + it.unit : ''}`
+          })),
+          time: 'Inventory Summary',
           link: '/inventory',
-          timestamp: Date.now() - 3600000
+          timestamp: Date.now() - 86400000
         });
       }
     } catch(e) {}
@@ -23012,7 +23061,7 @@ app.get('/api/notifications', async (req, res) => {
     // 3. Pending Credit Approvals
     try {
       const [pendingCredit] = await db.query(
-        `SELECT id, name, company, pendingCreditLimit 
+        `SELECT id, name, company, creditLimit, pendingCreditLimit 
          FROM customers 
          WHERE creditLimitStatus = 'pending' LIMIT 5`
       ) as any[];
@@ -23021,9 +23070,14 @@ app.get('/api/notifications', async (req, res) => {
         list.push({
           id: `credit-${c.id}`,
           type: 'approval',
+          category: 'Approvals',
           severity: 'info',
-          title: `Credit Approval: ${c.company || c.name}`,
-          message: `Customer requested credit limit of Rs. ${Number(c.pendingCreditLimit || 0).toLocaleString()}`,
+          title: `Credit Limit Approval: ${c.company || c.name}`,
+          message: `Requested credit limit of Rs. ${Number(c.pendingCreditLimit || 0).toLocaleString()} (Current: Rs. ${Number(c.creditLimit || 0).toLocaleString()}).`,
+          meta: [
+            { label: 'Requested', value: `Rs. ${Number(c.pendingCreditLimit || 0).toLocaleString()}` },
+            { label: 'Current', value: `Rs. ${Number(c.creditLimit || 0).toLocaleString()}` }
+          ],
           time: 'Pending review',
           link: `/crm/customers/${c.id}`,
           timestamp: Date.now() - 7200000
@@ -23047,9 +23101,15 @@ app.get('/api/notifications', async (req, res) => {
         list.push({
           id: `mat-shortage-${wo.id}`,
           type: isMr ? 'material_mr' : 'material_shortage',
+          category: 'Production',
           severity: isMr ? 'info' : 'warning',
-          title: `Material Shortage: ${wo.orderNo || wo.id}`,
-          message: `${wo.materialAlert || wo.materialStatus} · WO: ${wo.orderNo || wo.id}${wo.customer ? ' (' + wo.customer + ')' : ''}`,
+          title: `Material ${isMr ? 'MR Raised' : 'Shortage'}: ${wo.orderNo || wo.id}${wo.customer ? ` (${wo.customer})` : ''}`,
+          message: `${wo.materialAlert || wo.materialStatus}${wo.title ? ` · Job: ${wo.title}` : ''}`,
+          meta: [
+            { label: 'WO', value: wo.orderNo || wo.id },
+            ...(wo.customer ? [{ label: 'Customer', value: wo.customer }] : []),
+            { label: 'Status', value: wo.materialStatus }
+          ],
           time: wo.materialStatus,
           link: '/admin/approvals',
           timestamp: wo.updatedAt ? new Date(wo.updatedAt).getTime() : (wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now())
@@ -23067,13 +23127,19 @@ app.get('/api/notifications', async (req, res) => {
       ) as any[];
       
       for (const wo of (wos || [])) {
+        const statusLabel = String(wo.status || 'active').replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
         list.push({
           id: `wo-${wo.id}`,
           type: 'production',
+          category: 'Production',
           severity: wo.status === 'pending' ? 'warning' : 'info',
-          title: `Work Order: ${wo.orderNo || wo.id}`,
-          message: `${wo.title || 'Job in production'} · Customer: ${wo.customer || 'General'}`,
-          time: 'Active',
+          title: `Work Order ${wo.orderNo || wo.id}: ${wo.title || 'Production Job'}`,
+          message: `Status: ${statusLabel} · Customer: ${wo.customer || 'General'}`,
+          meta: [
+            ...(wo.customer ? [{ label: 'Customer', value: wo.customer }] : []),
+            { label: 'Status', value: statusLabel }
+          ],
+          time: statusLabel,
           link: '/production',
           timestamp: wo.createdAt ? new Date(wo.createdAt).getTime() : Date.now()
         });
@@ -23094,12 +23160,19 @@ app.get('/api/notifications', async (req, res) => {
         try { if (po.data) qData = typeof po.data === 'string' ? JSON.parse(po.data) : po.data; } catch(e){}
         const custName = qData.customerCompany || qData.customerName || 'Customer';
         const qNum = po.quotationNo || po.docNo || po.id;
+        const poVal = Number(po.totalAmount || qData.custTotals?.withSSCL || qData.custTotals?.total || 0);
         list.push({
           id: `po-${po.id}`,
           type: 'po_received',
+          category: 'Sales & PO',
           severity: 'success',
-          title: `Customer PO Received: ${po.customerPoNo}`,
-          message: `PO #${po.customerPoNo} received for Quote ${qNum} (${custName}) · ${po.createdByName ? 'Creator: ' + po.createdByName : ''}`,
+          title: `Customer PO Received: ${po.customerPoNo} (${custName})`,
+          message: `PO #${po.customerPoNo} received for Quotation ${qNum}${poVal > 0 ? ` · Value: Rs. ${poVal.toLocaleString()}` : ''}${po.createdByName ? ` · Sales: ${po.createdByName}` : ''}`,
+          meta: [
+            { label: 'Quote', value: qNum },
+            { label: 'Customer', value: custName },
+            ...(poVal > 0 ? [{ label: 'Value', value: `Rs. ${poVal.toLocaleString()}` }] : [])
+          ],
           time: po.customerPoDate || 'Recent',
           link: '/crm/quotations',
           createdBy: po.createdBy,
@@ -23122,10 +23195,15 @@ app.get('/api/notifications', async (req, res) => {
         list.push({
           id: cn.id,
           type: cn.type || 'po_alert',
+          category: 'Alerts',
           severity: cn.severity || 'warning',
           title: cn.title,
           message: cn.message,
-          time: 'Action required',
+          meta: [
+            ...(cn.senderUser ? [{ label: 'From', value: cn.senderUser }] : []),
+            ...(cn.recipientUser ? [{ label: 'To', value: cn.recipientUser }] : [])
+          ],
+          time: cn.createdAt ? new Date(cn.createdAt).toLocaleDateString() : 'Action required',
           link: cn.link || '/crm/sales-orders',
           recipientUser: cn.recipientUser,
           recipientRole: cn.recipientRole,

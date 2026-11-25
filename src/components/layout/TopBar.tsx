@@ -98,7 +98,8 @@ export const TopBar: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-  const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all')
+  const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'important' | 'finance' | 'stock'>('all')
+  const [expandedNotifIds, setExpandedNotifIds] = useState<string[]>([])
   const [notificationsList, setNotificationsList] = useState<any[]>([])
   const [readIds, setReadIds] = useState<string[]>(() => {
     try {
@@ -238,8 +239,22 @@ export const TopBar: React.FC = () => {
     try { localStorage.setItem(NOTIFS_STORAGE_KEY, JSON.stringify(allIds)); } catch {}
   }
 
+  const isImportantNotif = (n: any) =>
+    n.severity === 'error' ||
+    n.type === 'po_received' ||
+    n.type === 'po_alert' ||
+    n.type === 'approval' ||
+    n.type === 'material_shortage'
+
   const unreadCount = notificationsList.filter(n => !readIds.includes(n.id)).length
-  const displayedNotifs = notificationsList.filter(n => notifFilter === 'all' || !readIds.includes(n.id))
+  const importantCount = notificationsList.filter(isImportantNotif).length
+  const displayedNotifs = notificationsList.filter(n => {
+    if (notifFilter === 'unread') return !readIds.includes(n.id)
+    if (notifFilter === 'important') return isImportantNotif(n)
+    if (notifFilter === 'finance') return n.category === 'Finance' || n.type === 'invoice' || n.type === 'bill'
+    if (notifFilter === 'stock') return n.category === 'Stock' || n.type === 'inventory'
+    return true
+  })
 
   // Scoped Search Results filtering based on user permissions
   const authorizedQuotations = React.useMemo(() => {
@@ -849,7 +864,7 @@ export const TopBar: React.FC = () => {
 
           {/* Notifications Dropdown Panel */}
           {showNotif && (
-            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 z-50 animate-fade-in bg-surface border border-theme-subtle shadow-2xl rounded-xl overflow-hidden backdrop-blur-xl">
+            <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[440px] z-50 animate-fade-in bg-surface border border-theme-subtle shadow-2xl rounded-xl overflow-hidden backdrop-blur-xl">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-theme-subtle bg-surface2/40">
                 <div className="flex items-center gap-2">
@@ -885,39 +900,44 @@ export const TopBar: React.FC = () => {
                 </div>
               </div>
 
-              {/* Tabs: All / Unread */}
-              <div className="flex items-center border-b border-theme-subtle px-3 py-1.5 bg-surface gap-2 text-xs">
-                <button
-                  onClick={() => setNotifFilter('all')}
-                  className={cn(
-                    'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors',
-                    notifFilter === 'all' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-secondary'
-                  )}
-                >
-                  All ({notificationsList.length})
-                </button>
-                <button
-                  onClick={() => setNotifFilter('unread')}
-                  className={cn(
-                    'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors',
-                    notifFilter === 'unread' ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-secondary'
-                  )}
-                >
-                  Unread ({unreadCount})
-                </button>
+              {/* Filter Tabs */}
+              <div className="flex items-center border-b border-theme-subtle px-3 py-1.5 bg-surface gap-1.5 text-xs overflow-x-auto no-scrollbar">
+                {[
+                  { key: 'all', label: `All (${notificationsList.length})` },
+                  { key: 'unread', label: `Unread (${unreadCount})` },
+                  { key: 'important', label: `Important (${importantCount})` },
+                  { key: 'finance', label: 'Finance' },
+                  { key: 'stock', label: 'Stock' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setNotifFilter(tab.key as any)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors',
+                      notifFilter === tab.key ? 'bg-surface2 text-primary font-bold shadow-xs' : 'text-muted hover:text-secondary'
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {/* Items List */}
-              <div className="max-h-[360px] overflow-y-auto divide-y divide-theme-subtle/50">
+              <div className="max-h-[440px] overflow-y-auto divide-y divide-theme-subtle/50">
                 {displayedNotifs.length > 0 ? (
                   displayedNotifs.map((n) => {
                     const isRead = readIds.includes(n.id)
+                    const isExpanded = expandedNotifIds.includes(n.id)
                     let IconComponent = AlertCircle
                     let iconColor = 'text-blue-500 bg-blue-500/10'
+                    let categoryBadge = n.category || 'System'
 
-                    if (n.type === 'invoice' || n.severity === 'error') {
+                    if (n.type === 'invoice' || n.type === 'bill' || n.severity === 'error') {
                       IconComponent = AlertTriangle
-                      iconColor = 'text-rose-500 bg-rose-500/10'
+                      iconColor = n.severity === 'error' ? 'text-rose-500 bg-rose-500/10' : 'text-amber-500 bg-amber-500/10'
+                    } else if (n.type === 'po_received') {
+                      IconComponent = CheckCircle2
+                      iconColor = 'text-emerald-500 bg-emerald-500/15 ring-1 ring-emerald-500/30'
                     } else if (n.type === 'material_shortage') {
                       IconComponent = AlertTriangle
                       iconColor = 'text-amber-500 bg-amber-500/15 ring-1 ring-amber-500/30'
@@ -935,6 +955,9 @@ export const TopBar: React.FC = () => {
                       iconColor = 'text-purple-500 bg-purple-500/10'
                     }
 
+                    const hasDetails = Array.isArray(n.details) && n.details.length > 0
+                    const hasMeta = Array.isArray(n.meta) && n.meta.length > 0
+
                     return (
                       <div
                         key={n.id}
@@ -945,7 +968,7 @@ export const TopBar: React.FC = () => {
                         }}
                         className={cn(
                           'flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors relative group',
-                          isRead ? 'opacity-70 hover:opacity-100 hover:bg-surface2/50' : 'bg-rex-500/5 hover:bg-rex-500/10',
+                          isRead ? 'opacity-75 hover:opacity-100 hover:bg-surface2/50' : 'bg-rex-500/5 hover:bg-rex-500/10',
                         )}
                       >
                         {/* Status Icon */}
@@ -955,18 +978,76 @@ export const TopBar: React.FC = () => {
 
                         {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <p className={cn('text-xs leading-snug truncate', isRead ? 'text-secondary font-medium' : 'text-primary font-bold')}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={cn('text-xs leading-snug', isRead ? 'text-secondary font-medium' : 'text-primary font-bold')}>
                               {n.title}
                             </p>
-                            {!isRead && (
-                              <span className="w-2 h-2 rounded-full bg-rex-500 flex-shrink-0" />
-                            )}
+                            <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                              <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface2 text-muted border border-theme-subtle">
+                                {categoryBadge}
+                              </span>
+                              {!isRead && (
+                                <span className="w-2 h-2 rounded-full bg-rex-500 flex-shrink-0" />
+                              )}
+                            </div>
                           </div>
-                          <p className="text-[11px] text-secondary/90 mt-0.5 line-clamp-2 leading-relaxed">
+
+                          <p className="text-[11px] text-secondary/90 mt-1 leading-relaxed">
                             {n.message}
                           </p>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-muted">
+
+                          {/* Structured Detail Chips */}
+                          {hasMeta && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {n.meta.map((m: any, idx: number) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-surface2/80 border border-theme-subtle text-secondary"
+                                >
+                                  <span className="text-muted">{m.label}:</span>
+                                  <span className="font-semibold text-primary">{m.value}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Expandable Details (e.g. Low Stock Breakdown) */}
+                          {hasDetails && (
+                            <div className="mt-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExpandedNotifIds(prev =>
+                                    prev.includes(n.id) ? prev.filter(id => id !== n.id) : [...prev, n.id]
+                                  )
+                                }}
+                                className="text-[10px] font-semibold text-rex-600 dark:text-rex-400 hover:underline"
+                              >
+                                {isExpanded ? 'Hide stock items ▲' : `Show ${n.details.length} low stock items ▼`}
+                              </button>
+                              {isExpanded && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="mt-1.5 rounded-lg border border-theme-subtle bg-surface2/60 divide-y divide-theme-subtle/60 text-[10px]"
+                                >
+                                  {n.details.map((d: any, idx: number) => (
+                                    <div key={idx} className="flex items-center justify-between gap-2 px-2 py-1">
+                                      <div className="min-w-0 truncate">
+                                        <span className="font-medium text-primary">{d.label}</span>
+                                        {d.sublabel && <span className="text-muted ml-1">({d.sublabel})</span>}
+                                      </div>
+                                      <span className="font-mono font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                                        {d.value}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted">
                             <span className="flex items-center gap-1">
                               <Clock size={10} />
                               {n.time}
