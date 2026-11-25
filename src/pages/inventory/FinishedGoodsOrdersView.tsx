@@ -1065,6 +1065,19 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       finalGrandTotal = isQuoteTaxInclusive ? netBase : (netBase + finalTotalTax);
     }
 
+    // For Product / Tax-Inclusive Quotations with VAT separated, convert item unitPrice & amount to Excl. VAT
+    let finalIsTaxInclusive = isQuoteTaxInclusive;
+    if (isQuoteTaxInclusive && finalTotalTax > 0 && netBase > 0) {
+      const taxDivisor = 1 + (finalTotalTax / netBase);
+      if (taxDivisor > 1) {
+        extractedItems.forEach((it) => {
+          it.unitPrice = Number((Number(it.unitPrice || 0) / taxDivisor).toFixed(2));
+          it.amount = Number((Number(it.amount || 0) / taxDivisor).toFixed(2));
+        });
+        finalIsTaxInclusive = false;
+      }
+    }
+
     const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_vat18' : '');
     const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
 
@@ -1097,7 +1110,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
       discount: discountVal,
       discountType: rawDiscountType,
       discountAmount: quoteDiscountAmount,
-      isTaxInclusive: isQuoteTaxInclusive,
+      isTaxInclusive: finalIsTaxInclusive,
       taxAmount: finalTotalTax,
       taxRate,
       taxProfileId,
