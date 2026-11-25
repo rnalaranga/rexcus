@@ -1265,60 +1265,27 @@ export const POBuilder: React.FC = () => {
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setTaxProfileId('tp_opt1_absorbed')}
-                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                            taxProfileId === 'tp_opt1_absorbed'
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
-                          }`}
-                        >
-                          Option 1<br/><span className="text-[9px] font-normal opacity-80">Both Absorbed</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep')}
-                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                            taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl'
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
-                          }`}
-                        >
-                          Option 2<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTaxProfileId('tp_opt3_both_separate')}
-                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                            taxProfileId === 'tp_opt3_both_separate'
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
-                          }`}
-                        >
-                          Option 3<br/><span className="text-[9px] font-normal opacity-80">Both 2 Lines (SSCL & VAT)</span>
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => setTaxProfileId('tp_vat18')}
                           className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                            taxProfileId === 'tp_vat18'
+                            taxProfileId !== 'tp_opt1_absorbed' && taxProfileId !== 'tp_vat18_absorbed'
                               ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                               : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
                           }`}
                         >
-                          VAT Only<br/><span className="text-[9px] font-normal opacity-80">18% Separate (No SSCL)</span>
+                          VAT Separated
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaxProfileId('tp_opt1_absorbed')}
+                          className={`p-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                            taxProfileId === 'tp_opt1_absorbed' || taxProfileId === 'tp_vat18_absorbed'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-surface2 text-muted hover:text-primary border-theme-subtle/70'
+                          }`}
+                        >
+                          VAT Included
                         </button>
                       </div>
-
-                      <select 
-                        value={taxProfileId} 
-                        onChange={e => setTaxProfileId(e.target.value)} 
-                        className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 font-medium"
-                      >
-                        <option value="">No Tax Applied</option>
-                        {taxProfiles.map((t: any) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
 
                       <div className="pt-2 border-t border-theme-subtle/50 flex items-center justify-between">
                         <div>

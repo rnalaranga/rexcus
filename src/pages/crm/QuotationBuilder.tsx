@@ -3816,21 +3816,41 @@ export const QuotationBuilder: React.FC = () => {
 
                 {/* Tax Profile selector inline */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-muted whitespace-nowrap">Tax Profile:</span>
-                  <select
-                    value={selectedProfileId}
-                    onChange={e => {
-                      setSelectedProfileId(e.target.value);
-                      if (lastEditedMargin === 'finalValue' && finalValInput) {
-                        setTimeout(() => handleFinalValChange(finalValInput), 0);
-                      }
-                    }}
-                    className="bg-surface border border-theme-subtle px-2 py-0.5 rounded text-[10px] font-medium outline-none focus:border-blue-500 max-w-[200px] truncate"
-                  >
-                    {taxProfiles?.map((p: any) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                  <span className="text-[10px] text-muted whitespace-nowrap">VAT:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProfileId('tp_vat18');
+                        if (lastEditedMargin === 'finalValue' && finalValInput) {
+                          setTimeout(() => handleFinalValChange(finalValInput), 0);
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                        selectedProfileId !== 'tp_opt1_absorbed' && selectedProfileId !== 'tp_vat18_absorbed'
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                      }`}
+                    >
+                      VAT Separated
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProfileId('tp_opt1_absorbed');
+                        if (lastEditedMargin === 'finalValue' && finalValInput) {
+                          setTimeout(() => handleFinalValChange(finalValInput), 0);
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                        selectedProfileId === 'tp_opt1_absorbed' || selectedProfileId === 'tp_vat18_absorbed'
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                      }`}
+                    >
+                      VAT Included
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

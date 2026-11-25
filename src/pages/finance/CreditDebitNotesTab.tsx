@@ -558,17 +558,30 @@ export const CreditDebitNotesTab: React.FC = () => {
             </div>
 
             {taxEnabled && (
-              <select
-                value={taxProfileId}
-                onChange={e => setTaxProfileId(e.target.value)}
-                className="w-full bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-medium focus:border-primary"
-              >
-                {taxProfiles.map(tp => (
-                  <option key={tp.id} value={tp.id}>
-                    {tp.name} ({tp.tax2_rate || 18}% VAT)
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTaxProfileId('tp_vat18')}
+                  className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center ${
+                    taxProfileId !== 'tp_vat18_absorbed' && taxProfileId !== 'tp_opt1_absorbed'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                  }`}
+                >
+                  VAT Separated
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaxProfileId('tp_vat18_absorbed')}
+                  className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center ${
+                    taxProfileId === 'tp_vat18_absorbed' || taxProfileId === 'tp_opt1_absorbed'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                  }`}
+                >
+                  VAT Included
+                </button>
+              </div>
             )}
 
             <div className="flex justify-between items-center pt-1 border-t border-theme-subtle text-xs font-bold">

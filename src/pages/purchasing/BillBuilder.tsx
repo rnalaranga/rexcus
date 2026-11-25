@@ -1241,72 +1241,30 @@ export const BillBuilder: React.FC = () => {
 
                 {taxEnabled && (
                   <div className="space-y-2 pt-1">
-                    {/* Quick IRD Presets */}
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
                         onClick={() => { setTaxProfileId('tp_vat18'); setHideVatSeparately(false); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          taxProfileId === 'tp_vat18' && !hideVatSeparately
+                          !hideVatSeparately && taxProfileId !== 'tp_vat18_absorbed' && taxProfileId !== 'tp_opt1_absorbed'
                             ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                             : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
                         }`}
                       >
-                        VAT Only (18%)<br/><span className="text-[9px] font-normal opacity-80">Separate Line</span>
+                        VAT Separated
                       </button>
                       <button
                         type="button"
                         onClick={() => { setTaxProfileId('tp_vat18_absorbed'); setHideVatSeparately(true); }}
                         className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          taxProfileId === 'tp_vat18_absorbed' || (taxProfileId === 'tp_vat18' && hideVatSeparately)
+                          hideVatSeparately || taxProfileId === 'tp_vat18_absorbed' || taxProfileId === 'tp_opt1_absorbed'
                             ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                             : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
                         }`}
                       >
-                        VAT Absorbed (18%)<br/><span className="text-[9px] font-normal opacity-80">Included / No Line</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setTaxProfileId('tp_opt2_sscl_absorbed_vat_sep'); setHideVatSeparately(false); }}
-                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          (taxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || taxProfileId === 'tp_vat_sscl') && !hideVatSeparately
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
-                        }`}
-                      >
-                        Option 2<br/><span className="text-[9px] font-normal opacity-80">SSCL In, VAT Sep</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setTaxProfileId('tp_opt1_absorbed'); setHideVatSeparately(true); }}
-                        className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center leading-tight ${
-                          taxProfileId === 'tp_opt1_absorbed'
-                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                            : 'bg-surface2 text-muted hover:text-primary border-theme-subtle'
-                        }`}
-                      >
-                        Option 1<br/><span className="text-[9px] font-normal opacity-80">Both Absorbed</span>
+                        VAT Included
                       </button>
                     </div>
-
-                    <select
-                      value={taxProfileId}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setTaxProfileId(val);
-                        if (val === 'tp_vat18_absorbed' || val === 'tp_opt1_absorbed') {
-                          setHideVatSeparately(true);
-                        }
-                      }}
-                      className="w-full bg-surface border border-theme-subtle px-2.5 py-1.5 rounded text-xs font-medium focus:border-amber-500"
-                    >
-                      <option value="">No Tax Applied</option>
-                      {taxProfiles.map((tp: any) => (
-                        <option key={tp.id} value={tp.id}>
-                          {tp.name} ({tp.tax2_rate || 18}% VAT{tp.tax1_rate ? ` + ${tp.tax1_rate}% SSCL` : ''})
-                        </option>
-                      ))}
-                    </select>
 
                     <div className="pt-2 border-t border-theme-subtle space-y-1.5 text-[11px]">
                       <label className="flex items-center justify-between cursor-pointer">
@@ -1315,15 +1273,6 @@ export const BillBuilder: React.FC = () => {
                           type="checkbox"
                           checked={isTaxInclusive}
                           onChange={e => setIsTaxInclusive(e.target.checked)}
-                          className="rounded text-amber-500 h-3.5 w-3.5"
-                        />
-                      </label>
-                      <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-secondary font-medium">Don't Show VAT Separately:</span>
-                        <input
-                          type="checkbox"
-                          checked={hideVatSeparately}
-                          onChange={e => setHideVatSeparately(e.target.checked)}
                           className="rounded text-amber-500 h-3.5 w-3.5"
                         />
                       </label>

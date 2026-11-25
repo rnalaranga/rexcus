@@ -579,15 +579,8 @@ export const ReworkSalesOrderModal: React.FC<ReworkSalesOrderModalProps> = ({
                 className="sm:w-72 px-3 py-1.5 text-xs font-bold bg-surface border border-rex-500/40 rounded-lg text-primary focus:outline-none focus:border-rex-500"
               >
                 <option value="">No Tax / VAT Exempt (0%)</option>
-                {(taxProfiles || []).map((tp: any) => {
-                  const sRate = Number(tp.tax1_rate ?? tp.ssclRate ?? 0);
-                  const vRate = Number(tp.tax2_rate ?? tp.vatRate ?? tp.rate ?? 0);
-                  return (
-                    <option key={tp.id} value={tp.id}>
-                      {tp.name} ({sRate > 0 ? `SSCL ${sRate}% + ` : ''}VAT {vRate}%)
-                    </option>
-                  );
-                })}
+                <option value="tp_vat18">VAT Separated (18%)</option>
+                <option value="tp_vat18_absorbed">VAT Included (18%)</option>
               </select>
             </div>
           )}

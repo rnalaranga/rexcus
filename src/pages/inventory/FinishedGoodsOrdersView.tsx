@@ -5530,31 +5530,35 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* Tax Profile Dropdown */}
+                      {/* Tax Profile Selector (VAT Separated / VAT Included) */}
                       <div className={formData.taxProfileId === 'custom' ? 'sm:col-span-1' : 'sm:col-span-2'}>
                         <label className="block text-xs font-semibold text-secondary mb-1">
-                          Tax Profile / VAT Structure
+                          VAT Structure
                         </label>
-                        <select
-                          value={formData.taxProfileId || 'no_tax'}
-                          onChange={e => handleTaxProfileChange(e.target.value)}
-                          className="w-full input-base text-xs font-medium"
-                        >
-                          <option value="no_tax">No Tax / 0% (Tax Exempt)</option>
-                          {taxProfiles?.map((p: any) => {
-                            const t1 = Number(p.tax1_rate || 0);
-                            const t2 = Number(p.tax2_rate || 0);
-                            const rateLabel = t1 > 0 && t2 > 0 
-                              ? `${p.tax1_name || 'SSCL'} ${t1}% + ${p.tax2_name || 'VAT'} ${t2}%`
-                              : (t2 > 0 ? `${p.tax2_name || 'VAT'} ${t2}%` : (t1 > 0 ? `${p.tax1_name || 'SSCL'} ${t1}%` : '0%'));
-                            return (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({rateLabel})
-                              </option>
-                            );
-                          })}
-                          <option value="custom">Custom Tax Rate (%) / Amount</option>
-                        </select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleTaxProfileChange('tp_vat18')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all text-center ${
+                              formData.taxProfileId !== 'tp_vat18_absorbed' && formData.taxProfileId !== 'tp_opt1_absorbed' && formData.taxProfileId !== 'no_tax'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                            }`}
+                          >
+                            VAT Separated
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTaxProfileChange('tp_vat18_absorbed')}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all text-center ${
+                              formData.taxProfileId === 'tp_vat18_absorbed' || formData.taxProfileId === 'tp_opt1_absorbed'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-surface text-muted hover:text-primary border-theme-subtle'
+                            }`}
+                          >
+                            VAT Included
+                          </button>
+                        </div>
                       </div>
 
                       {/* If Custom, show custom inputs */}
