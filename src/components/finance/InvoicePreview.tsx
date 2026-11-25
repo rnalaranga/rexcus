@@ -1062,14 +1062,27 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           ) : (
             <>
               {/* GROSS ITEMS TOTAL & DISCOUNT (if discount applied) */}
-              {effectiveDiscountAmt > 0 && (
+              {effectiveDiscountAmt > 0 && (() => {
+                const displayGrossSubtotal = isTaxInclusive
+                  ? (effectiveGrossAmount / unitPriceDivisor)
+                  : (effectiveGrossAmount * itemMultiplier);
+                const displayNetSupply = isTaxInclusive ? subtotal : (subtotal * itemMultiplier);
+                let displayDiscountAmt = effectiveDiscountAmt;
+                if (isTaxInclusive && unitPriceDivisor > 1.001) {
+                  const expectedExclDiscount = Math.max(0, displayGrossSubtotal - displayNetSupply);
+                  const dividedDiscount = Number((effectiveDiscountAmt / unitPriceDivisor).toFixed(2));
+                  if (Math.abs(dividedDiscount - expectedExclDiscount) < Math.abs(effectiveDiscountAmt - expectedExclDiscount)) {
+                    displayDiscountAmt = dividedDiscount;
+                  }
+                }
+                return (
                 <>
                   <tr style={{ borderBottom: tableBorder, backgroundColor: '#fcfcfc' }}>
                     <td colSpan={4} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', borderRight: tableBorder }}>
                       Subtotal (Gross Item Total):
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>
-                      {(isTaxInclusive ? effectiveGrossAmount : (effectiveGrossAmount * itemMultiplier)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {displayGrossSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
                   <tr style={{ borderBottom: tableBorder, backgroundColor: '#fff5f5' }}>
@@ -1077,11 +1090,12 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                       {`Less: Special Discount ${discountType === 'percent' && Number(discount) > 0 ? `(${discount}%)` : ''}:`}
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600', color: '#b91c1c' }}>
-                      {`- ${effectiveDiscountAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      {`- ${displayDiscountAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </td>
                   </tr>
                 </>
-              )}
+                );
+              })()}
 
               {/* TOTAL VALUE OF SUPPLY */}
               <tr style={{ borderBottom: tableBorder }}>
