@@ -2778,73 +2778,29 @@ export const ProductQuotationBuilder: React.FC = () => {
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
-                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                          selectedProfileId === 'tp_opt1_absorbed'
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                        }`}
-                        title="Option 1: VAT & SSCL Absorbed (Total Value)"
-                      >
-                        Opt 1: Absorbed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProfileId('tp_opt2_sscl_absorbed_vat_sep')}
-                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                          selectedProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || selectedProfileId === 'tp_vat_sscl'
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                        }`}
-                        title="Option 2: SSCL Absorbed + VAT Separate"
-                      >
-                        Opt 2: SSCL In, VAT Sep
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProfileId('tp_opt3_both_separate')}
-                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
-                          selectedProfileId === 'tp_opt3_both_separate'
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                            : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
-                        }`}
-                        title="Option 3: Both SSCL & VAT Separate (2 Lines)"
-                      >
-                        Opt 3: Both 2 Lines
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setSelectedProfileId('tp_vat18')}
                         className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
                           selectedProfileId === 'tp_vat18' || selectedProfile?.name?.toLowerCase().includes('vat only')
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
                         }`}
-                        title="VAT Only (18% Separate) - No SSCL"
+                        title="VAT Separated (18%)"
                       >
-                        VAT Only (18% Sep)
+                        VAT Separated
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSelectedProfileId('tp_opt4_sscl_included_vat_sep')}
-                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight col-span-2 ${
-                          selectedProfileId === 'tp_opt4_sscl_included_vat_sep' || selectedProfile?.name?.toLowerCase().includes('sscl included')
+                        onClick={() => setSelectedProfileId('tp_opt1_absorbed')}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all text-center leading-tight ${
+                          selectedProfileId === 'tp_opt1_absorbed'
                             ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                             : 'bg-surface text-muted hover:text-primary border-theme-subtle/70'
                         }`}
-                        title="SSCL Included in Value + VAT Separate"
+                        title="VAT Included (Total Value)"
                       >
-                        SSCL Included + VAT Separate
+                        VAT Included
                       </button>
                     </div>
-                    <select
-                      value={selectedProfileId}
-                      onChange={e => setSelectedProfileId(e.target.value)}
-                      className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded-lg text-[10px] outline-none focus:border-blue-500"
-                    >
-                      <option value="">- Select Tax Profile -</option>
-                      {taxProfiles?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
                   </div>
                 )}
 
