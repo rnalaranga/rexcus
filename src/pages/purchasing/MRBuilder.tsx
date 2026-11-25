@@ -4,9 +4,10 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, Save, Plus, Trash2, GitPullRequest, Calendar, Users2, 
   Activity, Building2, ShoppingCart, Printer, CheckCircle2, Clock, 
-  AlertCircle, Package, ArrowRight, Briefcase, Tag, X, ExternalLink, Search
+  AlertCircle, Package, ArrowRight, Briefcase, Tag, X, ExternalLink, Search, Scissors
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useInventory } from '@/hooks/useData';
@@ -27,6 +28,14 @@ interface MRItem {
   uom?: string;
   unitCost?: number;
   workOrderNos?: string[];
+  isCutPiece?: boolean;
+  cuts?: any[];
+  cutLength?: number;
+  cutWidth?: number;
+  thickness?: number;
+  pieces?: number;
+  standardLength?: number;
+  cutUnit?: string;
 }
 
 interface WorkOrderSearchInputProps {
@@ -283,6 +292,91 @@ export const MRBuilder: React.FC = () => {
   const [poIds, setPoIds] = useState<string[]>([]);
   
   const [items, setItems] = useState<MRItem[]>([]);
+
+  // Cut Piece (Sheets / Bars) Modal State
+  const [isCutModalOpen, setIsCutModalOpen] = useState(false);
+  const [cutInvId, setCutInvId] = useState('');
+  const [cutDesc, setCutDesc] = useState('');
+  const [cutUnitCost, setCutUnitCost] = useState(0);
+  const [cutProfile, setCutProfile] = useState<'sheet' | 'rod'>('sheet');
+  const [cutThickness, setCutThickness] = useState<number>(20);
+  const [multiCutRows, setMultiCutRows] = useState<Array<{ id: string; length: number; width: number; pieces: number }>>([
+    { id: 'cut-1', length: 50, width: 50, pieces: 4 }
+  ]);
+  const [rodCutLength, setRodCutLength] = useState<number>(200);
+  const [rodPieces, setRodPieces] = useState<number>(1);
+  const [rodStdLength, setRodStdLength] = useState<number>(6000);
+
+  const handleOpenCutModal = () => {
+    setCutInvId('');
+    setCutDesc('');
+    setCutUnitCost(0);
+    setCutProfile('sheet');
+    setCutThickness(20);
+    setMultiCutRows([{ id: 'cut-' + Date.now(), length: 50, width: 50, pieces: 4 }]);
+    setRodCutLength(200);
+    setRodPieces(1);
+    setRodStdLength(6000);
+    setIsCutModalOpen(true);
+  };
+
+  const handleAddCutPieceItem = () => {
+    const invItem = inventory.find((i: any) => i.id === cutInvId);
+    const baseDesc = (cutDesc || invItem?.name || '').trim();
+    if (!baseDesc) {
+      alert('Please select a material or enter a description.');
+      return;
+    }
+
+    let cutsArray: any[] = [];
+    let finalDesc = baseDesc;
+    let totalPcs = 1;
+
+    if (cutProfile === 'sheet') {
+      const validRows = multiCutRows.filter(r => r.length > 0 && r.width > 0 && r.pieces > 0);
+      if (validRows.length === 0) {
+        alert('Please enter at least one cut piece dimension (Length, Width, and Pieces).');
+        return;
+      }
+      cutsArray = validRows.map(r => ({
+        length: Number(r.length),
+        width: Number(r.width),
+        thickness: Number(cutThickness) || 0,
+        pieces: Number(r.pieces)
+      }));
+      totalPcs = cutsArray.reduce((s, c) => s + c.pieces, 0);
+      const cutParts = cutsArray.map(c => `${c.length}x${c.width} mm × ${c.pieces} pcs`).join('; ');
+      finalDesc = `${baseDesc.replace(/\s*\[Cut.*?\]/i, '').trim()} [Cut: ${cutParts}]`;
+    } else {
+      const cLen = Number(rodCutLength) || 200;
+      const cPcs = Number(rodPieces) || 1;
+      cutsArray = [{ length: cLen, pieces: cPcs, thickness: 0 }];
+      totalPcs = cPcs;
+      finalDesc = `${baseDesc.replace(/\s*\[Cut.*?\]/i, '').trim()} [Cut: ${cLen} mm × ${cPcs} pcs]`;
+    }
+
+    setItems(prev => [
+      ...prev,
+      {
+        id: 'MR-CUT-' + Date.now(),
+        inventoryId: cutInvId || '',
+        desc: finalDesc,
+        qty: totalPcs,
+        uom: invItem?.unit || 'Nos',
+        unitCost: Number(cutUnitCost || invItem?.unitCost || 0),
+        workOrderNos: [],
+        isCutPiece: true,
+        cuts: cutsArray,
+        cutLength: cutsArray[0]?.length || 0,
+        cutWidth: cutsArray[0]?.width || 0,
+        thickness: cutProfile === 'sheet' ? (Number(cutThickness) || 0) : 0,
+        pieces: totalPcs,
+        standardLength: Number(rodStdLength) || 6000,
+        cutUnit: 'mm'
+      }
+    ]);
+    setIsCutModalOpen(false);
+  };
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!id);
@@ -962,9 +1056,14 @@ export const MRBuilder: React.FC = () => {
                   </h2>
                   <p className="text-[10px] text-muted">Track requested quantities, amounts already ordered across POs, and remaining balances.</p>
                 </div>
-                <Button variant="ghost" size="sm" icon={Plus} onClick={addItem} className="text-primary hover:bg-primary/10">
-                  Add Item
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" icon={Scissors} onClick={handleOpenCutModal} className="text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30">
+                    Add Cut Piece (Bars / Sheets)
+                  </Button>
+                  <Button variant="ghost" size="sm" icon={Plus} onClick={addItem} className="text-primary hover:bg-primary/10">
+                    Add Item
+                  </Button>
+                </div>
               </div>
 
               <div className="overflow-x-auto min-h-[300px]">
@@ -1017,6 +1116,14 @@ export const MRBuilder: React.FC = () => {
                                 placeholder="Specifications, grade, or reason for requirement..." 
                                 className="w-full bg-transparent border border-theme-subtle/50 hover:border-theme-subtle focus:border-theme-subtle px-2 py-1 rounded text-[11px] text-secondary" 
                               />
+                              {item.isCutPiece && (
+                                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 w-fit">
+                                  <Scissors size={10} />
+                                  <span>
+                                    Cut Piece{item.thickness ? ` (${item.thickness}mm)` : ''}: {item.pieces || item.qty} pcs
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="p-3 align-top">
@@ -1188,6 +1295,201 @@ export const MRBuilder: React.FC = () => {
           settings={settings}
         />
       </div>
+
+      {/* CUT PIECE (BARS / SHEETS) MODAL */}
+      <Modal
+        isOpen={isCutModalOpen}
+        onClose={() => setIsCutModalOpen(false)}
+        title="Add Cut Piece Requirement (Bars / Sheets)"
+      >
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">Select Material / Stock Item</label>
+            <ProductAutocomplete
+              value={cutInvId}
+              onChange={(val) => {
+                setCutInvId(val);
+                const found = inventory.find((i: any) => i.id === val);
+                if (found) {
+                  setCutDesc(found.name || '');
+                  setCutUnitCost(Number(found.unitCost || 0));
+                }
+              }}
+              products={inventory}
+              placeholder="Search bar, rod, sheet, or plate..."
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">Material Description</label>
+              <input
+                type="text"
+                value={cutDesc}
+                onChange={e => setCutDesc(e.target.value)}
+                placeholder="e.g. MS Plate 20mm / Bright Shaft 40mm"
+                className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">Est. Unit Cost</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={cutUnitCost}
+                onChange={e => setCutUnitCost(Number(e.target.value))}
+                className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-mono text-primary"
+              />
+            </div>
+          </div>
+
+          <div className="bg-surface/50 border border-theme-subtle p-3 rounded-lg space-y-3">
+            <div className="flex items-center gap-4 text-xs font-semibold">
+              <span className="text-[10px] uppercase tracking-wider text-muted font-bold">Profile:</span>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="mrCutProfile"
+                  checked={cutProfile === 'sheet'}
+                  onChange={() => setCutProfile('sheet')}
+                />
+                <span>Sheet / Plate (Thickness × L × W)</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="mrCutProfile"
+                  checked={cutProfile === 'rod'}
+                  onChange={() => setCutProfile('rod')}
+                />
+                <span>Bar / Rod / Shaft</span>
+              </label>
+            </div>
+
+            {cutProfile === 'sheet' ? (
+              <div className="space-y-2">
+                <div className="w-36">
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Thickness (mm)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="any"
+                    value={cutThickness}
+                    onChange={e => setCutThickness(Number(e.target.value))}
+                    className="w-full bg-surface border border-theme-subtle px-2 py-1 rounded text-xs font-mono font-bold"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Cut Dimensions:</span>
+                  <button
+                    type="button"
+                    onClick={() => setMultiCutRows(prev => [...prev, { id: 'cut-' + Date.now(), length: 50, width: 50, pieces: 1 }])}
+                    className="text-[10px] text-primary hover:underline font-bold flex items-center gap-0.5"
+                  >
+                    <Plus size={10} /> Add Cut Row
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {multiCutRows.map((r, rIdx) => (
+                    <div key={r.id} className="flex items-center gap-2 bg-surface2/60 p-1.5 rounded border border-theme-subtle text-xs">
+                      <span className="text-[10px] font-mono text-muted w-4">{rIdx + 1}.</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={r.length}
+                        onChange={e => {
+                          const n = [...multiCutRows];
+                          n[rIdx].length = Number(e.target.value);
+                          setMultiCutRows(n);
+                        }}
+                        className="w-16 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-xs font-mono text-center font-bold"
+                      />
+                      <span className="text-muted">×</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={r.width}
+                        onChange={e => {
+                          const n = [...multiCutRows];
+                          n[rIdx].width = Number(e.target.value);
+                          setMultiCutRows(n);
+                        }}
+                        className="w-16 bg-surface border border-theme-subtle px-1.5 py-1 rounded text-xs font-mono text-center font-bold"
+                      />
+                      <span className="text-muted text-[10px]">mm ×</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={r.pieces}
+                        onChange={e => {
+                          const n = [...multiCutRows];
+                          n[rIdx].pieces = Number(e.target.value);
+                          setMultiCutRows(n);
+                        }}
+                        className="w-14 bg-surface border-2 border-primary/50 px-1.5 py-1 rounded text-xs font-mono text-center font-bold text-primary"
+                      />
+                      <span className="text-[10px] text-muted">pcs</span>
+                      {multiCutRows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setMultiCutRows(prev => prev.filter((_, idx) => idx !== rIdx))}
+                          className="p-1 hover:bg-rose-500/10 text-muted hover:text-rose-500 rounded ml-auto"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold pt-1">
+                  Total Pieces: {multiCutRows.reduce((s, r) => s + (Number(r.pieces) || 0), 0)} pcs
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Cut Length (mm)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={rodCutLength}
+                    onChange={e => setRodCutLength(Number(e.target.value))}
+                    className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Pieces (Qty)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={rodPieces}
+                    onChange={e => setRodPieces(Number(e.target.value))}
+                    className="w-full bg-surface border-2 border-primary/50 px-2 py-1.5 rounded text-xs font-mono font-bold text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">Std Bar Len (mm)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={rodStdLength}
+                    onChange={e => setRodStdLength(Number(e.target.value))}
+                    className="w-full bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs font-mono"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setIsCutModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" size="sm" icon={Scissors} onClick={handleAddCutPieceItem} className="bg-amber-600 hover:bg-amber-700 text-white">
+              Add Cut Piece to MR
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
