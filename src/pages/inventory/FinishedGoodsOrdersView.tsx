@@ -2420,7 +2420,23 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         (ord.notes && ord.notes.toLowerCase().includes(q))
       );
 
-      const matchesStatus = statusFilter === 'all' || ord.status === statusFilter;
+  const isOrderNotFullyDispatched = (ord: any): boolean => {
+    const st = String(ord.status || '').trim().toLowerCase();
+    if (ord.isDispatched || st === 'dispatched' || st === 'completed' || st === 'cancelled') return false;
+    const totalQty = Number(ord.qty || 0);
+    const dispQty = Number(ord.dispatchedQty || 0);
+    if (totalQty > 0 && dispQty >= totalQty) return false;
+    return true;
+  };
+
+  const matchesStatus =
+    statusFilter === 'all'
+      ? true
+      : statusFilter === 'not_fully_dispatched'
+      ? isOrderNotFullyDispatched(ord)
+      : statusFilter === 'Dispatched'
+      ? (ord.status === 'Dispatched' || Boolean(ord.isDispatched))
+      : ord.status === statusFilter;
 
       // Customer filter
       let matchesCustomer = true;
@@ -3488,6 +3504,13 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
                 className="h-8 px-2.5 text-xs font-semibold bg-surface border border-theme-subtle text-primary focus:outline-none focus:border-blue-500 cursor-pointer"
               >
                 <option value="all">All Statuses ({orders.length})</option>
+                <option value="not_fully_dispatched">Not Fully Dispatched ({orders.filter(o => {
+                  const st = String(o.status || '').trim().toLowerCase();
+                  if (o.isDispatched || st === 'dispatched' || st === 'completed' || st === 'cancelled') return false;
+                  const tq = Number(o.qty || 0);
+                  const dq = Number(o.dispatchedQty || 0);
+                  return !(tq > 0 && dq >= tq);
+                }).length})</option>
                 {orders.some(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval') && (
                   <option value="Pending Approval">Pending Approval ({orders.filter(o => o.status === 'Pending Approval' || o.status === 'Pending Advance Approval').length})</option>
                 )}
