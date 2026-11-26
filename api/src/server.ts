@@ -25431,7 +25431,7 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
 // Admin-only Live SQL Query Runner
 app.post('/api/admin/sql-query', async (req, res) => {
   try {
-    if (!checkIsAdmin(req)) {
+    if (!checkIsAdminUser(req)) {
       return res.status(403).json({ error: 'Access denied: Only administrators can run SQL queries.' });
     }
     const { query } = req.body || {};
