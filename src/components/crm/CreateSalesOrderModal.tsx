@@ -299,7 +299,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
 
     let discountVal = rawDiscountType === 'percent' ? quoteDiscount : quoteDiscountAmount;
-    const netBase = Number(quoteData.custTotals?.total) || Math.max(0, subtotal - quoteDiscountAmount);
+    let netBase = Number(quoteData.custTotals?.total) || Math.max(0, subtotal - quoteDiscountAmount);
 
     let vatAmount = quoteVat;
     let ssclAmount = 0;
@@ -357,11 +357,33 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       isQuoteTaxInclusive = false;
     }
 
+    const rawTaxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
+
+    // For old Custom Quotations with SSCL Absorbed (tp_opt2_sscl_absorbed_vat_sep / tp_vat_sscl),
+    // absorb SSCL into item unitPrice & subtotal (e.g. 1100 -> 1127.50) and apply VAT on top (no separate SSCL)
+    if (!isQuoteTaxInclusive && (rawTaxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || rawTaxProfileId === 'tp_vat_sscl')) {
+      const t1Rate = Number(quoteData.selectedProfile?.tax1_rate ?? 2.5) / 100;
+      const mult = 1 + t1Rate;
+      if (mult > 1) {
+        itemsList = itemsList.map((it: any) => {
+          const up = Number((Number(it.unitPrice || 0) * mult).toFixed(2));
+          const amt = Number((Number(it.amount || (it.qty * it.unitPrice)) * mult).toFixed(2));
+          return { ...it, unitPrice: up, amount: amt };
+        });
+        subtotal = itemsList.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0);
+        if (quoteDiscountAmount > 0) {
+          quoteDiscountAmount = Number((quoteDiscountAmount * mult).toFixed(2));
+          if (rawDiscountType === 'amount') {
+            discountVal = quoteDiscountAmount;
+          }
+        }
+        netBase = Math.max(0, Number((subtotal - quoteDiscountAmount).toFixed(2)));
+      }
+    }
+
     if (!isQuoteTaxInclusive && vatAmount > 0) {
       grandTotal = Number((netBase + vatAmount).toFixed(2));
     }
-
-    const rawTaxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
     const taxProfileId =
       rawTaxProfileId === 'tp_opt1_absorbed'
         ? 'tp_vat18_absorbed'
