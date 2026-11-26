@@ -16556,15 +16556,35 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
     // Auto Journal Entry for General Ledger (wrapped safely)
     const jeId = `JE-${docId.replace(/[^A-Za-z0-9_-]/g, '')}`;
     try {
-      // Resolve Customer Advance / Accounts Receivable Account
-      let [arAcc]: any = await conn.query(
-        'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
-      );
-      let creditAccountId = 'acc_1500';
-      if (arAcc && arAcc.length > 0) {
-        creditAccountId = arAcc[0].id;
-      } else {
-        await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
+      // Resolve Customer Advance / Unearned Revenue Account from Account Settings first
+      let creditAccountId = '';
+      try {
+        const [advSetting]: any = await conn.query('SELECT val FROM settings WHERE id = "default_customer_advance_account_id" LIMIT 1');
+        if (advSetting && advSetting.length > 0 && advSetting[0].val) {
+          const [chkAcc]: any = await conn.query('SELECT id FROM chart_of_accounts WHERE id = ? LIMIT 1', [advSetting[0].val]);
+          if (chkAcc && chkAcc.length > 0) {
+            creditAccountId = chkAcc[0].id;
+          }
+        }
+      } catch (e) {}
+
+      if (!creditAccountId) {
+        const [advAcc]: any = await conn.query(
+          'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Unearned%" OR code = "2150") AND type = "Liability" LIMIT 1'
+        );
+        if (advAcc && advAcc.length > 0) {
+          creditAccountId = advAcc[0].id;
+        } else {
+          const [arAcc]: any = await conn.query(
+            'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
+          );
+          if (arAcc && arAcc.length > 0) {
+            creditAccountId = arAcc[0].id;
+          } else {
+            creditAccountId = 'acc_1500';
+            await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
+          }
+        }
       }
 
       const jeData = {
