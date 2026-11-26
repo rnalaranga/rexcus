@@ -1138,7 +1138,14 @@ export const ProductQuotationBuilder: React.FC = () => {
   }
 
   // 1. Base Subtotal before discount (Extracted from gross inclusive item total)
-  const isTaxSeparated = Boolean(taxEnabled && selectedProfile?.tax2_show_separately === 1);
+  const isTaxSeparated = Boolean(
+    taxEnabled && (
+      selectedProfile?.id === 'tp_vat18' ||
+      selectedProfile?.name?.toLowerCase().includes('vat only') ||
+      selectedProfile?.tax2_show_separately === 1 ||
+      (selectedProfile?.tax1_show_separately === 1 && /vat/i.test(selectedProfile?.tax1_name || ''))
+    )
+  );
   const custBaseSubtotal = (isTaxSeparated && unitPriceDivisor > 0) ? (custSubtotal / unitPriceDivisor) : custSubtotal;
 
   // 2. Base Discount Amount (applied directly to the base subtotal)
@@ -2724,7 +2731,7 @@ export const ProductQuotationBuilder: React.FC = () => {
                         <span className="font-mono font-semibold text-secondary text-sm">+{formatCurrency(custSscl)}</span>
                       </div>
                     )}
-                    {(selectedProfile.tax2_show_separately === 1 && custVat > 0) && (
+                    {(isTaxSeparated && custVat > 0) && (
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-muted font-medium">{selectedProfile.tax2_name} ({selectedProfile.tax2_rate}% Extracted)</span>
                         <span className="font-mono font-semibold text-blue-600 dark:text-blue-400 text-sm">{formatCurrency(custVat)}</span>
