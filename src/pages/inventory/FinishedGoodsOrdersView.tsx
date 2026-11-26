@@ -1067,7 +1067,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
 
     // For Product / Tax-Inclusive Quotations with VAT separated, convert item unitPrice & amount to Excl. VAT
     let finalIsTaxInclusive = isQuoteTaxInclusive;
-    let finalQuoteSubtotal = quoteSubtotal;
+    const finalQuoteSubtotal = quoteSubtotal;
     if (isQuoteTaxInclusive && finalTotalTax > 0 && netBase > 0) {
       const taxDivisor = 1 + (finalTotalTax / netBase);
       if (taxDivisor > 1) {
@@ -1077,28 +1077,15 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         });
         finalIsTaxInclusive = false;
       }
-    } else if (!isQuoteTaxInclusive) {
-      // For Custom Quotations with SSCL Absorbed (tp_opt2_sscl_absorbed_vat_sep / tp_vat_sscl / tp_opt1_absorbed),
-      // apply the absorbed tax multiplier to item unitPrice & amount so Sales Order matches the printed Quotation
-      const qProfId = String(parsed.selectedProfileId || parsed.taxProfileId || '');
-      const t1Rate = Number(parsed.selectedProfile?.tax1_rate ?? 2.5) / 100;
-      const t2Rate = Number(parsed.selectedProfile?.tax2_rate ?? 18) / 100;
-      let absorbedMult = 1;
-      if (qProfId === 'tp_opt2_sscl_absorbed_vat_sep' || qProfId === 'tp_vat_sscl') {
-        absorbedMult = 1 + t1Rate;
-      } else if (qProfId === 'tp_opt1_absorbed') {
-        absorbedMult = parsed.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
-      }
-      if (absorbedMult > 1) {
-        extractedItems.forEach((it) => {
-          it.unitPrice = Number((Number(it.unitPrice || 0) * absorbedMult).toFixed(2));
-          it.amount = Number((Number(it.amount || 0) * absorbedMult).toFixed(2));
-        });
-        finalQuoteSubtotal = Number((quoteSubtotal * absorbedMult).toFixed(2));
-      }
     }
 
-    const taxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_vat18' : '');
+    const rawTaxProfileId = parsed.selectedProfileId || parsed.taxProfileId || (finalTotalTax > 0 ? 'tp_vat18' : '');
+    const taxProfileId =
+      rawTaxProfileId === 'tp_opt1_absorbed'
+        ? 'tp_vat18_absorbed'
+        : (rawTaxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || rawTaxProfileId === 'tp_vat_sscl' || rawTaxProfileId === 'tp_opt3_both_separate' || rawTaxProfileId === 'tp_opt4_sscl_included_vat_sep')
+        ? 'tp_vat18'
+        : rawTaxProfileId;
     const taxRate = Number(parsed.selectedProfile?.tax2_rate || (netBase > 0 && finalTotalTax > 0 ? Number(((finalTotalTax / netBase) * 100).toFixed(2)) : 0));
 
     const quotePoNo = quote.customerPoNo || parsed.customerPoNo || '';
