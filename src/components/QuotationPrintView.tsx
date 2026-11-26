@@ -154,13 +154,13 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
   let multiplier = 1;
   let unitPriceDivisor = 1;
   if (isProductQuote) {
-    if (isSsclHidden && !isVatHidden) {
-      // Option 2: SSCL absorbed into supply value, VAT separate (Standard 18%)
-      unitPriceDivisor = 1 + t2Rate;
-      multiplier = 1;
-    } else if (isSsclSeparate && isVatSeparate) {
+    if (isSsclSeparate && isVatSeparate) {
       // Option 3: Both SSCL & VAT separate
       unitPriceDivisor = data.selectedProfile?.tax2_compound ? ((1 + t1Rate) * (1 + t2Rate)) : (1 + t1Rate + t2Rate);
+      multiplier = 1;
+    } else if (isVatSeparate) {
+      // VAT Separated (including tp_vat18 / Option 2)
+      unitPriceDivisor = 1 + t2Rate;
       multiplier = 1;
     } else {
       unitPriceDivisor = 1;
