@@ -15535,6 +15535,41 @@ app.get('/api/finance/credit-debit-notes', async (req, res) => {
   }
 });
 
+app.get('/api/finance/credit-debit-notes/next-number', async (req, res) => {
+  try {
+    const noteType = req.query.type === 'debit_note' ? 'debit_note' : 'credit_note';
+    const prefix = noteType === 'credit_note' ? 'CN-' : 'DN-';
+    const seqKey = noteType === 'credit_note' ? 'credit_note' : 'debit_note';
+
+    await db.query(`
+      INSERT INTO document_sequences (id, name, prefix, next_number, padding, updated_at) 
+      VALUES (?, ?, ?, 1001, 4, NOW()) 
+      ON DUPLICATE KEY UPDATE updated_at = NOW()
+    `, [seqKey, noteType === 'credit_note' ? 'Credit Notes' : 'Debit Notes', prefix]);
+
+    const [seqRow]: any = await db.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = ?", [seqKey]);
+    let nextSeq = seqRow && seqRow[0] ? Number(seqRow[0].next_number) : 1001;
+    const padding = seqRow && seqRow[0] ? Number(seqRow[0].padding) : 4;
+
+    const [existingRows]: any = await db.query("SELECT noteNo FROM credit_debit_notes WHERE type = ?", [noteType]);
+    for (const r of (existingRows || [])) {
+      const m = String(r.noteNo || '').match(/(\d+)$/);
+      if (m && m[1]) {
+        const n = parseInt(m[1], 10);
+        if (!isNaN(n) && n >= nextSeq) {
+          nextSeq = n + 1;
+        }
+      }
+    }
+
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    const noteNo = `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
+    res.json({ success: true, type: noteType, nextNumber: nextSeq, noteNo });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/finance/credit-debit-notes', async (req, res) => {
   const conn = await db.getConnection();
   try {
@@ -15561,12 +15596,24 @@ app.post('/api/finance/credit-debit-notes', async (req, res) => {
     `, [seqKey, noteType === 'credit_note' ? 'Credit Notes' : 'Debit Notes', prefix]);
 
     const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = ?", [seqKey]);
-    const nextSeq = seqRow && seqRow[0] ? Number(seqRow[0].next_number) : 1001;
+    let nextSeq = seqRow && seqRow[0] ? Number(seqRow[0].next_number) : 1001;
     const padding = seqRow && seqRow[0] ? Number(seqRow[0].padding) : 4;
+
+    const [existingRows]: any = await conn.query("SELECT noteNo FROM credit_debit_notes WHERE type = ?", [noteType]);
+    for (const r of (existingRows || [])) {
+      const m = String(r.noteNo || '').match(/(\d+)$/);
+      if (m && m[1]) {
+        const n = parseInt(m[1], 10);
+        if (!isNaN(n) && n >= nextSeq) {
+          nextSeq = n + 1;
+        }
+      }
+    }
+
     const currentYY = String(new Date().getFullYear()).slice(-2);
     const noteNo = data.noteNo || `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
 
-    await conn.query("UPDATE document_sequences SET next_number = next_number + 1 WHERE id = ?", [seqKey]);
+    await conn.query("UPDATE document_sequences SET next_number = ? WHERE id = ?", [nextSeq + 1, seqKey]);
 
     const docId = `NOTE-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const nowIso = new Date().toISOString().slice(0, 19).replace('T', ' ');
