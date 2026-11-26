@@ -25428,6 +25428,32 @@ STRICT CONFIDENTIALITY & FORMATTING RULES:
   }
 });
 
+// Admin-only Live SQL Query Runner
+app.post('/api/admin/sql-query', async (req, res) => {
+  try {
+    if (!checkIsAdmin(req)) {
+      return res.status(403).json({ error: 'Access denied: Only administrators can run SQL queries.' });
+    }
+    const { query } = req.body || {};
+    if (!query || !String(query).trim()) {
+      return res.status(400).json({ error: 'SQL query is required.' });
+    }
+    const [result]: any = await db.query(String(query).trim());
+    if (Array.isArray(result)) {
+      return res.json({ success: true, type: 'rows', rows: result, rowCount: result.length });
+    }
+    return res.json({
+      success: true,
+      type: 'mutation',
+      affectedRows: result?.affectedRows ?? 0,
+      insertId: result?.insertId ?? null,
+      info: result?.info || ''
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.sqlMessage || error.message || 'SQL execution failed' });
+  }
+});
+
 // Run AI Diagnostics on Server Boot
 (async () => {
   try {

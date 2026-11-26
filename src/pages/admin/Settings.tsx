@@ -17,7 +17,51 @@ export const Settings = () => {
   const [logo, setLogo] = useState<string | null>(settings.company_logo || null);
   const [saving, setSaving] = useState(false);
   const [fixingDb, setFixingDb] = useState(false);
-  const [downloadingBackup, setDownloadingBackup] = useState(false);
+  const [downloadingBackup, setDownloadingBackup] = useState(false)
+  const [sqlQuery, setSqlQuery] = useState('')
+  const [sqlRunning, setSqlRunning] = useState(false)
+  const [sqlResult, setSqlResult] = useState<any>(null)
+  const [sqlError, setSqlError] = useState<string | null>(null)
+
+  const handleRunSqlQuery = async () => {
+    const q = sqlQuery.trim()
+    if (!q) return
+    const upper = q.toUpperCase()
+    if (/^(UPDATE|DELETE|DROP|TRUNCATE|ALTER)\b/.test(upper)) {
+      const ok = await showConfirm(
+        `Are you sure you want to execute this modifying SQL query?\n\n${q.slice(0, 200)}`,
+        'Confirm Live SQL Execution',
+        { confirmLabel: 'Run Query', cancelLabel: 'Cancel' }
+      )
+      if (!ok) return
+    }
+    setSqlRunning(true)
+    setSqlError(null)
+    setSqlResult(null)
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/sql-query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'x-user-role': 'admin'
+        },
+        body: JSON.stringify({ query: q })
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setSqlError(data.error || 'Query failed')
+      } else {
+        setSqlResult(data)
+        toast('SQL query executed!', 'success')
+      }
+    } catch (e: any) {
+      setSqlError(e?.message || 'Network error')
+    } finally {
+      setSqlRunning(false)
+    }
+  };
 
   const [formData, setFormData] = useState({
     company_name: 'Rex Industries (Pvt) Ltd',
@@ -469,6 +513,75 @@ export const Settings = () => {
               <Download className={`w-4 h-4 ${downloadingBackup ? 'animate-bounce' : ''}`} />
               {downloadingBackup ? 'Generating SQL...' : 'Download SQL Backup'}
             </Button>
+          </div>
+
+          {/* Admin Live SQL Query Runner */}
+          <div className="mt-4 pt-4 border-t border-theme-subtle space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-primary flex items-center gap-2">
+                  <Database className="w-4 h-4 text-amber-500" />
+                  Live SQL Query Console (Admin Only)
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Run SELECT, UPDATE, or DELETE queries directly on the live MySQL database.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleRunSqlQuery}
+                disabled={sqlRunning || !sqlQuery.trim()}
+                className="bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap"
+              >
+                {sqlRunning ? 'Running...' : 'Run SQL Query'}
+              </Button>
+            </div>
+            <textarea
+              rows={4}
+              value={sqlQuery}
+              onChange={(e) => setSqlQuery(e.target.value)}
+              placeholder="SELECT id, orderNo, quoteId, quotationNo FROM finished_goods_orders WHERE orderNo = 'SO-26-6002';"
+              className="w-full input-base font-mono text-xs resize-y"
+            />
+            {sqlError && (
+              <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 font-mono">
+                {sqlError}
+              </div>
+            )}
+            {sqlResult && sqlResult.type === 'mutation' && (
+              <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-300 font-mono">
+                Query OK — Affected Rows: {sqlResult.affectedRows} {sqlResult.info ? `(${sqlResult.info})` : ''}
+              </div>
+            )}
+            {sqlResult && sqlResult.type === 'rows' && (
+              <div className="overflow-x-auto max-h-64 border border-theme-subtle rounded bg-surface">
+                {sqlResult.rows.length === 0 ? (
+                  <p className="p-3 text-xs text-muted">0 rows returned.</p>
+                ) : (
+                  <table className="w-full text-left text-[11px] font-mono border-collapse">
+                    <thead className="bg-surface2 border-b border-theme-subtle sticky top-0">
+                      <tr>
+                        {Object.keys(sqlResult.rows[0]).map((col) => (
+                          <th key={col} className="px-2.5 py-1.5 font-bold text-primary whitespace-nowrap">{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-theme-subtle">
+                      {sqlResult.rows.map((row: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-surface2/50">
+                          {Object.keys(sqlResult.rows[0]).map((col) => (
+                            <td key={col} className="px-2.5 py-1.5 text-secondary whitespace-nowrap max-w-[260px] truncate">
+                              {row[col] === null ? 'NULL' : String(row[col])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         </GlassCard>
       </div>
