@@ -1115,7 +1115,15 @@ export const ProductQuotationBuilder: React.FC = () => {
 
   // Taxes & Financials for Tax-Inclusive Finished Goods / Products
   let unitPriceDivisor = 1;
-  const selectedProfile = (taxEnabled && selectedProfileId) ? taxProfiles?.find((p: any) => p.id === selectedProfileId) : null;
+  const selectedProfile = (taxEnabled && selectedProfileId)
+    ? (taxProfiles?.find((p: any) => p.id === selectedProfileId) || (
+        selectedProfileId === 'tp_vat18'
+          ? { id: 'tp_vat18', name: 'VAT Only (18%)', tax1_name: 'VAT', tax1_rate: 18, tax1_show_separately: 1, tax2_name: 'VAT', tax2_rate: 18, tax2_show_separately: 1 }
+          : selectedProfileId === 'tp_opt1_absorbed'
+          ? { id: 'tp_opt1_absorbed', name: 'VAT Included', tax1_name: 'SSCL', tax1_rate: 2.5, tax1_show_separately: 0, tax2_name: 'VAT', tax2_rate: 18, tax2_show_separately: 0 }
+          : null
+      ))
+    : null;
 
   if (selectedProfile && taxEnabled) {
     const isVatOnly = selectedProfile.id === 'tp_vat18' || selectedProfile.name?.toLowerCase().includes('vat only') || (selectedProfile.tax1_name && /vat/i.test(selectedProfile.tax1_name) && (!selectedProfile.tax2_name || Number(selectedProfile.tax2_rate || 0) === 0));
