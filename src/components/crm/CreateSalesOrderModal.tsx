@@ -302,8 +302,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const netBase = Number(quoteData.custTotals?.total) || Math.max(0, subtotal - quoteDiscountAmount);
 
     let vatAmount = quoteVat;
-    let ssclAmount = quoteSscl;
-    let taxAmount = initialTax;
+    let ssclAmount = 0;
+    let taxAmount = vatAmount > 0 ? vatAmount : (quoteSscl > 0 ? 0 : initialTax);
 
     let isQuoteTaxInclusive = Boolean(
       isProduct ||
@@ -357,7 +357,17 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       isQuoteTaxInclusive = false;
     }
 
-    const taxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
+    if (!isQuoteTaxInclusive && vatAmount > 0) {
+      grandTotal = Number((netBase + vatAmount).toFixed(2));
+    }
+
+    const rawTaxProfileId = quoteData.selectedProfileId || quoteData.taxProfileId || quotation.taxProfileId || (taxAmount > 0 ? 'tp_vat18' : '');
+    const taxProfileId =
+      rawTaxProfileId === 'tp_opt1_absorbed'
+        ? 'tp_vat18_absorbed'
+        : (rawTaxProfileId === 'tp_opt2_sscl_absorbed_vat_sep' || rawTaxProfileId === 'tp_vat_sscl' || rawTaxProfileId === 'tp_opt3_both_separate' || rawTaxProfileId === 'tp_opt4_sscl_included_vat_sep')
+        ? 'tp_vat18'
+        : rawTaxProfileId;
     const taxRate = Number(quoteData.selectedProfile?.tax2_rate || (netBase > 0 && taxAmount > 0 ? Number(((taxAmount / netBase) * 100).toFixed(2)) : 0));
 
     const cust = customers.find((c: any) => c.id === group.leadId);
