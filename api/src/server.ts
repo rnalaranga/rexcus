@@ -4383,7 +4383,14 @@ app.put('/api/customers/:id', async (req, res) => {
        }
     }
 
-    await db.query('UPDATE customers SET ? WHERE id = ?', [data, id]);
+    const [custCols]: any = await db.query('SHOW COLUMNS FROM customers');
+    const validCustCols = new Set(custCols.map((c: any) => c.Field));
+    const cleanCustData: any = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (validCustCols.has(k)) cleanCustData[k] = v;
+    }
+
+    await db.query('UPDATE customers SET ? WHERE id = ?', [cleanCustData, id]);
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
@@ -16135,7 +16142,10 @@ app.get('/api/finance/payment-vouchers', async (req, res) => {
         )
         SELECT
           CONCAT('VOU-', sl.id),
-          COALESCE(NULLIF(sl.voucherNo, ''), NULLIF(sl.referenceNo, ''), sl.id),
+          CASE
+            WHEN sl.voucherNo IS NOT NULL AND sl.voucherNo != '' AND sl.voucherNo LIKE 'PV-%' THEN sl.voucherNo
+            ELSE CONCAT('TEMP-PV-', sl.id)
+          END,
           DATE(sl.date),
           'supplier',
           sl.supplierId,
@@ -16172,6 +16182,23 @@ app.get('/api/finance/payment-vouchers', async (req, res) => {
       `);
     } catch (eBackfill) {
       console.error('Backfill supplier_ledger -> payment_vouchers failed:', eBackfill);
+    }
+
+    // Ensure every payment_voucher has a proper sequential PV-XXXX number (never a cheque number or TEMP-PV-)
+    try {
+      const [badVouchers]: any = await db.query(
+        "SELECT id, voucherNo FROM payment_vouchers WHERE voucherNo IS NULL OR voucherNo = '' OR voucherNo NOT LIKE 'PV-%' ORDER BY date ASC, id ASC"
+      );
+      for (const bv of (badVouchers || [])) {
+        const nextPv = await getNextPaymentVoucherNumber(db);
+        await db.query('UPDATE payment_vouchers SET voucherNo = ? WHERE id = ?', [nextPv, bv.id]);
+        if (String(bv.id).startsWith('VOU-')) {
+          const slId = String(bv.id).slice(4);
+          await db.query("UPDATE supplier_ledger SET voucherNo = ? WHERE id = ? AND (voucherNo IS NULL OR voucherNo = '' OR voucherNo NOT LIKE 'PV-%')", [nextPv, slId]);
+        }
+      }
+    } catch (eFixPv) {
+      console.warn('Auto-assign PV numbers failed:', eFixPv);
     }
 
     const [rows]: any = await db.query('SELECT * FROM payment_vouchers ORDER BY date DESC, id DESC LIMIT 200');

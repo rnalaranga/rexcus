@@ -2434,6 +2434,7 @@ export const FinishedGoodsOrdersView: React.FC<FinishedGoodsOrdersViewProps> = (
         (ord.productName && ord.productName.toLowerCase().includes(q)) ||
         (ord.productSku && ord.productSku.toLowerCase().includes(q)) ||
         (ord.customerName && ord.customerName.toLowerCase().includes(q)) ||
+        (ord.customerCompany && ord.customerCompany.toLowerCase().includes(q)) ||
         (ord.attention && ord.attention.toLowerCase().includes(q)) ||
         (ord.customerPhone && ord.customerPhone.toLowerCase().includes(q)) ||
         (ord.customerPoNo && ord.customerPoNo.toLowerCase().includes(q)) ||
