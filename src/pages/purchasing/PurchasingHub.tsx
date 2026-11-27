@@ -1280,14 +1280,6 @@ export const PurchasingHub: React.FC = () => {
           key: 'actions', header: 'Actions', align: 'right',
           render: (_, row) => (
             <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setAdvancePo(row)}
-                className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
-                title="Pay Vendor Advance & Issue Payment Voucher for this PO"
-              >
-                <CreditCard size={11} /> Pay Adv
-              </button>
               {row.status !== 'received' && (
                 <button
                   type="button"
