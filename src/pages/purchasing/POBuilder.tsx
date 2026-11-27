@@ -146,6 +146,14 @@ export const POBuilder: React.FC = () => {
   const [expectedDate, setExpectedDate] = useState('');
   const [shippingMethod, setShippingMethod] = useState('Standard Delivery');
   const [paymentTerms, setPaymentTerms] = useState('Net 30');
+  const [currency, setCurrency] = useState<'LKR' | 'USD'>('LKR');
+
+  const fmtMoney = (val: number, compact = false) => {
+    if (currency === 'USD') {
+      return `USD ${Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return formatCurrency(val, compact);
+  };
   
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [taxProfileId, setTaxProfileId] = useState('tp_opt2_sscl_absorbed_vat_sep');
@@ -210,6 +218,9 @@ export const POBuilder: React.FC = () => {
           if (existing.taxProfileId) {
             setTaxProfileId(existing.taxProfileId);
             setTaxEnabled(true);
+          }
+          if (existing.currency === 'USD' || existing.currency === 'LKR') {
+            setCurrency(existing.currency);
           }
           if (existing.isTaxInclusive !== undefined && existing.isTaxInclusive !== null) {
             setIsTaxInclusive(Boolean(Number(existing.isTaxInclusive) === 1));
@@ -675,6 +686,7 @@ export const POBuilder: React.FC = () => {
         shippingCost: Number(shippingCost) || 0, 
         shippingMethod, 
         paymentTerms, 
+        currency,
         terms, 
         status: status.toLowerCase() 
       };
@@ -944,6 +956,25 @@ export const POBuilder: React.FC = () => {
                   <Truck size={16} /> Logistics & Timing
                 </h2>
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted uppercase mb-1">Currency</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrency('LKR')}
+                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all ${currency === 'LKR' ? 'bg-emerald-500/15 border-emerald-500 text-emerald-500' : 'bg-surface border-theme-subtle text-muted hover:text-primary'}`}
+                      >
+                        LKR (Rs.)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrency('USD')}
+                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all ${currency === 'USD' ? 'bg-emerald-500/15 border-emerald-500 text-emerald-500' : 'bg-surface border-theme-subtle text-muted hover:text-primary'}`}
+                      >
+                        USD ($)
+                      </button>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[11px] font-bold text-muted uppercase mb-1">Order Date</label>
@@ -1020,7 +1051,7 @@ export const POBuilder: React.FC = () => {
                     <tr className="text-[10px] uppercase tracking-widest text-muted">
                       <th className="px-5 py-3">Material / Item</th>
                       <th className="px-3 py-3 text-right">Qty</th>
-                      <th className="px-3 py-3 text-right">Order Price (LKR)</th>
+                      <th className="px-3 py-3 text-right">Order Price ({currency})</th>
                       <th className="px-3 py-3 text-right">Disc</th>
                       <th className="px-3 py-3 text-right">Tax%</th>
                       <th className="px-5 py-3 text-right">Total</th>
@@ -1170,7 +1201,7 @@ export const POBuilder: React.FC = () => {
                             {item.refCost !== undefined && item.refCost > 0 && (
                               <div className="text-[10px] text-right font-mono flex items-center justify-end gap-1 mt-0.5">
                                 <span className="text-muted" title="Inventory standard cost">
-                                  Std: {formatCurrency(item.refCost, true)}
+                                  Std: {fmtMoney(item.refCost, true)}
                                 </span>
                                 {item.unitPrice !== item.refCost && (
                                   <span 
@@ -1196,7 +1227,7 @@ export const POBuilder: React.FC = () => {
                           <input type="number" value={item.taxRate} onChange={e => updateItem(item.id, 'taxRate', Number(e.target.value))} className="w-14 bg-surface border border-theme-subtle px-2 py-1.5 rounded text-xs text-right focus:border-primary font-mono" />
                         </td>
                         <td className="p-2 pr-5 text-right align-top pt-4 font-mono font-bold text-xs text-primary">
-                          {formatCurrency(item.total)}
+                          {fmtMoney(item.total)}
                         </td>
                         <td className="p-2 align-top text-center pt-3">
                           <button onClick={() => removeItem(item.id)} className="p-1 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded transition-all">
@@ -1235,18 +1266,18 @@ export const POBuilder: React.FC = () => {
               <div className="space-y-4 text-xs font-medium text-secondary">
                 <div className="flex justify-between items-center">
                   <span>{isTaxInclusive ? 'Gross Item Total (Inc. Tax)' : 'Subtotal'}</span>
-                  <span className="text-foreground font-mono">{formatCurrency(subtotal)}</span>
+                  <span className="text-foreground font-mono">{fmtMoney(subtotal)}</span>
                 </div>
                 {totalDiscount > 0 && (
                   <div className="flex justify-between items-center text-red-500">
                     <span>Discount</span>
-                    <span className="font-mono">-{formatCurrency(totalDiscount)}</span>
+                    <span className="font-mono">-{fmtMoney(totalDiscount)}</span>
                   </div>
                 )}
                 {taxEnabled && isTaxInclusive && totalTax > 0 && (
                   <div className="flex justify-between items-center text-muted">
                     <span>Base Value (Excl. Tax)</span>
-                    <span className="font-mono text-primary font-semibold">{formatCurrency(Math.max(0, netTaxableAmount - totalTax))}</span>
+                    <span className="font-mono text-primary font-semibold">{fmtMoney(Math.max(0, netTaxableAmount - totalTax))}</span>
                   </div>
                 )}
 
@@ -1311,26 +1342,26 @@ export const POBuilder: React.FC = () => {
                           {selectedTaxProfile.tax1_show_separately === 0 && selectedTaxProfile.tax2_show_separately === 0 ? (
                             <div className="flex justify-between items-center text-muted">
                               <span>Taxes Absorbed (SSCL {selectedTaxProfile.tax1_rate}% + VAT {selectedTaxProfile.tax2_rate}%)</span>
-                              <span className="font-mono text-emerald-500 font-semibold">{formatCurrency(totalTax)} (Included)</span>
+                              <span className="font-mono text-emerald-500 font-semibold">{fmtMoney(totalTax)} (Included)</span>
                             </div>
                           ) : (
                             <>
                               {selectedTaxProfile.tax1_show_separately === 1 && Number(selectedTaxProfile.tax1_rate) > 0 && (
                                 <div className="flex justify-between items-center text-muted">
                                   <span>{selectedTaxProfile.tax1_name || 'SSCL'} ({selectedTaxProfile.tax1_rate}%):</span>
-                                  <span className="font-mono text-amber-500">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax1Amount)}</span>
+                                  <span className="font-mono text-amber-500">{isTaxInclusive ? '' : '+'}{fmtMoney(taxBreakdown.tax1Amount)}</span>
                                 </div>
                               )}
                               {selectedTaxProfile.tax1_show_separately === 0 && Number(selectedTaxProfile.tax1_rate) > 0 && (
                                 <div className="flex justify-between items-center text-muted">
                                   <span>{selectedTaxProfile.tax1_name || 'SSCL'} ({selectedTaxProfile.tax1_rate}%):</span>
-                                  <span className="font-mono text-emerald-500">{formatCurrency(taxBreakdown.tax1Amount)} (Absorbed)</span>
+                                  <span className="font-mono text-emerald-500">{fmtMoney(taxBreakdown.tax1Amount)} (Absorbed)</span>
                                 </div>
                               )}
                               {selectedTaxProfile.tax2_show_separately === 1 && Number(selectedTaxProfile.tax2_rate) > 0 && (
                                 <div className="flex justify-between items-center text-muted">
                                   <span className="font-semibold text-primary">{selectedTaxProfile.tax2_name || 'VAT'} ({selectedTaxProfile.tax2_rate}%):</span>
-                                  <span className="font-mono text-emerald-500 font-semibold">{isTaxInclusive ? '' : '+'}{formatCurrency(taxBreakdown.tax2Amount)}</span>
+                                  <span className="font-mono text-emerald-500 font-semibold">{isTaxInclusive ? '' : '+'}{fmtMoney(taxBreakdown.tax2Amount)}</span>
                                 </div>
                               )}
                               {taxBreakdown.isCompound && (
@@ -1350,7 +1381,7 @@ export const POBuilder: React.FC = () => {
                 </div>
                 <div className="pt-4 border-t border-theme-subtle flex justify-between items-center text-sm font-bold text-foreground">
                   <span>Total Amount</span>
-                  <span className="text-emerald-500 font-mono text-base">{formatCurrency(grandTotal)}</span>
+                  <span className="text-emerald-500 font-mono text-base">{fmtMoney(grandTotal)}</span>
                 </div>
               </div>
             </GlassCard>
@@ -1377,16 +1408,16 @@ export const POBuilder: React.FC = () => {
                     <div className="bg-surface/50 p-3 rounded-lg border border-theme-subtle space-y-2 text-xs">
                       <div className="flex justify-between items-center">
                         <span className="text-muted">PO Total Value:</span>
-                        <span className="font-mono font-bold text-primary">{formatCurrency(grandTotal, true)}</span>
+                        <span className="font-mono font-bold text-primary">{fmtMoney(grandTotal, true)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-muted">Advance Paid to Vendor:</span>
-                        <span className="font-mono font-bold text-emerald-500">{formatCurrency(advPaid, true)}</span>
+                        <span className="font-mono font-bold text-emerald-500">{fmtMoney(advPaid, true)}</span>
                       </div>
                       <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle">
                         <span className="font-semibold text-primary">Remaining Balance on PO:</span>
                         <span className="font-mono font-black text-amber-500">
-                          {formatCurrency(Math.max(0, grandTotal - advPaid), true)}
+                          {fmtMoney(Math.max(0, grandTotal - advPaid), true)}
                         </span>
                       </div>
                     </div>
@@ -1415,7 +1446,7 @@ export const POBuilder: React.FC = () => {
                                 <p className="text-[10px] text-muted">{v.date} • {v.paymentMethod}</p>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-primary">{formatCurrency(Number(v.amount || 0), true)}</span>
+                                <span className="font-mono font-bold text-primary">{fmtMoney(Number(v.amount || 0), true)}</span>
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1457,16 +1488,16 @@ export const POBuilder: React.FC = () => {
               <div className="bg-surface/50 p-3 rounded-lg border border-theme-subtle space-y-2 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="text-muted">Total Ordered:</span>
-                  <span className="font-mono font-bold text-primary">{formatCurrency(grandTotal, true)}</span>
+                  <span className="font-mono font-bold text-primary">{fmtMoney(grandTotal, true)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted">Total Invoiced:</span>
-                  <span className="font-mono font-bold text-amber-500">{formatCurrency(totalInvoiced, true)}</span>
+                  <span className="font-mono font-bold text-amber-500">{fmtMoney(totalInvoiced, true)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle">
                   <span className="font-semibold text-primary">Unbilled Balance:</span>
                   <span className={`font-mono font-black ${unbilledBalance <= 0.01 && grandTotal > 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                    {formatCurrency(unbilledBalance, true)}
+                    {fmtMoney(unbilledBalance, true)}
                   </span>
                 </div>
               </div>
@@ -1495,7 +1526,7 @@ export const POBuilder: React.FC = () => {
                           <p className="text-[10px] text-muted">{b.date?.split('T')[0]} • {b.id}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-mono font-bold text-amber-500">{formatCurrency(Number(b.amount || 0), true)}</p>
+                          <p className="font-mono font-bold text-amber-500">{fmtMoney(Number(b.amount || 0), true)}</p>
                           <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-bold ${b.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-zinc-400'}`}>
                             {b.status || 'unpaid'}
                           </span>

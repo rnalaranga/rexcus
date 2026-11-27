@@ -1782,6 +1782,7 @@ async function runDatabaseSync() {
     "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN advancePaid DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE purchase_orders ADD COLUMN advanceVouchers TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
     "ALTER TABLE supplier_bills ADD COLUMN advanceApplied DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN advanceVoucherNos VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
