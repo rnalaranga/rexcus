@@ -3,17 +3,18 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Truck, Search, Filter, Printer, Download, Plus, Eye, Trash2, 
   RefreshCw, CheckCircle2, Clock, Calendar, ArrowUpRight, FileText, 
-  ShoppingBag, Factory, AlertCircle, Shield
+  ShoppingBag, Factory, AlertCircle, Shield, Edit3
 } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import { formatDate } from '@/lib/utils';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { fetchGatePasses, deleteGatePass, fetchWorkOrders, fetchAllCustomerGRNs } from '@/lib/api';
+import { fetchGatePasses, updateGatePass, deleteGatePass, fetchWorkOrders, fetchAllCustomerGRNs } from '@/lib/api';
 import { useQuotations, useFinishedGoodsOrders, useInvoices } from '@/hooks/useData';
 import { GatePassPrintModal } from '@/components/GatePassPrintModal';
 import { TraceabilityDropdown, TraceNode } from '@/components/TraceabilityDropdown';
@@ -49,6 +50,51 @@ export const GatePassesHub: React.FC = () => {
 
   // Print modal
   const [printGatePass, setPrintGatePass] = useState<any | null>(null);
+  const [editingGp, setEditingGp] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<{ items: any[]; carrier: string; vehicleNo: string; notes: string }>({
+    items: [],
+    carrier: '',
+    vehicleNo: '',
+    notes: ''
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const openEditModal = (gp: any) => {
+    let parsedItems: any[] = [];
+    try {
+      parsedItems = typeof gp.items === 'string' ? JSON.parse(gp.items) : (Array.isArray(gp.items) ? gp.items : []);
+    } catch {
+      parsedItems = [];
+    }
+    setEditingGp(gp);
+    setEditForm({
+      items: parsedItems.map((it: any) => ({ ...it, qty: Number(it.qty ?? it.dispatchQty ?? 1) })),
+      carrier: gp.carrier || '',
+      vehicleNo: gp.vehicleNo || '',
+      notes: gp.notes || ''
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGp) return;
+    setSavingEdit(true);
+    try {
+      await updateGatePass(editingGp.id, {
+        items: editForm.items,
+        carrier: editForm.carrier,
+        vehicleNo: editForm.vehicleNo,
+        notes: editForm.notes
+      });
+      toast(`Dispatch Note ${editingGp.id} updated successfully!`, 'success');
+      setEditingGp(null);
+      await loadData();
+    } catch (err: any) {
+      toast(err?.message || 'Failed to update dispatch note', 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Traceability data
   const { data: allQuotations = [] } = useQuotations();
@@ -754,6 +800,14 @@ export const GatePassesHub: React.FC = () => {
                           >
                             Print Gate Pass
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Edit3}
+                            onClick={() => openEditModal(gp)}
+                            className="text-xs text-muted hover:text-amber-600 hover:bg-amber-500/10 p-1.5 h-auto rounded-none transition-colors"
+                            title="Edit Dispatch Note / Quantities"
+                          />
                           {isAdmin && (
                             <Button
                               variant="ghost"
@@ -801,6 +855,109 @@ export const GatePassesHub: React.FC = () => {
           settings={settings}
         />
       )}
+
+      {/* Edit Dispatch Note / Gate Pass Modal */}
+      <Modal
+        isOpen={!!editingGp}
+        onClose={() => setEditingGp(null)}
+        title={`Edit Dispatch Note / Gate Pass (${editingGp?.id || ''})`}
+        size="lg"
+      >
+        {editingGp && (
+          <form onSubmit={handleSaveEdit} className="p-5 space-y-4 text-xs">
+            <div className="space-y-2">
+              <label className="block font-bold text-secondary uppercase tracking-wider text-[11px]">
+                Dispatched Items &amp; Quantities
+              </label>
+              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                {editForm.items.map((it: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-surface2/50 border border-theme-subtle">
+                    <input
+                      type="text"
+                      value={it.description || it.productName || it.name || ''}
+                      onChange={(e) => {
+                        const next = [...editForm.items];
+                        next[idx] = { ...next[idx], description: e.target.value };
+                        setEditForm({ ...editForm, items: next });
+                      }}
+                      className="flex-1 input-base text-xs py-1"
+                      placeholder="Item description"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={it.qty}
+                      onChange={(e) => {
+                        const next = [...editForm.items];
+                        next[idx] = { ...next[idx], qty: Number(e.target.value) };
+                        setEditForm({ ...editForm, items: next });
+                      }}
+                      className="w-24 input-base text-xs py-1 text-center font-mono font-bold"
+                    />
+                    <input
+                      type="text"
+                      value={it.unit || it.uom || 'Nos'}
+                      onChange={(e) => {
+                        const next = [...editForm.items];
+                        next[idx] = { ...next[idx], unit: e.target.value, uom: e.target.value };
+                        setEditForm({ ...editForm, items: next });
+                      }}
+                      className="w-16 input-base text-xs py-1 text-center"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-secondary uppercase tracking-wider text-[11px] mb-1">
+                  Carrier / Driver
+                </label>
+                <input
+                  type="text"
+                  value={editForm.carrier}
+                  onChange={(e) => setEditForm({ ...editForm, carrier: e.target.value })}
+                  className="w-full input-base text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-secondary uppercase tracking-wider text-[11px] mb-1">
+                  Vehicle No
+                </label>
+                <input
+                  type="text"
+                  value={editForm.vehicleNo}
+                  onChange={(e) => setEditForm({ ...editForm, vehicleNo: e.target.value })}
+                  className="w-full input-base text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-secondary uppercase tracking-wider text-[11px] mb-1">
+                Notes
+              </label>
+              <textarea
+                rows={2}
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                className="w-full input-base text-xs resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingGp(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" size="sm" disabled={savingEdit}>
+                {savingEdit ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };
