@@ -1455,6 +1455,34 @@ export const Quotations: React.FC = () => {
               <span>Clone as New Quotation</span>
             </button>
 
+            {/* 2.3 Add SSCL (2.5% Absorbed + 18% VAT) */}
+            {(parsed?.selectedProfileId === 'tp_vat18' || !Number(parsed?.custSscl || 0)) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetId = (latestMain || displayQ)?.id;
+                  setOpenActionId(null);
+                  if (!targetId) return;
+                  try {
+                    const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/quotations/${encodeURIComponent(targetId)}/add-sscl`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Failed to add SSCL');
+                    toast(`SSCL (2.5%) added to ${group.quoNo}! New Total: Rs. ${Number(data.totalAmount || 0).toLocaleString()}`, 'success');
+                    refetch();
+                  } catch (err: any) {
+                    toast(err.message || 'Failed to add SSCL', 'error');
+                  }
+                }}
+                className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 flex items-center gap-2.5 transition-colors text-left cursor-pointer"
+              >
+                <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                <span>Add SSCL (2.5%)</span>
+              </button>
+            )}
+
             {/* 2.5 View Quotation Attachments / Drawings */}
             {(() => {
               const quoteAtts = extractQuoteAttachments(parsed);

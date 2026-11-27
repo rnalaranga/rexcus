@@ -1535,9 +1535,12 @@ async function runDatabaseSync() {
       }
     }
 
-    // Ensure Master Setup Settings exist if not already configured
+    // Ensure Master Setup Settings & Default Advance Accounts exist if not already configured
+    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES ('acc_2150', '2150', 'Customer Advances / Unearned Revenue', 'Liability', 'Current Liability', 0.00, 0, 1, NOW())`);
+    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES ('acc_1450', '1450', 'Advance to Suppliers / Prepayments', 'Asset', 'Current Asset', 0.00, 0, 1, NOW())`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('usd_master_account_id', 'acc_1010') ON DUPLICATE KEY UPDATE val=val`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('default_supplier_advance_account_id', 'acc_1450') ON DUPLICATE KEY UPDATE val=val`);
+    await db.query(`INSERT INTO settings (id, val) VALUES ('default_customer_advance_account_id', 'acc_2150') ON DUPLICATE KEY UPDATE val=val`);
 
     // Clean up any historical journal lines where Bank/Cash was incorrectly tagged with partyType='Customer'
     await db.query(`
@@ -1781,7 +1784,6 @@ async function runDatabaseSync() {
     "ALTER TABLE purchase_orders ADD COLUMN advanceVouchers TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN advanceApplied DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN advanceVoucherNos VARCHAR(255) DEFAULT NULL",
-    "ALTER TABLE payment_vouchers ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
@@ -2036,6 +2038,40 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN invoiceNo VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE payment_receipts ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE payment_vouchers ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
+    `CREATE TABLE IF NOT EXISTS credit_debit_notes (
+      id VARCHAR(50) PRIMARY KEY,
+      noteNo VARCHAR(100) NOT NULL,
+      type VARCHAR(30) NOT NULL DEFAULT 'credit_note',
+      partyType VARCHAR(30) NOT NULL DEFAULT 'customer',
+      partyId VARCHAR(50) DEFAULT NULL,
+      partyName VARCHAR(255) NOT NULL,
+      date DATE NOT NULL,
+      reason TEXT DEFAULT NULL,
+      relatedDocType VARCHAR(50) DEFAULT NULL,
+      relatedDocNo VARCHAR(100) DEFAULT NULL,
+      accountId VARCHAR(50) DEFAULT NULL,
+      accountName VARCHAR(255) DEFAULT NULL,
+      subtotal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      taxAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      totalAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      taxProfileId VARCHAR(50) DEFAULT NULL,
+      taxBreakdown TEXT DEFAULT NULL,
+      items LONGTEXT DEFAULT NULL,
+      notes TEXT DEFAULT NULL,
+      attachment LONGTEXT DEFAULT NULL,
+      attachmentName VARCHAR(255) DEFAULT NULL,
+      status VARCHAR(30) DEFAULT 'issued',
+      journalEntryId VARCHAR(50) DEFAULT NULL,
+      createdBy VARCHAR(100) DEFAULT 'Accounts Officer',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_cdn_noteNo (noteNo),
+      INDEX idx_cdn_type (type),
+      INDEX idx_cdn_date (date)
+    )`,
+    "ALTER TABLE credit_debit_notes ADD COLUMN attachment LONGTEXT DEFAULT NULL",
+    "ALTER TABLE credit_debit_notes ADD COLUMN attachmentName VARCHAR(255) DEFAULT NULL",
     "ALTER TABLE cashbook_entries ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE supplier_ledger ADD COLUMN billId VARCHAR(50) DEFAULT NULL",
@@ -6325,6 +6361,50 @@ app.delete('/api/quotations/:id', async (req, res) => {
 });
 
 // Restore soft-deleted quotation from Trash
+app.post('/api/quotations/:id/add-sscl', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await db.query('SELECT id, data, totalAmount FROM quotations WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+    const q = rows[0];
+    const d = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || {});
+    const opt2Profile = {
+      id: 'tp_opt2_sscl_absorbed_vat_sep',
+      name: 'Option 2: SSCL Absorbed + VAT Separate',
+      tax1_name: 'SSCL',
+      tax1_rate: '2.50',
+      tax2_name: 'VAT',
+      tax2_rate: '18.00',
+      tax2_compound: 1,
+      tax1_show_separately: 0,
+      tax2_show_separately: 1
+    };
+    const baseTotal = Number(d.custTotals?.total ?? d.custTotals?.subtotal ?? 0);
+    const newSscl = Math.round(baseTotal * 0.025 * 100) / 100;
+    const newVat = Math.round((baseTotal + newSscl) * 0.18 * 100) / 100;
+    const newGrand = Math.round((baseTotal + newSscl + newVat) * 100) / 100;
+
+    d.taxEnabled = true;
+    d.selectedProfileId = opt2Profile.id;
+    d.selectedProfile = opt2Profile;
+    d.custSscl = newSscl;
+    d.custVat = newVat;
+    if (d.custTotals) {
+      d.custTotals.withSSCL = newGrand;
+    }
+
+    await db.query(
+      'UPDATE quotations SET data = ?, totalAmount = ? WHERE id = ?',
+      [JSON.stringify(d), newGrand, q.id]
+    );
+    res.json({ success: true, id: q.id, totalAmount: newGrand, custSscl: newSscl, custVat: newVat });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to add SSCL' });
+  }
+});
+
 app.post('/api/quotations/:id/restore', async (req, res) => {
   try {
     const { id } = req.params;
@@ -9624,7 +9704,7 @@ app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
     const voucherNo = data.voucherNo || await getNextPaymentVoucherNumber(conn);
 
     const docId = `VOU-PO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-    const descText = data.notes?.trim() || `Advance Payment for Purchase Order #${poId} (${finalCreditAccName} → ${finalDebitAccName})`;
+    const descText = data.notes?.trim() || `Advance Payment for Purchase Order #${poId} (${finalCreditAccName} -> ${finalDebitAccName})`;
 
     const voucherPayload: any = {
       id: docId,
@@ -10869,7 +10949,7 @@ app.post('/api/purchasing/bills', async (req, res) => {
       try {
         await db.query(
           'UPDATE payment_vouchers SET relatedBillId = COALESCE(relatedBillId, ?), relatedBillNo = ? WHERE poId IN (?)',
-          [data.id, `PO: ${targetPoIds.join(', ')} → Bill: ${data.invoiceNo || data.id}`, targetPoIds]
+          [data.id, `PO: ${targetPoIds.join(', ')} -> Bill: ${data.invoiceNo || data.id}`, targetPoIds]
         );
       } catch (eLink) {}
     }
@@ -11849,9 +11929,17 @@ app.post('/api/invoices', async (req, res) => {
           let advAccId = invAccMap.default_customer_advance_account_id || null;
           if (!advAccId) {
             let [advAcc]: any = await db.query(
-              'SELECT id FROM chart_of_accounts WHERE (name LIKE "%Customer Advance%" OR code = "2150") AND type = "Liability" LIMIT 1'
+              'SELECT id FROM chart_of_accounts WHERE (id = "acc_2150" OR code = "2150" OR name LIKE "%Customer Advance%" OR name LIKE "%Unearned%") AND type = "Liability" LIMIT 1'
             );
-            if (advAcc && advAcc.length > 0) advAccId = advAcc[0].id;
+            if (advAcc && advAcc.length > 0) {
+              advAccId = advAcc[0].id;
+            } else {
+              advAccId = 'acc_2150';
+              await db.query(
+                'INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES (?, "2150", "Customer Advances / Unearned Revenue", "Liability", "Current Liability", 0, 0, 1, NOW())',
+                ['acc_2150']
+              );
+            }
           }
           if (advAccId) {
             lines.push(['JL-' + Date.now().toString().slice(-5) + '6', jeId, advAccId, advDeducted, 0, data.customerId, 'Customer']);
@@ -13171,14 +13259,28 @@ app.put('/api/finance/payment-vouchers/:id/reallocate', async (req, res) => {
       'SELECT * FROM supplier_ledger WHERE id = ? OR referenceNo = ? OR voucherNo = ? LIMIT 1',
       [slId, voucherNo, voucherNo]
     );
-    const sl = slRows[0] || null;
+    let sl = slRows[0] || null;
 
-    if (!pv && !sl) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Payment voucher not found' });
+    // Fallback: if reallocating directly from a Paid Bill without an explicit voucher ID, find matching supplier_ledger payment
+    if (!pv && !sl && Array.isArray(reverseBills) && reverseBills.length > 0 && supplierId) {
+      const firstBillId = reverseBills[0].billId;
+      const [fallbackSl]: any = await conn.query(
+        'SELECT * FROM supplier_ledger WHERE supplierId = ? AND (type = "payment" OR credit > 0) AND (description LIKE ? OR referenceNo LIKE ?) ORDER BY date DESC LIMIT 1',
+        [supplierId, `%${firstBillId}%`, `%${firstBillId}%`]
+      );
+      if (fallbackSl && fallbackSl.length > 0) {
+        sl = fallbackSl[0];
+      }
     }
 
-    const oldAmount = Number(pv?.amount || sl?.amount || sl?.credit || 0);
+    const oldAmount = Number(
+      pv?.amount ||
+      sl?.amount ||
+      sl?.credit ||
+      (Array.isArray(reverseBills) ? reverseBills.reduce((s: number, r: any) => s + Number(r.amount || 0), 0) : 0) ||
+      totalAmount ||
+      0
+    );
     const numTotal = Number(totalAmount !== undefined ? totalAmount : oldAmount);
     if (isNaN(numTotal) || numTotal <= 0) {
       await conn.rollback();
@@ -13228,6 +13330,45 @@ app.put('/api/finance/payment-vouchers/:id/reallocate', async (req, res) => {
         const newPaid = Math.max(0, Number(b.paidAmount || 0) - oldAmount);
         const newStatus = newPaid >= (bTotal - 0.01) ? 'paid' : (newPaid > 0.01 ? 'partial' : 'unpaid');
         await conn.query('UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?', [newPaid, newStatus, b.id]);
+      }
+    } else {
+      // Parse previously paid bill numbers from pv.relatedBillNo or sl.description ("Payment for Bill(s): INV-1, INV-2")
+      const rawRefs: string[] = [];
+      if (pv?.relatedBillNo) {
+        String(pv.relatedBillNo).split(',').forEach((s: string) => {
+          const clean = s.trim();
+          if (clean && !clean.startsWith('PO:')) rawRefs.push(clean);
+        });
+      }
+      const descStr = String(sl?.description || pv?.description || '');
+      const m = descStr.match(/Bill\(s\):\s*([^\n(]+)/i) || descStr.match(/Bill\s+#?([A-Za-z0-9_-]+)/i);
+      if (m && m[1]) {
+        m[1].split(',').forEach((s: string) => {
+          const clean = s.trim();
+          if (clean && !rawRefs.includes(clean)) rawRefs.push(clean);
+        });
+      }
+      if (rawRefs.length > 0) {
+        let remToReverse = oldAmount;
+        for (const ref of rawRefs) {
+          if (remToReverse <= 0) break;
+          const [bRows]: any = await conn.query(
+            'SELECT * FROM supplier_bills WHERE (id = ? OR invoiceNo = ?) AND (? IS NULL OR supplierId = ?) LIMIT 1',
+            [ref, ref, targetSupplierId || null, targetSupplierId || null]
+          );
+          if (bRows && bRows.length > 0) {
+            const b = bRows[0];
+            const bTotal = Number(b.amount || 0);
+            const curPaid = Number(b.paidAmount || 0);
+            const revAmt = Math.min(curPaid, remToReverse);
+            if (revAmt > 0) {
+              const newPaid = Math.max(0, curPaid - revAmt);
+              const newStatus = newPaid >= (bTotal - 0.01) ? 'paid' : (newPaid > 0.01 ? 'partial' : 'unpaid');
+              await conn.query('UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?', [newPaid, newStatus, b.id]);
+              remToReverse = Math.max(0, remToReverse - revAmt);
+            }
+          }
+        }
       }
     }
 
@@ -15534,15 +15675,8 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         END as category,
         pr.receiptNo as refNo,
         COALESCE(NULLIF(pr.customerCompany, ''), NULLIF(pr.customerName, ''), 'Customer') as partyName,
-        COALESCE(
-          NULLIF(pr.notes, ''),
-          NULLIF(pr.reference, ''),
-          CASE 
-            WHEN pr.invoiceNo IS NOT NULL AND pr.invoiceNo != '' THEN CONCAT('Payment for Invoice #', pr.invoiceNo)
-            WHEN pr.orderNo IS NOT NULL AND pr.orderNo != '' THEN CONCAT('Receipt for Order #', pr.orderNo)
-            ELSE 'Customer Payment Receipt'
-          END
-        ) as description,
+        pr.notes as rawNotes,
+        pr.reference as rawReference,
         COALESCE(pr.paymentMethod, 'Cash') as paymentMethod,
         CAST(pr.amount AS DECIMAL(15,2)) as amount,
         'LKR' as currency,
@@ -15560,6 +15694,13 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
       FROM payment_receipts pr
       WHERE DATE(pr.date) BETWEEN ? AND ?
     `, [start, end]);
+
+    for (const r of (receipts || [])) {
+      r.description =
+        (r.rawNotes && String(r.rawNotes).trim()) ||
+        (r.rawReference && String(r.rawReference).trim()) ||
+        (r.invoiceNo ? `Payment for Invoice #${r.invoiceNo}` : r.orderNo ? `Receipt for Order #${r.orderNo}` : 'Customer Payment Receipt');
+    }
 
     // A2. Direct payments logged on invoices table (resilient fallback for legacy / direct invoice payments)
     const directInvoicePayments: any[] = [];
@@ -15614,46 +15755,50 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
     }
 
     // B. Cashbook Entries (IN and OUT)
-    const [cashbook]: any = await db.query(`
-      SELECT 
-        cb.id,
-        DATE_FORMAT(cb.date, '%Y-%m-%d') as date,
-        cb.time,
-        cb.entryType as flowType,
-        CASE WHEN cb.entryType = 'IN' THEN 'Cashbook Income' ELSE 'Cashbook Expense' END as category,
-        COALESCE(cb.referenceNo, cb.voucherNo, cb.id) as refNo,
-        COALESCE(NULLIF(cb.partyName, ''), targetAcc.name, 'Cashbook') as partyName,
-        cb.particulars as description,
-        COALESCE(cb.paymentMethod, 'Cash') as paymentMethod,
-        CAST(cb.amount AS DECIMAL(15,2)) as amount,
-        'LKR' as currency,
-        cb.chequeNo,
-        DATE_FORMAT(cb.chequeDate, '%Y-%m-%d') as chequeDate,
-        cb.bankName,
-        CASE WHEN cb.paymentMethod = 'Cheque' OR cb.chequeNo IS NOT NULL THEN COALESCE(cb.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
-        cb.transactionRef,
-        COALESCE(cashAcc.name, 'Petty Cash') as accountName,
-        COALESCE(cb.createdByName, cb.createdBy, 'Cashier') as handledBy,
-        COALESCE(cb.depositSlip, cb.receiptPhoto) as depositSlip,
-        'cashbook_entries' as sourceTable
-      FROM cashbook_entries cb
-      LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
-      LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
-      WHERE cb.date BETWEEN ? AND ?
-        AND cb.status = 'approved'
-    `, [start, end]);
+    let cashbook: any[] = [];
+    try {
+      const [cbRows]: any = await db.query(`
+        SELECT 
+          cb.id,
+          DATE_FORMAT(cb.date, '%Y-%m-%d') as date,
+          cb.time,
+          cb.entryType as flowType,
+          CASE WHEN cb.entryType = 'IN' THEN 'Cashbook Income' ELSE 'Cashbook Expense' END as category,
+          COALESCE(cb.referenceNo, cb.voucherNo, cb.id) as refNo,
+          COALESCE(NULLIF(cb.partyName, ''), targetAcc.name, 'Cashbook') as partyName,
+          cb.particulars as description,
+          COALESCE(cb.paymentMethod, 'Cash') as paymentMethod,
+          CAST(cb.amount AS DECIMAL(15,2)) as amount,
+          'LKR' as currency,
+          cb.chequeNo,
+          DATE_FORMAT(cb.chequeDate, '%Y-%m-%d') as chequeDate,
+          cb.bankName,
+          CASE WHEN cb.paymentMethod = 'Cheque' OR cb.chequeNo IS NOT NULL THEN COALESCE(cb.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
+          cb.transactionRef,
+          COALESCE(cashAcc.name, 'Petty Cash') as accountName,
+          COALESCE(cb.createdByName, cb.createdBy, 'Cashier') as handledBy,
+          COALESCE(cb.depositSlip, cb.receiptPhoto) as depositSlip,
+          'cashbook_entries' as sourceTable
+        FROM cashbook_entries cb
+        LEFT JOIN chart_of_accounts targetAcc ON cb.accountId = targetAcc.id
+        LEFT JOIN chart_of_accounts cashAcc ON cb.cashAccountId = cashAcc.id
+        WHERE cb.date BETWEEN ? AND ?
+          AND cb.status = 'approved'
+      `, [start, end]);
+      cashbook = Array.isArray(cbRows) ? cbRows : [];
+    } catch (cbErr) {}
 
     // C. Payment Vouchers (Disbursements / OUT)
-    const [vouchers]: any = await db.query(`
+    const [rawVouchers]: any = await db.query(`
       SELECT 
         pv.id,
         DATE_FORMAT(pv.date, '%Y-%m-%d') as date,
         '12:00' as time,
         'OUT' as flowType,
-        CONCAT('Voucher: ', pv.category) as category,
+        pv.category as rawCategory,
         pv.voucherNo as refNo,
         pv.payeeName as partyName,
-        COALESCE(pv.description, CONCAT('Payment to ', pv.payeeName)) as description,
+        pv.description as rawDescription,
         COALESCE(pv.paymentMethod, 'Cash') as paymentMethod,
         CAST(pv.amount AS DECIMAL(15,2)) as amount,
         'LKR' as currency,
@@ -15662,10 +15807,8 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pv.bankName,
         CASE WHEN pv.paymentMethod = 'Cheque' OR pv.chequeNo IS NOT NULL THEN COALESCE(pv.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         pv.transactionRef,
-        CASE
-          WHEN bankAcc.name IS NOT NULL AND acc.name IS NOT NULL AND bankAcc.id != acc.id THEN CONCAT(bankAcc.name, ' → ', acc.name)
-          ELSE COALESCE(bankAcc.name, acc.name, 'Bank/Cash')
-        END as accountName,
+        bankAcc.name as bankAccName,
+        acc.name as targetAccName,
         COALESCE(pv.preparedBy, 'Finance') as handledBy,
         pv.depositSlip,
         'payment_vouchers' as sourceTable
@@ -15674,6 +15817,16 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
       LEFT JOIN chart_of_accounts acc ON pv.accountId = acc.id
       WHERE pv.date BETWEEN ? AND ?
     `, [start, end]);
+
+    const vouchers = (rawVouchers || []).map((v: any) => ({
+      ...v,
+      category: `Voucher: ${v.rawCategory || 'Expense'}`,
+      description: v.rawDescription || `Payment to ${v.partyName || 'Vendor'}`,
+      accountName:
+        v.bankAccName && v.targetAccName && v.bankAccName !== v.targetAccName
+          ? `${v.bankAccName} -> ${v.targetAccName}`
+          : v.bankAccName || v.targetAccName || 'Bank/Cash'
+    }));
 
     // D. Supplier Ledger Payments (if not already logged through payment_vouchers)
     const [supplierPayments]: any = await db.query(`
@@ -15718,7 +15871,7 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
           CASE WHEN cr.direction = 'IN' THEN 'Inward Cheque' ELSE 'Outward Cheque' END as category,
           COALESCE(cr.sourceRef, cr.voucherNo, cr.receiptNo, cr.chequeNo) as refNo,
           cr.payeeName as partyName,
-          COALESCE(cr.description, CONCAT(CASE WHEN cr.direction = 'IN' THEN 'Inward Cheque #' ELSE 'Outward Cheque #' END, cr.chequeNo)) as description,
+          cr.description as rawDescription,
           'Cheque' as paymentMethod,
           CAST(cr.amount AS DECIMAL(15,2)) as amount,
           COALESCE(cr.currency, 'LKR') as currency,
@@ -15741,7 +15894,10 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         if (t.chequeNo) existingChqKeys.add(`${t.flowType}_${String(t.chequeNo).trim().toLowerCase()}`);
       });
       
-      manualCheques = (regRows || []).filter((r: any) => {
+      manualCheques = (regRows || []).map((r: any) => ({
+        ...r,
+        description: r.rawDescription || `${r.flowType === 'IN' ? 'Inward Cheque #' : 'Outward Cheque #'}${r.chequeNo || ''}`
+      })).filter((r: any) => {
         const key = `${r.flowType}_${String(r.chequeNo).trim().toLowerCase()}`;
         return !existingChqKeys.has(key);
       });
@@ -16396,6 +16552,7 @@ app.post('/api/finance/credit-debit-notes', async (req, res) => {
           credit: !isReturn ? numAmount : 0,
           amount: numAmount,
           paymentMethod: noteType === 'credit_note' ? 'Credit Note' : 'Debit Note',
+          depositSlip: data.attachment || null,
           notes: data.notes || null
         });
 
@@ -16425,6 +16582,8 @@ app.post('/api/finance/credit-debit-notes', async (req, res) => {
       taxBreakdown: typeof data.taxBreakdown === 'object' ? JSON.stringify(data.taxBreakdown) : (data.taxBreakdown || null),
       items: typeof data.items === 'object' ? JSON.stringify(data.items) : (data.items || null),
       notes: data.notes || null,
+      attachment: data.attachment || null,
+      attachmentName: data.attachmentName || null,
       status: 'issued',
       journalEntryId: jeId,
       createdBy: data.createdBy || 'Accounts Officer'
@@ -17292,20 +17451,16 @@ app.post('/api/finance/payment-receipts', async (req, res) => {
 
       if (!creditAccountId) {
         const [advAcc]: any = await conn.query(
-          'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Unearned%" OR code = "2150") AND type = "Liability" LIMIT 1'
+          'SELECT id, name FROM chart_of_accounts WHERE (id = "acc_2150" OR code = "2150" OR name LIKE "%Customer Advance%" OR name LIKE "%Unearned%") AND type = "Liability" LIMIT 1'
         );
         if (advAcc && advAcc.length > 0) {
           creditAccountId = advAcc[0].id;
         } else {
-          const [arAcc]: any = await conn.query(
-            'SELECT id, name FROM chart_of_accounts WHERE (name LIKE "%Advance%" OR name LIKE "%Deposit%" OR name LIKE "%Receivable%") AND (type = "Liability" OR type = "Asset") LIMIT 1'
+          creditAccountId = 'acc_2150';
+          await conn.query(
+            'INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES (?, "2150", "Customer Advances / Unearned Revenue", "Liability", "Current Liability", 0, 0, 1, NOW())',
+            ['acc_2150']
           );
-          if (arAcc && arAcc.length > 0) {
-            creditAccountId = arAcc[0].id;
-          } else {
-            creditAccountId = 'acc_1500';
-            await conn.query('INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, createdAt) VALUES (?, "1500", "Accounts Receivable", "Asset", "Accounts Receivable", 0, NOW())', ['acc_1500']);
-          }
         }
       }
 

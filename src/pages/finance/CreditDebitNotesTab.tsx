@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Printer, Search, RefreshCw, X, FileText, 
-  FileSpreadsheet, Trash2, CheckCircle2, Link2, Sparkles
+  FileSpreadsheet, Trash2, CheckCircle2, Link2, Sparkles,
+  Paperclip, UploadCloud, Eye, PackageCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -12,8 +13,8 @@ import { CustomerAutocomplete } from '@/components/ui/CustomerAutocomplete';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 import { useAccounts, useTaxProfiles } from '@/hooks/useFinance';
 import { useCustomers, useSuppliers, useInvoices, useFinishedGoodsOrders } from '@/hooks/useData';
-import { fetchCreditDebitNotes, createCreditDebitNote, fetchBills, fetchPOs, fetchGRNs } from '@/lib/api';
-import { formatCurrency, resolveFileUrl } from '@/lib/utils';
+import { fetchCreditDebitNotes, createCreditDebitNote, fetchBills, fetchPOs, fetchGRNs, uploadFileToStorage } from '@/lib/api';
+import { formatCurrency, resolveFileUrl, openDataUriOrUrl } from '@/lib/utils';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useSettings } from '@/contexts/SettingsContext';
 import { toWords, formatGazetteDate } from '@/components/finance/InvoicePreview';
@@ -73,6 +74,37 @@ export const CreditDebitNotesTab: React.FC = () => {
   const [taxProfileId, setTaxProfileId] = useState('tp_vat18');
   const [isTaxInclusive, setIsTaxInclusive] = useState(false);
   const [remarks, setRemarks] = useState('');
+  const [attachment, setAttachment] = useState('');
+  const [attachmentName, setAttachmentName] = useState('');
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+  const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      toast('File size exceeds 25MB limit.', 'error');
+      return;
+    }
+    setIsUploadingAttachment(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const rawDataUri = reader.result as string;
+      setAttachment(rawDataUri);
+      setAttachmentName(file.name);
+      try {
+        const uploaded = await uploadFileToStorage(rawDataUri, file.name, 'notes');
+        if (uploaded && uploaded.url) {
+          setAttachment(uploaded.url);
+        }
+      } catch (err) {
+        console.warn('Storage upload error, keeping dataUri fallback:', err);
+      } finally {
+        setIsUploadingAttachment(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const loadNotes = async () => {
     setLoading(true);
@@ -158,6 +190,8 @@ export const CreditDebitNotesTab: React.FC = () => {
     setTaxProfileId('tp_vat18');
     setIsTaxInclusive(false);
     setRemarks('');
+    setAttachment('');
+    setAttachmentName('');
 
     if (type === 'credit_note') {
       const salesRet = accounts.find((a: any) => a.type === 'Revenue' || a.code === '4000');
@@ -253,12 +287,12 @@ export const CreditDebitNotesTab: React.FC = () => {
         const subAmt = Number(b.subtotal || (totAmt - taxAmt) || 0);
 
         const mappedItems: NoteLineItem[] = parsedItems.map((it: any, idx: number) => {
-          const qty = Number(it.qty || it.quantity || 1);
-          const up = Number(it.unitPrice || it.rate || it.price || 0);
+          const qty = Number(it.qty || it.quantity || it.qtyReceived || 1);
+          const up = Number(it.unitCost ?? it.unitPrice ?? it.rate ?? it.price ?? 0);
           return {
             id: `${docNo}-${idx}`,
-            description: it.description || it.itemName || it.name || `Bill Item ${idx + 1}`,
-            sku: it.sku || '',
+            description: it.description || it.desc || it.itemName || it.name || `Bill Item ${idx + 1}`,
+            sku: it.sku || it.inventoryId || '',
             qty,
             unitPrice: up,
             amount: Number((qty * up).toFixed(2))
@@ -336,11 +370,11 @@ export const CreditDebitNotesTab: React.FC = () => {
         const subAmt = Number(po.subtotal || (totAmt - taxAmt) || 0);
         const mappedItems: NoteLineItem[] = parsedItems.map((it: any, idx: number) => {
           const qty = Number(it.quantity || it.qty || 1);
-          const up = Number(it.unitPrice || 0);
+          const up = Number(it.unitPrice ?? it.unitCost ?? it.price ?? 0);
           return {
             id: `${docNo}-${idx}`,
-            description: it.itemName || it.description || `PO Item ${idx + 1}`,
-            sku: it.sku || '',
+            description: it.itemName || it.desc || it.name || it.description || `PO Item ${idx + 1}`,
+            sku: it.sku || it.inventoryId || '',
             qty,
             unitPrice: up,
             amount: Number((qty * up).toFixed(2))
@@ -349,7 +383,7 @@ export const CreditDebitNotesTab: React.FC = () => {
         list.push({
           docNo,
           docType: 'Purchase Order',
-          date: String(po.orderDate || po.createdAt || '').slice(0, 10),
+          date: String(po.orderDate || po.date || po.createdAt || '').slice(0, 10),
           partyId: String(po.supplierId || ''),
           partyName: pName,
           partyType: 'supplier',
@@ -364,26 +398,94 @@ export const CreditDebitNotesTab: React.FC = () => {
       }
     } else if (relatedDocType === 'GRN') {
       for (const g of grns) {
-        const docNo = String(g.grnNumber || g.id || '').trim();
+        const docNo = String(g.grnNumber || g.grnNo || g.id || '').trim();
         if (!docNo) continue;
-        const supp = suppliers.find((s: any) => String(s.id) === String(g.supplierId));
-        const pName = g.supplierName || supp?.company || supp?.name || '';
-        const totAmt = Number(g.totalAmount || 0);
-        const taxAmt = Number(g.taxAmount || 0);
-        const subAmt = Number(g.subtotal || (totAmt - taxAmt) || 0);
+
+        const linkedPoIds: string[] = [];
+        if (g.poId) linkedPoIds.push(String(g.poId));
+        if (Array.isArray(g.poIds)) {
+          g.poIds.forEach((pid: any) => pid && linkedPoIds.push(String(pid)));
+        } else if (typeof g.poIds === 'string' && g.poIds.trim()) {
+          try {
+            const arr = JSON.parse(g.poIds);
+            if (Array.isArray(arr)) arr.forEach((pid: any) => pid && linkedPoIds.push(String(pid)));
+          } catch {
+            g.poIds.split(',').forEach((s: string) => s.trim() && linkedPoIds.push(s.trim()));
+          }
+        }
+
+        const matchedPos = pos.filter((p: any) =>
+          linkedPoIds.includes(String(p.id)) ||
+          (p.poNumber && linkedPoIds.includes(String(p.poNumber))) ||
+          (p.poNo && linkedPoIds.includes(String(p.poNo)))
+        );
+        const poItems = matchedPos.flatMap((p: any) => {
+          try {
+            return typeof p.items === 'string' ? JSON.parse(p.items) : (Array.isArray(p.items) ? p.items : []);
+          } catch {
+            return [];
+          }
+        });
+
+        const resolvedSupplierId = g.supplierId || matchedPos[0]?.supplierId || '';
+        const supp = suppliers.find((s: any) => String(s.id) === String(resolvedSupplierId));
+        const pName = g.supplierName || supp?.company || supp?.name || matchedPos[0]?.supplierName || '';
+
+        let parsedGrnItems: any[] = [];
+        try {
+          parsedGrnItems = typeof g.items === 'string' ? JSON.parse(g.items) : (Array.isArray(g.items) ? g.items : []);
+        } catch {}
+
+        const mappedItems: NoteLineItem[] = parsedGrnItems.map((gi: any, idx: number) => {
+          const rawQty = gi.qtyReceived !== undefined ? gi.qtyReceived : (gi.qty ?? gi.quantity ?? 1);
+          const qty = Number(rawQty) > 0 ? Number(rawQty) : 1;
+          const matchingPoItem = poItems.find((pi: any) =>
+            (pi.inventoryId && gi.inventoryId && String(pi.inventoryId) === String(gi.inventoryId)) ||
+            (pi.id && gi.id && String(pi.id) === String(gi.id)) ||
+            ((pi.desc || pi.name || pi.description) && (gi.desc || gi.name || gi.description) &&
+              String(pi.desc || pi.name || pi.description).toLowerCase() === String(gi.desc || gi.name || gi.description).toLowerCase())
+          );
+          const up = Number(
+            gi.unitCost ?? gi.unitPrice ?? gi.price ?? gi.rate ??
+            matchingPoItem?.unitPrice ?? matchingPoItem?.unitCost ?? matchingPoItem?.price ?? 0
+          );
+          const desc =
+            gi.desc ||
+            gi.name ||
+            gi.description ||
+            gi.inventoryName ||
+            matchingPoItem?.desc ||
+            matchingPoItem?.name ||
+            matchingPoItem?.description ||
+            (gi.inventoryId ? `Material [${gi.inventoryId}]` : `GRN Item ${idx + 1}`);
+          return {
+            id: `${docNo}-${idx}`,
+            description: desc,
+            sku: gi.sku || gi.inventoryId || matchingPoItem?.sku || '',
+            qty,
+            unitPrice: up,
+            amount: Number((qty * up).toFixed(2))
+          };
+        });
+
+        const itemsSum = mappedItems.reduce((s, it) => s + Number(it.amount || 0), 0);
+        const taxAmt = Number(g.taxAmount || matchedPos[0]?.taxAmount || 0);
+        const subAmt = Number(g.subtotal || itemsSum || 0);
+        const totAmt = Number(g.totalAmount || (subAmt + (g.taxAmount ? Number(g.taxAmount) : 0)) || itemsSum || 0);
+
         list.push({
           docNo,
           docType: 'GRN',
-          date: String(g.receivedDate || g.createdAt || '').slice(0, 10),
-          partyId: String(g.supplierId || ''),
+          date: String(g.date || g.receivedDate || g.receivedAt || g.createdAt || '').slice(0, 10),
+          partyId: String(resolvedSupplierId),
           partyName: pName,
           partyType: 'supplier',
           total: totAmt,
           subtotal: subAmt,
           taxAmount: taxAmt,
-          taxProfileId: g.taxProfileId || (taxAmt > 0 ? 'tp_vat18' : ''),
-          isTaxInclusive: Boolean(g.isTaxInclusive),
-          items: [],
+          taxProfileId: g.taxProfileId || matchedPos[0]?.taxProfileId || (taxAmt > 0 ? 'tp_vat18' : ''),
+          isTaxInclusive: Boolean(g.isTaxInclusive ?? matchedPos[0]?.isTaxInclusive),
+          items: mappedItems,
           raw: g
         });
       }
@@ -435,7 +537,8 @@ export const CreditDebitNotesTab: React.FC = () => {
 
     // Load items from document
     if (forceLoadItems) {
-      if (Array.isArray(doc.items) && doc.items.length > 0) {
+      const shouldItemize = noteType === 'credit_note' || doc.docType === 'GRN';
+      if (shouldItemize && Array.isArray(doc.items) && doc.items.length > 0) {
         setLineItems(doc.items.map((it: any, idx: number) => ({
           id: `${Date.now()}-${idx}`,
           description: it.description,
@@ -444,13 +547,16 @@ export const CreditDebitNotesTab: React.FC = () => {
           unitPrice: Number(it.unitPrice) || 0,
           amount: Number(((Number(it.qty) || 1) * (Number(it.unitPrice) || 0)).toFixed(2))
         })));
-      } else if (doc.subtotal > 0) {
+      } else {
+        const defaultAmt = Number((doc.subtotal || doc.total || 0).toFixed(2));
         setLineItems([{
           id: String(Date.now()),
-          description: `Adjustment against ${doc.docType} #${doc.docNo}`,
+          description: lineItems[0]?.description && lineItems[0].description !== 'Purchase Return to Vendor / Defect'
+            ? lineItems[0].description
+            : `Debit adjustment against ${doc.docType} #${doc.docNo}`,
           qty: 1,
-          unitPrice: Number(doc.subtotal.toFixed(2)),
-          amount: Number(doc.subtotal.toFixed(2))
+          unitPrice: defaultAmt,
+          amount: defaultAmt
         }]);
       }
     }
@@ -564,7 +670,9 @@ export const CreditDebitNotesTab: React.FC = () => {
         taxProfileId: taxEnabled ? taxProfileId : null,
         taxBreakdown: taxEnabled && taxBreakdownObj ? JSON.stringify(taxBreakdownObj) : null,
         items: cleanedItems,
-        notes: remarks.trim() || null
+        notes: remarks.trim() || null,
+        attachment: attachment || null,
+        attachmentName: attachmentName || null
       };
 
       const res = await createCreditDebitNote(payload);
@@ -886,14 +994,27 @@ export const CreditDebitNotesTab: React.FC = () => {
                       {formatCurrency(Number(n.totalAmount || 0), true)}
                     </td>
                     <td className="p-3 text-center">
-                      <button
-                        onClick={() => setActivePrintNote(n)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface2 hover:bg-rex-500/10 border border-theme-subtle hover:border-rex-500/40 rounded text-[11px] font-semibold text-primary transition-colors"
-                        title="Print / View Official Note"
-                      >
-                        <Printer size={13} />
-                        <span>Print</span>
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        {n.attachment && (
+                          <button
+                            type="button"
+                            onClick={() => openDataUriOrUrl(n.attachment, n.attachmentName || `${n.noteNo || 'Note'} Attachment`)}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 transition-colors"
+                            title={n.attachmentName ? `View Attachment: ${n.attachmentName}` : 'View Attachment'}
+                          >
+                            <Paperclip size={12} />
+                            <span>File</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setActivePrintNote(n)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface2 hover:bg-rex-500/10 border border-theme-subtle hover:border-rex-500/40 rounded text-[11px] font-semibold text-primary transition-colors"
+                          title="Print / View Official Note"
+                        >
+                          <Printer size={13} />
+                          <span>Print</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -939,6 +1060,14 @@ export const CreditDebitNotesTab: React.FC = () => {
                 onClick={() => {
                   setNoteType('credit_note');
                   fetchNextSequentialNo('credit_note');
+                  if (partyType === 'supplier' && relatedDocType === 'Supplier Bill') {
+                    setPartyType('customer');
+                    setPartyId('');
+                    setPartyName('');
+                    setRelatedDocType('Invoice');
+                    setRelatedDocNo('');
+                    setLinkedDocMeta(null);
+                  }
                 }}
                 className={`px-2 py-0.5 rounded font-semibold border transition-colors ${
                   noteType === 'credit_note'
@@ -953,6 +1082,14 @@ export const CreditDebitNotesTab: React.FC = () => {
                 onClick={() => {
                   setNoteType('debit_note');
                   fetchNextSequentialNo('debit_note');
+                  if (partyType === 'customer' && relatedDocType === 'Invoice') {
+                    setPartyType('supplier');
+                    setPartyId('');
+                    setPartyName('');
+                    setRelatedDocType('Supplier Bill');
+                    setRelatedDocNo('');
+                    setLinkedDocMeta(null);
+                  }
                 }}
                 className={`px-2 py-0.5 rounded font-semibold border transition-colors ${
                   noteType === 'debit_note'
@@ -1027,22 +1164,44 @@ export const CreditDebitNotesTab: React.FC = () => {
           {/* Row 2: Traceability (Against Invoice / Vendor Bill Autocomplete) & GL Account */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">Against Document Type *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase">Against Document Type *</label>
+                {noteType === 'debit_note' && (
+                  <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ${
+                    relatedDocType === 'GRN'
+                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  }`}>
+                    {relatedDocType === 'GRN' ? 'GRN Itemized Mode' : 'Direct Amount Mode'}
+                  </span>
+                )}
+              </div>
               <select
                 value={relatedDocType}
                 onChange={e => {
-                  setRelatedDocType(e.target.value);
+                  const nextDocType = e.target.value;
+                  setRelatedDocType(nextDocType);
                   setRelatedDocNo('');
                   setLinkedDocMeta(null);
+                  if (noteType === 'debit_note' && nextDocType !== 'GRN') {
+                    const currentTotal = lineItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                    setLineItems([{
+                      id: String(Date.now()),
+                      description: lineItems[0]?.description || reason || 'Purchase Return / Debit Adjustment',
+                      qty: 1,
+                      unitPrice: Number(currentTotal.toFixed(2)),
+                      amount: Number(currentTotal.toFixed(2))
+                    }]);
+                  }
                 }}
                 className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-semibold focus:border-primary"
               >
                 <option value="Invoice">Sales Invoice (Customer)</option>
                 <option value="Supplier Bill">Vendor Bill / Supplier Invoice</option>
-                <option value="Sales Order">Sales Order</option>
+                <option value="GRN">Goods Receipt Note (GRN — With Line Items)</option>
                 <option value="Purchase Order">Purchase Order (PO)</option>
-                <option value="GRN">Goods Receipt Note (GRN)</option>
-                <option value="Direct Adjustment">Direct Ledger Adjustment</option>
+                <option value="Sales Order">Sales Order</option>
+                <option value="Direct Adjustment">Direct Ledger Adjustment (No GRN)</option>
               </select>
             </div>
 
@@ -1179,91 +1338,261 @@ export const CreditDebitNotesTab: React.FC = () => {
             />
           </div>
 
-          {/* Line Items Table */}
-          <div className="border border-theme-subtle rounded-lg overflow-hidden bg-surface">
-            <div className="flex items-center justify-between px-3 py-2 bg-surface2/60 border-b border-theme-subtle">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                <FileText size={13} className="text-rex-500" />
-                Note Line Items & Particulars
-              </span>
-              <button
-                type="button"
-                onClick={handleAddLineItem}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold bg-rex-600 hover:bg-rex-700 text-white transition-colors"
-              >
-                <Plus size={12} />
-                Add Item
-              </button>
+          {/* Line Items Table (Shown for Credit Notes OR when Debit Note is Against GRN) vs Direct Description & Amount (for Non-GRN Debit Notes) */}
+          {noteType === 'debit_note' && relatedDocType !== 'GRN' ? (
+            <div className="border border-blue-500/30 rounded-lg p-3.5 bg-blue-500/[0.03] space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-theme-subtle">
+                <div className="flex items-center gap-2">
+                  <FileText size={14} className="text-blue-500" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                    Debit Note Description & Amount (Non-GRN Adjustment)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRelatedDocType('GRN');
+                    setRelatedDocNo('');
+                    setLinkedDocMeta(null);
+                  }}
+                  className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded transition-colors"
+                >
+                  <PackageCheck size={12} />
+                  <span>Switch to Against GRN (Select Items)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">
+                    Description / Particulars *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    placeholder="Enter debit note description (e.g. Price difference, short supply claim, quality deduction, service charge adjustment)..."
+                    value={lineItems[0]?.description || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setLineItems(prev => {
+                        const first = prev[0] || { id: '1', description: '', qty: 1, unitPrice: 0, amount: 0 };
+                        return [{ ...first, description: val, qty: 1 }];
+                      });
+                    }}
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded text-xs text-primary font-medium focus:border-primary resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">
+                    Debit Note Amount (LKR) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    placeholder="0.00"
+                    value={lineItems[0]?.unitPrice || ''}
+                    onChange={e => {
+                      const num = Math.max(0, Number(e.target.value) || 0);
+                      setLineItems(prev => {
+                        const first = prev[0] || { id: '1', description: reason || 'Debit Note Adjustment', qty: 1, unitPrice: 0, amount: 0 };
+                        return [{
+                          ...first,
+                          description: first.description || reason || 'Debit Note Adjustment',
+                          qty: 1,
+                          unitPrice: num,
+                          amount: Number(num.toFixed(2))
+                        }];
+                      });
+                    }}
+                    className="w-full bg-surface border-2 border-blue-500/40 focus:border-blue-500 px-3 py-2 rounded text-sm font-mono font-black text-right text-primary"
+                  />
+                  <span className="text-[10px] text-muted block mt-1 text-right">
+                    {taxEnabled
+                      ? isTaxInclusive
+                        ? `Includes VAT (${formatCurrency(taxAmount, true)})`
+                        : `+ VAT: ${formatCurrency(taxAmount, true)} → Total: ${formatCurrency(totalAmount, true)}`
+                      : `Net Debit Value: ${formatCurrency(totalAmount, true)}`}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-theme-subtle bg-surface2/30 text-[10px] font-bold uppercase text-muted">
-                    <th className="py-2 px-2.5 text-center w-10">#</th>
-                    <th className="py-2 px-2.5 text-left">Item Description / Particulars</th>
-                    <th className="py-2 px-2.5 text-right w-24">Qty</th>
-                    <th className="py-2 px-2.5 text-right w-36">Unit Price (LKR)</th>
-                    <th className="py-2 px-2.5 text-right w-36">Amount (LKR)</th>
-                    <th className="py-2 px-2 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-theme-subtle/60">
-                  {lineItems.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-surface2/20">
-                      <td className="py-1.5 px-2.5 text-center font-mono text-muted">{idx + 1}</td>
-                      <td className="py-1.5 px-2.5">
-                        <input
-                          type="text"
-                          required
-                          placeholder="Enter item description or adjustment particulars..."
-                          value={item.description}
-                          onChange={e => handleLineItemChange(item.id, 'description', e.target.value)}
-                          className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2.5 py-1 rounded text-xs text-primary"
-                        />
-                      </td>
-                      <td className="py-1.5 px-2.5">
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.01"
-                          required
-                          value={item.qty}
-                          onChange={e => handleLineItemChange(item.id, 'qty', e.target.value)}
-                          className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono text-right text-primary"
-                        />
-                      </td>
-                      <td className="py-1.5 px-2.5">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          placeholder="0.00"
-                          value={item.unitPrice || ''}
-                          onChange={e => handleLineItemChange(item.id, 'unitPrice', e.target.value)}
-                          className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono font-bold text-right text-primary"
-                        />
-                      </td>
-                      <td className="py-1.5 px-2.5 text-right font-mono font-bold text-primary">
-                        {formatCurrency(item.amount, false)}
-                      </td>
-                      <td className="py-1.5 px-2 text-center">
-                        {lineItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLineItem(item.id)}
-                            className="p-1 text-muted hover:text-rose-500 transition-colors"
-                            title="Remove line"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </td>
+          ) : (
+            <div className="border border-theme-subtle rounded-lg overflow-hidden bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-surface2/60 border-b border-theme-subtle">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <FileText size={13} className="text-rex-500" />
+                    {noteType === 'debit_note' && relatedDocType === 'GRN'
+                      ? `GRN Line Items ${linkedDocMeta?.docNo ? `(${linkedDocMeta.docNo})` : '(Select GRN # above to load items)'}`
+                      : 'Note Line Items & Particulars'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {noteType === 'debit_note' && relatedDocType === 'GRN' && !linkedDocMeta && candidateDocs.length > 0 && (
+                    <select
+                      value=""
+                      onChange={e => {
+                        const doc = candidateDocs.find(d => d.docNo === e.target.value);
+                        if (doc) applySelectedDocument(doc, true);
+                      }}
+                      className="bg-surface border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-[11px] font-bold"
+                    >
+                      <option value="">⚡ Quick Select GRN ({candidateDocs.length})...</option>
+                      {candidateDocs.map((d, i) => (
+                        <option key={`${d.docNo}-${i}`} value={d.docNo}>
+                          {d.docNo} — {d.partyName || 'Vendor'} ({d.items.length} items · {formatCurrency(d.total, true)})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddLineItem}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold bg-rex-600 hover:bg-rex-700 text-white transition-colors"
+                  >
+                    <Plus size={12} />
+                    Add Item
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-theme-subtle bg-surface2/30 text-[10px] font-bold uppercase text-muted">
+                      <th className="py-2 px-2.5 text-center w-10">#</th>
+                      <th className="py-2 px-2.5 text-left">Item Description / Particulars</th>
+                      <th className="py-2 px-2.5 text-right w-24">Qty</th>
+                      <th className="py-2 px-2.5 text-right w-36">Unit Price (LKR)</th>
+                      <th className="py-2 px-2.5 text-right w-36">Amount (LKR)</th>
+                      <th className="py-2 px-2 text-center w-10"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-theme-subtle/60">
+                    {lineItems.map((item, idx) => (
+                      <tr key={item.id} className="hover:bg-surface2/20">
+                        <td className="py-1.5 px-2.5 text-center font-mono text-muted">{idx + 1}</td>
+                        <td className="py-1.5 px-2.5">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Enter item description or adjustment particulars..."
+                            value={item.description}
+                            onChange={e => handleLineItemChange(item.id, 'description', e.target.value)}
+                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2.5 py-1 rounded text-xs text-primary"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2.5">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0.01"
+                            required
+                            value={item.qty}
+                            onChange={e => handleLineItemChange(item.id, 'qty', e.target.value)}
+                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono text-right text-primary"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            placeholder="0.00"
+                            value={item.unitPrice || ''}
+                            onChange={e => handleLineItemChange(item.id, 'unitPrice', e.target.value)}
+                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono font-bold text-right text-primary"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2.5 text-right font-mono font-bold text-primary">
+                          {formatCurrency(item.amount, false)}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {lineItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLineItem(item.id)}
+                              className="p-1 text-muted hover:text-rose-500 transition-colors"
+                              title="Remove line"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
+          )}
+
+          {/* Supporting Document / Attachment Upload */}
+          <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-muted uppercase flex items-center gap-1.5">
+                <Paperclip size={12} className="text-emerald-500" />
+                <span>Supporting Document / Attachment (Optional)</span>
+              </label>
+              <span className="text-[9.5px] text-muted font-mono">PDF, JPG, PNG (Max 25MB)</span>
+            </div>
+
+            {attachment ? (
+              <div className="flex items-center justify-between p-2.5 bg-surface border border-emerald-500/30 rounded-lg">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 shrink-0 overflow-hidden">
+                    {attachment.startsWith('data:image/') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(attachment) ? (
+                      <img src={attachment} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <FileText size={15} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-primary truncate">
+                      {attachmentName || `${previewNoteNo || 'Note'}_Attachment`}
+                    </div>
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 size={10} />
+                      <span>{isUploadingAttachment ? 'Uploading to storage...' : 'Document attached'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openDataUriOrUrl(attachment, attachmentName || 'Note Attachment')}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-blue-600 hover:bg-blue-500/10 transition-colors"
+                  >
+                    <Eye size={12} />
+                    <span>View</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachment('');
+                      setAttachmentName('');
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-rose-600 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    <span>Remove</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-theme-subtle hover:border-emerald-500 bg-surface hover:bg-surface2/50 rounded-lg cursor-pointer transition-colors text-xs text-secondary hover:text-primary">
+                <UploadCloud size={16} className="text-emerald-500 shrink-0" />
+                <span className="font-semibold">Click to attach supporting document, debit note copy, photo, or PDF</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={handleAttachmentUpload}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
 
           {/* VAT / Tax Section & Remarks */}
@@ -1424,6 +1753,16 @@ export const CreditDebitNotesTab: React.FC = () => {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {activePrintNote.attachment && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Paperclip}
+                    onClick={() => openDataUriOrUrl(activePrintNote.attachment, activePrintNote.attachmentName || `${activePrintNote.noteNo} Attachment`)}
+                  >
+                    View Attachment
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setActivePrintNote(null)}>
                   Close
                 </Button>

@@ -27,6 +27,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
 import { RecordPoAdvanceModal } from '@/components/purchasing/RecordPoAdvanceModal';
+import { MultiBillSettlementModal } from '@/components/purchasing/MultiBillSettlementModal';
 import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
 import { ViewVendorBillModal } from '@/components/purchasing/ViewVendorBillModal';
 
@@ -48,6 +49,7 @@ export const PurchasingHub: React.FC = () => {
   const [endDate, setEndDate] = useState('');
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
   const [advancePo, setAdvancePo] = useState<any | null>(null);
+  const [editingBillVoucher, setEditingBillVoucher] = useState<any | null>(null);
   const [printVoucher, setPrintVoucher] = useState<any | null>(null);
   const [viewingBill, setViewingBill] = useState<any | null>(null);
   const navigate = useNavigate();
@@ -878,6 +880,35 @@ export const PurchasingHub: React.FC = () => {
                   <CreditCard size={13} className="text-emerald-500" />
                   <span>Record Bill Payment</span>
                 </button>
+
+                {(Number(row.paidAmount || 0) > 0 || String(row.status || '').toLowerCase() === 'paid') && (
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeDropdown();
+                      const total = Number(row.amount || row.totalAmount || 0);
+                      const paid = Number(row.paidAmount || 0) > 0 ? Number(row.paidAmount) : total;
+                      setEditingBillVoucher({
+                        id: `BILL-REALLOC-${row.id}`,
+                        voucherNo: `PV-${row.invoiceNo || row.id}`,
+                        payeeId: row.supplierId,
+                        payeeName: getSupplierName(row.supplierId),
+                        amount: paid,
+                        date: row.date,
+                        paymentMethod: 'Bank Transfer',
+                        sourceBillNo: row.invoiceNo || row.id,
+                        reverseBills: [{ billId: row.id, amount: paid }]
+                      });
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-bold"
+                  >
+                    <CreditCard size={13} className="text-amber-500" />
+                    <span>Change Paid Bill (Reallocate &amp; GL)</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1784,7 +1815,39 @@ export const PurchasingHub: React.FC = () => {
       },
       {
         key: 'actions', header: 'Actions', align: 'right',
-        render: (_, row) => renderActionsDropdown('bill', row)
+        render: (_, row) => {
+          const total = Number(row.amount || row.totalAmount || 0);
+          const rawPaid = Number(row.paidAmount || 0);
+          const isMarkedPaid = String(row.status || '').toLowerCase() === 'paid';
+          const paid = isMarkedPaid && rawPaid <= 0 ? total : rawPaid;
+          return (
+            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+              {paid > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingBillVoucher({
+                      id: `BILL-REALLOC-${row.id}`,
+                      voucherNo: `PV-${row.invoiceNo || row.id}`,
+                      payeeId: row.supplierId,
+                      payeeName: getSupplierName(row.supplierId),
+                      amount: paid,
+                      date: row.date,
+                      paymentMethod: 'Bank Transfer',
+                      sourceBillNo: row.invoiceNo || row.id,
+                      reverseBills: [{ billId: row.id, amount: paid }]
+                    })
+                  }
+                  className="px-2 py-1 rounded border border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-[11px] font-bold transition-colors"
+                  title="Change Paid Bill / Move payment to another bill & update GL"
+                >
+                  Change Bill
+                </button>
+              )}
+              {renderActionsDropdown('bill', row)}
+            </div>
+          );
+        }
       }
     ];
 
@@ -2332,6 +2395,22 @@ export const PurchasingHub: React.FC = () => {
         onClose={() => setPrintVoucher(null)}
         voucher={printVoucher}
       />
+
+      {/* Change Paid Bill / Reallocate Modal */}
+      {editingBillVoucher && (
+        <MultiBillSettlementModal
+          isOpen={Boolean(editingBillVoucher)}
+          onClose={() => setEditingBillVoucher(null)}
+          supplier={suppliers.find((s: any) => s.id === editingBillVoucher.payeeId) || { id: editingBillVoucher.payeeId, name: editingBillVoucher.payeeName }}
+          allSuppliers={suppliers}
+          openBills={bills}
+          editingVoucher={editingBillVoucher}
+          onSuccess={() => {
+            refetchBills();
+            toast('Payment moved to selected bill(s) & GL updated!', 'success');
+          }}
+        />
+      )}
     </div>
   );
 };

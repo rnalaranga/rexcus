@@ -53,6 +53,7 @@ export const VendorBills: React.FC = () => {
   const { data: suppliers = [] } = useSuppliers();
   const [vouchers, setVouchers] = useState<any[]>([]);
   const [printVoucher, setPrintVoucher] = useState<any | null>(null);
+  const [editingVoucher, setEditingVoucher] = useState<any | null>(null);
   const [linkBill, setLinkBill] = useState<any | null>(null);
   const [linkingVoucherId, setLinkingVoucherId] = useState<string | null>(null);
 
@@ -315,8 +316,10 @@ export const VendorBills: React.FC = () => {
       align: 'right',
       render: (val, row) => {
         const total = Number(row.amount || row.totalAmount || 0);
-        const paid = Number(row.paidAmount || 0);
-        const due = Math.max(0, total - paid);
+        const rawPaid = Number(row.paidAmount || 0);
+        const isMarkedPaid = String(row.status || '').toLowerCase() === 'paid';
+        const paid = isMarkedPaid && rawPaid <= 0 ? total : rawPaid;
+        const due = isMarkedPaid ? 0 : Math.max(0, total - paid);
         return (
           <div className="text-right">
             <div className="text-[11px] font-mono font-semibold text-emerald-600">
@@ -405,9 +408,33 @@ export const VendorBills: React.FC = () => {
       align: 'right',
       render: (val, row) => {
         const total = Number(row.amount || row.totalAmount || 0);
-        const paid = Number(row.paidAmount || 0);
-        const due = Math.max(0, total - paid);
+        const rawPaid = Number(row.paidAmount || 0);
+        const isMarkedPaid = String(row.status || '').toLowerCase() === 'paid';
+        const paid = isMarkedPaid && rawPaid <= 0 ? total : rawPaid;
+        const due = isMarkedPaid ? 0 : Math.max(0, total - paid);
         const isOpen = openActionId === row.id;
+
+        const handleOpenChangeBill = () => {
+          const matchedV = vouchers.find((v: any) =>
+            v.relatedBillId === row.id ||
+            (v.relatedBillNo && (v.relatedBillNo.includes(row.id) || (row.invoiceNo && v.relatedBillNo.includes(row.invoiceNo)))) ||
+            (v.description && (v.description.includes(row.id) || (row.invoiceNo && v.description.includes(row.invoiceNo))))
+          );
+          setEditingVoucher({
+            ...(matchedV || {}),
+            id: matchedV?.id || `BILL-REALLOC-${row.id}`,
+            voucherNo: matchedV?.voucherNo || `PV-${row.invoiceNo || row.id}`,
+            payeeId: row.supplierId,
+            payeeName: row.supplierName || row.supplierCompany,
+            amount: paid,
+            date: matchedV?.date || row.date,
+            paymentMethod: matchedV?.paymentMethod || 'Bank Transfer',
+            sourceBillNo: row.invoiceNo || row.id,
+            reverseBills: [{ billId: row.id, amount: paid }]
+          });
+          setMultiSettlementSupplier(suppliers.find((s: any) => s.id === row.supplierId) || { id: row.supplierId, name: row.supplierName });
+          setShowMultiSettlement(true);
+        };
 
         let menuStyle: React.CSSProperties = {};
         if (isOpen && actionCoords) {
@@ -455,6 +482,17 @@ export const VendorBills: React.FC = () => {
                 title="Record Bill Payment"
               >
                 Pay Bill
+              </Button>
+            )}
+            {paid > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenChangeBill}
+                className="h-7 text-[11px] px-2 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10 font-bold"
+                title="Change Paid Bill / Move payment to another bill & update GL"
+              >
+                Change Bill
               </Button>
             )}
 
@@ -546,6 +584,23 @@ export const VendorBills: React.FC = () => {
                     >
                       <Paperclip size={13} className="text-blue-500" />
                       <span>View Attached Document</span>
+                    </button>
+                  )}
+
+                  {paid > 0 && (
+                    <button
+                      type="button"
+                      data-no-row-click="true"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        closeDropdown();
+                        handleOpenChangeBill();
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-bold"
+                    >
+                      <CreditCard size={13} className="text-amber-500" />
+                      <span>Change Paid Bill (Reallocate &amp; GL)</span>
                     </button>
                   )}
 
@@ -960,13 +1015,15 @@ export const VendorBills: React.FC = () => {
           onClose={() => {
             setShowMultiSettlement(false);
             setMultiSettlementSupplier(null);
+            setEditingVoucher(null);
           }}
           supplier={multiSettlementSupplier}
           allSuppliers={suppliers}
           openBills={bills}
+          editingVoucher={editingVoucher}
           onSuccess={() => {
             refetch();
-            toast?.('Vendor bills settled successfully!', 'success');
+            toast?.(editingVoucher ? 'Payment moved to selected bill(s) & GL updated!' : 'Vendor bills settled successfully!', 'success');
           }}
         />
       )}

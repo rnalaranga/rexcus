@@ -605,8 +605,10 @@ export const PayablesHub: React.FC = () => {
                 <tbody className="divide-y divide-theme-subtle/50">
                   {filteredAndSortedBills.slice((billsPage - 1) * pageSize, billsPage * pageSize).map((b: any) => {
                     const total = Number(b.amount || 0);
-                    const paid = Number(b.paidAmount || 0);
-                    const bal = Math.max(0, total - paid);
+                    const rawPaid = Number(b.paidAmount || 0);
+                    const isMarkedPaid = String(b.status || '').toLowerCase() === 'paid';
+                    const paid = isMarkedPaid && rawPaid <= 0 ? total : rawPaid;
+                    const bal = isMarkedPaid ? 0 : Math.max(0, total - paid);
                     return (
                       <tr key={b.id} className="hover:bg-surface2/40 transition-colors">
                         <td className="py-3 px-4 font-mono font-bold text-primary">{b.billNo || b.id}</td>
@@ -622,13 +624,45 @@ export const PayablesHub: React.FC = () => {
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {bal > 0.01 ? (
-                            <Button variant="primary" size="sm" onClick={() => setPaymentBill(b)} className="h-7 text-[11px]">
-                              Pay Bill
-                            </Button>
-                          ) : (
-                            <span className="text-[11px] text-emerald-600 font-semibold">Settled</span>
-                          )}
+                          <div className="flex items-center justify-center gap-1.5">
+                            {bal > 0.01 ? (
+                              <Button variant="primary" size="sm" onClick={() => setPaymentBill(b)} className="h-7 text-[11px]">
+                                Pay Bill
+                              </Button>
+                            ) : (
+                              <span className="text-[11px] text-emerald-600 font-semibold">Settled</span>
+                            )}
+                            {paid > 0.01 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const matchedV = vouchers.find((v: any) =>
+                                    v.relatedBillId === b.id ||
+                                    (v.relatedBillNo && (v.relatedBillNo.includes(b.id) || (b.invoiceNo && v.relatedBillNo.includes(b.invoiceNo)))) ||
+                                    (v.description && (v.description.includes(b.id) || (b.invoiceNo && v.description.includes(b.invoiceNo))))
+                                  );
+                                  setEditingVoucher({
+                                    ...(matchedV || {}),
+                                    id: matchedV?.id || `BILL-REALLOC-${b.id}`,
+                                    voucherNo: matchedV?.voucherNo || `PV-${b.invoiceNo || b.id}`,
+                                    payeeId: b.supplierId,
+                                    payeeName: b.supplierName || b.supplierCompany,
+                                    amount: paid,
+                                    date: matchedV?.date || b.date,
+                                    paymentMethod: matchedV?.paymentMethod || 'Bank Transfer',
+                                    reverseBills: [{ billId: b.id, amount: paid }]
+                                  });
+                                  setMultiSettlementSupplier(suppliers.find((s: any) => s.id === b.supplierId) || { id: b.supplierId, name: b.supplierName });
+                                  setShowMultiSettlement(true);
+                                }}
+                                className="h-7 text-[11px] text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                                title="Move / Reallocate this payment to another bill & update GL"
+                              >
+                                Change Bill
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

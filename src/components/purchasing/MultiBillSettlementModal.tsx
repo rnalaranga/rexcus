@@ -129,15 +129,22 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
     return allSuppliers.find(s => s.id === selectedSupplierId) || supplier || null;
   }, [allSuppliers, selectedSupplierId, supplier]);
 
-  // Unpaid bills specifically for the selected supplier
+  // Unpaid bills specifically for the selected supplier (excluding any source bill being reversed/moved)
   const supplierBills = useMemo(() => {
     if (!selectedSupplierId) return [];
+    const reversedBillIds = new Set(
+      Array.isArray(editingVoucher?.reverseBills)
+        ? editingVoucher.reverseBills.map((r: any) => String(r.billId))
+        : []
+    );
     return openBills
-      .filter((b: any) => b.supplierId === selectedSupplierId)
+      .filter((b: any) => b.supplierId === selectedSupplierId && !reversedBillIds.has(String(b.id)))
       .map((b: any) => {
         const total = Number(b.totalAmount !== null && b.totalAmount !== undefined ? b.totalAmount : (b.amount || 0));
-        const paid = Number(b.paidAmount || 0);
-        const balanceDue = Math.max(0, total - paid);
+        const rawPaid = Number(b.paidAmount || 0);
+        const isMarkedPaid = String(b.status || '').toLowerCase() === 'paid';
+        const paid = isMarkedPaid && rawPaid <= 0 ? total : rawPaid;
+        const balanceDue = isMarkedPaid ? 0 : Math.max(0, total - paid);
         return {
           ...b,
           calculatedTotal: total,
@@ -147,14 +154,18 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
       })
       .filter(b => b.balanceDue > 0.01)
       .sort((a, b) => new Date(a.date || a.createdAt).getTime() - new Date(b.date || b.createdAt).getTime());
-  }, [openBills, selectedSupplierId]);
+  }, [openBills, selectedSupplierId, editingVoucher]);
 
   // Reset allocations when supplier changes
   useEffect(() => {
     setAllocations({});
-    setTotalAmount('');
+    if (editingVoucher?.amount) {
+      setTotalAmount(String(editingVoucher.amount));
+    } else {
+      setTotalAmount('');
+    }
     setErrorMsg(null);
-  }, [selectedSupplierId]);
+  }, [selectedSupplierId, editingVoucher]);
 
   // Total outstanding balance across all unpaid bills for this vendor
   const totalVendorOutstanding = useMemo(() => {
@@ -341,7 +352,7 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
     setSubmitting(true);
     try {
       const result = editingVoucher
-        ? await reallocateVendorPayment(editingVoucher.id || editingVoucher.voucherNo, {
+        ? await reallocateVendorPayment(editingVoucher.id || editingVoucher.voucherNo || 'BILL-REALLOC', {
             supplierId: selectedSupplierId,
             paymentDate,
             paymentMethod,
@@ -349,7 +360,8 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
             debitAccountId: debitAccountId || undefined,
             notes: notes.trim() || undefined,
             totalAmount: numTotal,
-            allocations: payloadAllocations
+            allocations: payloadAllocations,
+            reverseBills: editingVoucher.reverseBills || (editingVoucher.relatedBillId ? [{ billId: editingVoucher.relatedBillId, amount: Number(editingVoucher.amount || numTotal) }] : undefined)
           })
         : await settleVendorOutstanding({
             supplierId: selectedSupplierId,
@@ -391,10 +403,26 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Consolidated Vendor Bill Payment & AP Knock-Off"
+      title={
+        editingVoucher
+          ? `Change Paid Bill & Reallocate Payment (${editingVoucher.sourceBillNo ? `From Bill #${editingVoucher.sourceBillNo}` : editingVoucher.voucherNo})`
+          : 'Consolidated Vendor Bill Payment & AP Knock-Off'
+      }
       size="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4 p-1">
+        {editingVoucher && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={15} className="shrink-0" />
+              <span>
+                <strong>Change Paid Bill Mode:</strong> Moving payment of{' '}
+                <strong className="font-mono">{formatCurrency(Number(editingVoucher.amount || 0))}</strong>
+                {editingVoucher.sourceBillNo ? ` from Bill #${editingVoucher.sourceBillNo}` : ''}. Tick the new Bill(s) below to transfer this payment &amp; automatically update the General Ledger (GL).
+              </span>
+            </div>
+          </div>
+        )}
         {errorMsg && (
           <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-500 text-xs flex items-center gap-2">
             <AlertCircle size={15} className="shrink-0" />
