@@ -63,6 +63,7 @@ const getRoleBadgeStyle = (roleId: string) => {
     case 'finance_executive':
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     case 'production':
+    case 'bom_planner':
     case 'chief_designer':
     case 'assistant_designer':
     case 'cnc_programmer':

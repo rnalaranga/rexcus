@@ -332,6 +332,19 @@ export const EXCEL_DEPARTMENTS: ExcelDepartmentConfig[] = [
     badgeColor: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-500',
     entities: [
       {
+        id: 'designer_dashboard',
+        name: 'Designer / Planner Dashboard (No-Price Quotes & Adjust BOM)',
+        department: 'design',
+        permissionMap: {
+          add: ['production.designer.view', 'production.work_orders.create'],
+          edit: ['production.designer.view', 'production.work_orders.edit', 'production.operations.manage'],
+          view: ['production.designer.view', 'production.work_orders.view', 'inventory.items.view'],
+          cancel: ['production.work_orders.edit'],
+          delete: ['production.work_orders.delete'],
+          approved: ['approvals.work_orders']
+        }
+      },
+      {
         id: 'bom',
         name: 'BOM',
         department: 'design',
@@ -627,11 +640,23 @@ export const EXCEL_ROLE_PRESETS: ExcelRolePreset[] = [
 
   // ── DESIGN PRESETS ───────────────────────────────────────────────────────
   {
+    id: 'bom_planner',
+    name: 'Designer / BOM Planner',
+    department: 'design',
+    description: 'Access Designer/Planner Dashboard to inspect price-free Sales Order Quotations and adjust Work Order BOMs & machining routes.',
+    matrix: {
+      designer_dashboard: { add: true, edit: true, view: true },
+      bom: { add: true, edit: true, view: true },
+      drawing: { add: true, edit: true, view: true }
+    }
+  },
+  {
     id: 'chief_designer',
     name: 'Chief Designer',
     department: 'design',
     description: 'Engineering sign-off, CAD drawing approval, full BOM releases, and CNC program verification.',
     matrix: {
+      designer_dashboard: { add: true, edit: true, view: true, approved: true },
       bom: { add: true, edit: true, view: true, approved: true },
       drawing: { add: true, edit: true, view: true, approved: true },
       programming: { add: true, edit: true, view: true, approved: true }
@@ -643,6 +668,7 @@ export const EXCEL_ROLE_PRESETS: ExcelRolePreset[] = [
     department: 'design',
     description: 'Component modeling, CAD revisions, and technical BOM preparation.',
     matrix: {
+      designer_dashboard: { add: true, edit: true, view: true },
       bom: { add: true, edit: true, view: true },
       drawing: { add: false, edit: false, view: true },
       programming: { add: false, edit: false, view: false }

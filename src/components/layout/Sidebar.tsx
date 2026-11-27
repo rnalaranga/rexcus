@@ -58,7 +58,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'Production', icon: Factory, active: true,
     items: [
-      { label: 'Designer Dashboard', path: '/production/designer', icon: SlidersHorizontal, permission: 'production.work_orders.view' },
+      { label: 'Designer Dashboard', path: '/production/designer', icon: SlidersHorizontal, permission: 'production.designer.view' },
       { label: 'Work Orders',       path: '/production',           icon: Factory,  permission: 'production.work_orders.view' },
       { label: 'Service & Inspection', path: '/production/service-jobs', icon: Wrench, permission: 'production.work_orders.view' },
       { label: 'Workshop Planning', path: '/production/planning',  icon: Calendar, badge: 'AI', permission: 'production.work_orders.view' },
@@ -120,7 +120,13 @@ export const Sidebar: React.FC = () => {
 
   const visibleGroups = useMemo(() => {
     return navGroups.map(group => {
-      const visibleItems = group.items.filter(item => !item.permission || can(item.permission))
+      const visibleItems = group.items.filter(item => {
+        if (!item.permission) return true;
+        if (item.permission === 'production.designer.view') {
+          return can('production.designer.view') || can('production.work_orders.view');
+        }
+        return can(item.permission);
+      })
       return {
         ...group,
         items: visibleItems

@@ -1417,11 +1417,21 @@ async function runDatabaseSync() {
         isSystem: 1
       },
       {
+        id: 'bom_planner',
+        name: 'Designer / BOM Planner',
+        description: 'Access Designer/Planner Dashboard to inspect price-free Sales Order Quotations and adjust Work Order BOMs & machining routes.',
+        permissions: JSON.stringify([
+          'production.designer.view','production.work_orders.create','production.operations.manage',
+          'production.work_orders.edit','production.work_orders.view','inventory.items.view'
+        ]),
+        isSystem: 1
+      },
+      {
         id: 'chief_designer',
         name: 'Chief Designer',
         description: 'Engineering sign-off, CAD drawing approval, full BOM releases, and CNC program verification.',
         permissions: JSON.stringify([
-          'production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
+          'production.designer.view','production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
           'approvals.work_orders','production.machining.manage','inventory.items.view','production.qc.manage'
         ]),
         isSystem: 1
@@ -1431,7 +1441,7 @@ async function runDatabaseSync() {
         name: 'Assistant Designer',
         description: 'Component modeling, CAD revisions, and technical BOM preparation.',
         permissions: JSON.stringify([
-          'production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
+          'production.designer.view','production.work_orders.create','production.operations.manage','production.work_orders.edit','production.work_orders.view',
           'inventory.items.view'
         ]),
         isSystem: 1
@@ -9610,19 +9620,8 @@ app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
       }
     }
 
-    // 3. Generate Payment Voucher sequence number
-    await conn.query(`
-      INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) 
-      VALUES ('payment_voucher', 'Payment Vouchers', 'PV-', 1001, 4, 0, 0, NOW()) 
-      ON DUPLICATE KEY UPDATE updated_at = NOW()
-    `);
-    const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'payment_voucher'");
-    const nextSeq = seqRow && seqRow[0] ? seqRow[0].next_number : 1001;
-    const prefix = seqRow && seqRow[0] ? seqRow[0].prefix : 'PV-';
-    const padding = seqRow && seqRow[0] ? seqRow[0].padding : 4;
-    const currentYY = String(new Date().getFullYear()).slice(-2);
-    const voucherNo = data.voucherNo || `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
-    await conn.query("UPDATE document_sequences SET next_number = next_number + 1 WHERE id = 'payment_voucher'");
+    // 3. Generate Payment Voucher sequence number using standard document_sequences helper
+    const voucherNo = data.voucherNo || await getNextPaymentVoucherNumber(conn);
 
     const docId = `VOU-PO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const descText = data.notes?.trim() || `Advance Payment for Purchase Order #${poId} (${finalCreditAccName} → ${finalDebitAccName})`;

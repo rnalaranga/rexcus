@@ -80,6 +80,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     description: 'Work orders, job scheduling, CNC machining, and quality control',
     badgeColor: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-400',
     permissions: [
+      { id: 'production.designer.view', label: 'Designer / Planner Dashboard', description: 'Access price-free Sales Order Quotations and plan/adjust Work Order BOMs & routes' },
       { id: 'production.work_orders.view', label: 'View Work Orders', description: 'Track active job cards, production batches, and delivery deadlines' },
       { id: 'production.work_orders.create', label: 'Create Work Orders', description: 'Issue new production work orders and bill of materials' },
       { id: 'production.work_orders.edit', label: 'Update Progress & Work Orders', description: 'Log completed stages, material consumption, and job status' },

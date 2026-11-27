@@ -114,6 +114,7 @@ const ComingSoon: React.FC<{ module: string }> = ({ module }) => (
 )
 
 const RootRedirect = () => {
+  const { user, can } = useAuth();
   const isMobile = typeof window !== 'undefined' && (
     window.innerWidth <= 768 || 
     /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
@@ -122,6 +123,14 @@ const RootRedirect = () => {
 
   if (isMobile && pref !== 'desktop') {
     return <Navigate to="/mobile/dashboard" replace />;
+  }
+  if (
+    user?.role === 'bom_planner' ||
+    user?.role === 'chief_designer' ||
+    user?.role === 'assistant_designer' ||
+    (can('production.designer.view') && !can('crm.leads.view'))
+  ) {
+    return <Navigate to="/production/designer" replace />;
   }
   return <Navigate to="/crm/leads" replace />;
 };
