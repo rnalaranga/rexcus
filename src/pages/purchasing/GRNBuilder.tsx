@@ -126,6 +126,19 @@ export const GRNBuilder: React.FC = () => {
   const [taxProfileId, setTaxProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep');
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
   const [hideVatSeparately, setHideVatSeparately] = useState<boolean>(false);
+  const [currency, setCurrency] = useState<'LKR' | 'USD'>('LKR');
+  const [exchangeRate, setExchangeRate] = useState<number>(300);
+
+  useEffect(() => {
+    if (selectedPoIds.length > 0 && pos?.length > 0) {
+      const firstPo = pos.find((p: any) => selectedPoIds.includes(p.id));
+      if (firstPo?.currency === 'USD') {
+        setCurrency('USD');
+      } else if (firstPo?.currency === 'LKR') {
+        setCurrency('LKR');
+      }
+    }
+  }, [selectedPoIds, pos]);
 
   // Helper to get supplier name
   const supplierName = useMemo(() => {
@@ -584,6 +597,8 @@ export const GRNBuilder: React.FC = () => {
       subtotal: netSubtotal,
       taxAmount: totalTax,
       totalAmount: grandTotalGRNValue,
+      currency,
+      exchangeRate: currency === 'USD' ? exchangeRate : 1,
       notes: `Vehicle: ${vehicleNo} | Location: ${assignedLocation} | Heat: ${heatNo || 'N/A'} | Batch: ${batchNo || 'N/A'} | MTR: ${mtrCertNo || 'N/A'} | ${cleanUserNotes}`
     };
 

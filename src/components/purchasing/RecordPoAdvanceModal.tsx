@@ -43,6 +43,8 @@ export const RecordPoAdvanceModal: React.FC<RecordPoAdvanceModalProps> = ({
   toast,
 }) => {
   const [amount, setAmount] = useState<string>('');
+  const [currency, setCurrency] = useState<'LKR' | 'USD'>('LKR');
+  const [exchangeRate, setExchangeRate] = useState<number>(300);
   const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<
     'Bank Transfer' | 'Cheque' | 'Cash' | 'Online / Card'
@@ -192,6 +194,8 @@ export const RecordPoAdvanceModal: React.FC<RecordPoAdvanceModalProps> = ({
         supplierId: po.supplierId,
         supplierName: supplierName || po.supplierName || 'Vendor',
         amount: numAmount,
+        currency,
+        exchangeRate: currency === 'USD' ? exchangeRate : 1,
         date,
         paymentMethod,
         creditAccountId,

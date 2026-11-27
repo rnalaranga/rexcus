@@ -2040,6 +2040,14 @@ async function runDatabaseSync() {
     "ALTER TABLE payment_receipts ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE payment_vouchers ADD COLUMN depositSlip LONGTEXT DEFAULT NULL",
     "ALTER TABLE payment_vouchers ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE grns ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE grns ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000",
+    "ALTER TABLE supplier_bills ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE supplier_bills ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000",
+    "ALTER TABLE payment_vouchers ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE payment_vouchers ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000",
+    "ALTER TABLE supplier_ledger ADD COLUMN currency VARCHAR(10) DEFAULT 'LKR'",
+    "ALTER TABLE supplier_ledger ADD COLUMN exchangeRate DECIMAL(15,4) DEFAULT 1.0000",
     `CREATE TABLE IF NOT EXISTS credit_debit_notes (
       id VARCHAR(50) PRIMARY KEY,
       noteNo VARCHAR(100) NOT NULL,
@@ -9620,6 +9628,9 @@ app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
     }
     const po = poRows[0];
     const supplierId = data.supplierId || po.supplierId;
+    const currency = (data.currency || po.currency || 'LKR').toUpperCase();
+    const exchangeRate = currency === 'USD' ? (Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 300) : 1;
+    const lkrAmount = currency === 'USD' ? Math.round(numAmount * exchangeRate * 100) / 100 : numAmount;
 
     let supplierName = data.supplierName || 'Vendor';
     if (supplierId) {
@@ -9699,7 +9710,9 @@ app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
       payeeId: supplierId || null,
       payeeName: supplierName,
       category: 'PO Advance Payment',
-      amount: numAmount,
+      amount: lkrAmount,
+      currency,
+      exchangeRate,
       paymentMethod,
       chequeNo: data.chequeNo ? String(data.chequeNo).trim() : null,
       chequeDate: data.chequeDate || null,
@@ -9738,8 +9751,10 @@ app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
         voucherNo,
         description: `PO Advance Payment (PO #${poId}) via Voucher ${voucherNo}${data.notes ? ' - ' + data.notes : ''}`,
         debit: 0,
-        credit: numAmount,
-        amount: numAmount,
+        credit: lkrAmount,
+        amount: lkrAmount,
+        currency,
+        exchangeRate,
         paymentMethod,
         chequeNo: data.chequeNo || null,
         chequeDate: data.chequeDate || null,
@@ -10133,11 +10148,15 @@ app.post('/api/purchasing/grns', async (req, res) => {
 
     await db.query('INSERT INTO grns SET ?', safeGrnData);
 
+    const grnCurrency = String(data.currency || 'LKR').toUpperCase();
+    const grnExRate = grnCurrency === 'USD' ? (Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 300) : 1;
+
     // Update inventory stock and record in stock ledger
     for (const item of itemsArray) {
       const invId = item.inventoryId || item.id;
       const qtyRecv = Number(item.qtyReceived !== undefined ? item.qtyReceived : (item.qty || 0));
-      const itemUnitCost = Number(item.unitCost !== undefined ? item.unitCost : (item.unitPrice || 0));
+      const rawUnitCost = Number(item.unitCost !== undefined ? item.unitCost : (item.unitPrice || 0));
+      const itemUnitCost = grnCurrency === 'USD' ? Math.round(rawUnitCost * grnExRate * 100) / 100 : rawUnitCost;
       const totalCost = qtyRecv * itemUnitCost;
       if (invId && qtyRecv > 0) {
         try {

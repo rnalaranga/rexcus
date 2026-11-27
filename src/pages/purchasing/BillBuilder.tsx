@@ -93,6 +93,8 @@ export const BillBuilder: React.FC = () => {
   const [taxProfileId, setTaxProfileId] = useState<string>('tp_opt2_sscl_absorbed_vat_sep');
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
   const [hideVatSeparately, setHideVatSeparately] = useState<boolean>(false);
+  const [currency, setCurrency] = useState<'LKR' | 'USD'>('LKR');
+  const [exchangeRate, setExchangeRate] = useState<number>(300);
 
   // Helper: Get supplier name
   const getSupplierName = (id: string) => {
@@ -366,10 +368,15 @@ export const BillBuilder: React.FC = () => {
     });
   }, [pos, bills, supplierId, idParam]);
 
-  // If a single PO is chosen and supplier not set, auto-sync supplier
+  // If a single PO is chosen and supplier not set, auto-sync supplier and currency
   useEffect(() => {
     if (selectedPO && selectedPO.supplierId && !supplierId) {
       setSupplierId(selectedPO.supplierId);
+    }
+    if (selectedPO?.currency === 'USD') {
+      setCurrency('USD');
+    } else if (selectedPO?.currency === 'LKR') {
+      setCurrency('LKR');
     }
   }, [selectedPO, supplierId]);
 
@@ -762,6 +769,8 @@ export const BillBuilder: React.FC = () => {
         paidAmount: appliedAdvanceAmount,
         advanceVoucherNos: combinedAdvanceVouchers.map((v: any) => v.voucherNo).filter(Boolean).join(', ') || null,
         notes, 
+        currency,
+        exchangeRate: currency === 'USD' ? exchangeRate : 1,
         billAttachment: billAttachment || null,
         billAttachmentName: billAttachmentName || null
       };

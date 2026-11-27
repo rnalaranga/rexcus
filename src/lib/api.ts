@@ -1205,6 +1205,8 @@ export const recordPoAdvancePayment = async (
     supplierId?: string;
     supplierName?: string;
     amount: number;
+    currency?: string;
+    exchangeRate?: number;
     date?: string;
     paymentMethod: string;
     debitAccountId?: string; // To Account (Supplier Advances / Accounts Payable)
