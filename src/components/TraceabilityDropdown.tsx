@@ -5,8 +5,14 @@ import { useAuth } from '@/contexts/AuthContext'
 import { 
   Network, ChevronDown, ExternalLink, X, FileText, ShoppingBag, 
   Factory, Truck, Receipt, ShoppingCart, PackageCheck, DollarSign,
-  Layers, CheckCircle2, Clock, AlertCircle, Sparkles, ArrowRight
+  Layers, CheckCircle2, Clock, AlertCircle, Sparkles, ArrowRight, Eye, Printer
 } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { QuotationPrintView } from '@/components/QuotationPrintView'
+import { SalesOrderPrintView } from '@/components/crm/SalesOrderPrintView'
+import { InvoicePreview } from '@/components/finance/InvoicePreview'
+import { GatePassPrintView } from '@/components/GatePassPrintView'
+import { useSettings } from '@/contexts/SettingsContext'
 
 export interface TraceNode {
   id?: string
@@ -49,7 +55,9 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
 }) => {
   const navigate = useNavigate()
   const { user, can } = useAuth()
+  const { settings } = useSettings()
   const [isOpen, setIsOpen] = useState(false)
+  const [previewState, setPreviewState] = useState<{ type: TraceNode['type']; data: any; loading: boolean; error?: string } | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [coords, setCoords] = useState<{ top: number; left: number; openUpwards: boolean } | null>(null)
 
@@ -400,6 +408,42 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                   }
 
                   const isClickable = !!trace.onClick || !!trace.navigateUrl
+                  const canInlinePreview = ['quotation', 'order', 'invoice', 'proforma', 'gate_pass'].includes(trace.type)
+
+                  const handleInlinePreview = async (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    setIsOpen(false)
+                    const ref = (trace.id || trace.reference || '').replace(/\(.*\)/g, '').trim()
+                    if (!ref) return
+                    setPreviewState({ type: trace.type, data: null, loading: true })
+                    try {
+                      const apiUrl = import.meta.env.VITE_API_URL || '/api'
+                      let endpoint = ''
+                      if (trace.type === 'quotation') endpoint = `${apiUrl}/quotations?search=${encodeURIComponent(ref)}`
+                      else if (trace.type === 'order') endpoint = `${apiUrl}/finished-goods-orders?search=${encodeURIComponent(ref)}`
+                      else if (trace.type === 'invoice' || trace.type === 'proforma') endpoint = `${apiUrl}/invoices?search=${encodeURIComponent(ref)}`
+                      else if (trace.type === 'gate_pass') endpoint = `${apiUrl}/gate-passes?search=${encodeURIComponent(ref)}`
+
+                      const res = await fetch(endpoint)
+                      const json = await res.json()
+                      const list = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : [])
+                      const matched = list.find((item: any) =>
+                        String(item.id) === ref ||
+                        String(item.quotationNo || '') === ref ||
+                        String(item.orderNo || '') === ref ||
+                        String(item.invoiceNo || '') === ref ||
+                        String(item.gatePassNo || '') === ref
+                      ) || list[0]
+
+                      if (!matched) {
+                        setPreviewState({ type: trace.type, data: null, loading: false, error: `Could not find ${ref}` })
+                      } else {
+                        setPreviewState({ type: trace.type, data: matched, loading: false })
+                      }
+                    } catch (err: any) {
+                      setPreviewState({ type: trace.type, data: null, loading: false, error: err?.message || 'Failed to load preview' })
+                    }
+                  }
 
                   return (
                     <div
@@ -429,12 +473,24 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono font-bold text-xs text-primary group-hover/item:text-blue-500 transition-colors">
-                            {trace.reference}
-                          </span>
-                          {isClickable && (
-                            <ExternalLink size={10} className="text-muted group-hover/item:text-blue-500 shrink-0 transition-colors" />
+                        <div className="flex items-center justify-between gap-1.5 mt-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-mono font-bold text-xs text-primary group-hover/item:text-blue-500 transition-colors truncate">
+                              {trace.reference}
+                            </span>
+                            {isClickable && (
+                              <ExternalLink size={10} className="text-muted group-hover/item:text-blue-500 shrink-0 transition-colors" />
+                            )}
+                          </div>
+                          {canInlinePreview && (
+                            <button
+                              type="button"
+                              onClick={handleInlinePreview}
+                              className="p-1 rounded bg-surface2 hover:bg-blue-500/15 text-muted hover:text-blue-500 border border-theme-subtle transition-colors shrink-0"
+                              title={`Quick Preview ${trace.reference}`}
+                            >
+                              <Eye size={12} />
+                            </button>
                           )}
                         </div>
 
@@ -462,6 +518,44 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
           </div>
         </div>,
         document.body
+      )}
+
+      {previewState && (
+        <Modal
+          isOpen={Boolean(previewState)}
+          onClose={() => setPreviewState(null)}
+          title={`Quick Preview — ${
+            previewState.type === 'quotation' ? 'Quotation' :
+            previewState.type === 'order' ? 'Sales Order' :
+            previewState.type === 'gate_pass' ? 'Gate Pass' : 'Invoice'
+          }`}
+          size="xl"
+        >
+          {previewState.loading ? (
+            <div className="p-12 text-center text-xs text-muted">Loading document preview...</div>
+          ) : previewState.error || !previewState.data ? (
+            <div className="p-8 text-center text-xs text-rose-500">{previewState.error || 'Document not found'}</div>
+          ) : (
+            <div className="max-h-[80vh] overflow-y-auto bg-white text-black p-4">
+              {previewState.type === 'quotation' && (() => {
+                const q = previewState.data;
+                const parsed = typeof q.data === 'string' ? JSON.parse(q.data) : (q.data || q);
+                parsed.quotationNo = parsed.quotationNo || q.quotationNo || q.id;
+                parsed.status = q.status || parsed.status;
+                return <QuotationPrintView data={parsed} type={q.type || 'main'} lead={null} settings={settings} />;
+              })()}
+              {previewState.type === 'order' && (
+                <SalesOrderPrintView order={previewState.data} settings={settings} />
+              )}
+              {(previewState.type === 'invoice' || previewState.type === 'proforma') && (
+                <InvoicePreview invoice={previewState.data} settings={settings} />
+              )}
+              {previewState.type === 'gate_pass' && (
+                <GatePassPrintView gatePass={previewState.data} settings={settings} />
+              )}
+            </div>
+          )}
+        </Modal>
       )}
     </div>
   )
