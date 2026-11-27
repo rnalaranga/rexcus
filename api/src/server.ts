@@ -7103,6 +7103,7 @@ app.put('/api/gate-passes/:id', async (req, res) => {
     }
 
     await db.query('UPDATE gate_passes SET ? WHERE id = ?', [safeData, id]);
+    await reconcileOrderDispatches();
     res.json({ success: true, id });
   } catch (error) {
     console.error(error);
