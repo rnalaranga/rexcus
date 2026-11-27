@@ -1053,6 +1053,9 @@ export const CreditDebitNotesTab: React.FC = () => {
               <span className="font-mono text-sm font-black text-primary bg-surface px-2.5 py-0.5 rounded border border-theme-subtle">
                 {previewNoteNo || 'Auto-Generated'}
               </span>
+              <span className="ml-2 px-2.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono text-xs font-black">
+                Total: {formatCurrency(totalAmount, true)}
+              </span>
             </div>
             <div className="flex items-center gap-1.5 text-[11px]">
               <button
@@ -1201,6 +1204,7 @@ export const CreditDebitNotesTab: React.FC = () => {
                 <option value="GRN">Goods Receipt Note (GRN — With Line Items)</option>
                 <option value="Purchase Order">Purchase Order (PO)</option>
                 <option value="Sales Order">Sales Order</option>
+                <option value="Other">Other (Description & Amount Only)</option>
                 <option value="Direct Adjustment">Direct Ledger Adjustment (No GRN)</option>
               </select>
             </div>
@@ -1338,14 +1342,14 @@ export const CreditDebitNotesTab: React.FC = () => {
             />
           </div>
 
-          {/* Line Items Table (Shown for Credit Notes OR when Debit Note is Against GRN) vs Direct Description & Amount (for Non-GRN Debit Notes) */}
-          {noteType === 'debit_note' && relatedDocType !== 'GRN' ? (
+          {/* Line Items Table (Shown for Credit Notes with doc OR Debit Note Against GRN) vs QuickBooks-style Description & Amount (for Other / Non-GRN) */}
+          {relatedDocType === 'Other' || (noteType === 'debit_note' && relatedDocType !== 'GRN') ? (
             <div className="border border-blue-500/30 rounded-lg p-3.5 bg-blue-500/[0.03] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-theme-subtle">
                 <div className="flex items-center gap-2">
                   <FileText size={14} className="text-blue-500" />
                   <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                    Debit Note Description & Amount (Non-GRN Adjustment)
+                    {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} Description & Amount ({relatedDocType === 'Other' ? 'Other' : 'Non-GRN Adjustment'})
                   </span>
                 </div>
                 <button
@@ -1384,7 +1388,7 @@ export const CreditDebitNotesTab: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                    Debit Note Amount (LKR) *
+                    {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} Amount (LKR) *
                   </label>
                   <input
                     type="number"
