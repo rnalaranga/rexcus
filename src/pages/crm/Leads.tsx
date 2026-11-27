@@ -2964,6 +2964,7 @@ export const Leads: React.FC = () => {
         onClose={() => setSampleModalLead(null)} 
         title="Collect Customer Sample (GRN)"
         size="md"
+        containerClassName="z-[160]"
       >
         {sampleModalLead && (
           <form onSubmit={handleSaveSampleFromLead} className="p-6 space-y-4">
