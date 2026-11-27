@@ -1168,6 +1168,66 @@ export const settleVendorOutstanding = async (data: {
   return json;
 };
 
+export const reallocateVendorPayment = async (
+  voucherId: string,
+  data: {
+    supplierId: string;
+    paymentDate?: string;
+    paymentMethod?: string;
+    creditAccountId?: string;
+    debitAccountId?: string;
+    notes?: string;
+    totalAmount: number;
+    allocations: Array<{
+      billId: string;
+      invoiceNo?: string;
+      allocatedAmount: number;
+    }>;
+    reverseBills?: Array<{
+      billId: string;
+      amount: number;
+    }>;
+  }
+) => {
+  const res = await fetch(`${API_URL}/finance/payment-vouchers/${encodeURIComponent(voucherId)}/reallocate`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to reallocate vendor payment');
+  return json;
+};
+
+export const recordPoAdvancePayment = async (
+  poId: string,
+  data: {
+    supplierId?: string;
+    supplierName?: string;
+    amount: number;
+    date?: string;
+    paymentMethod: string;
+    debitAccountId?: string; // To Account (Supplier Advances / Accounts Payable)
+    creditAccountId?: string; // From Account (Bank / Cash)
+    referenceNo?: string;
+    chequeNo?: string;
+    chequeDate?: string;
+    bankName?: string;
+    depositSlip?: string;
+    notes?: string;
+    preparedBy?: string;
+  }
+) => {
+  const res = await fetch(`${API_URL}/purchasing/pos/${encodeURIComponent(poId)}/advance-payment`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to record PO advance payment');
+  return json;
+};
+
 export const fetchFinanceDashboard = async () => (await (await fetch(`${API_URL}/finance/dashboard`)).json());
 export const fetchCostCenters = async () => (await (await fetch(`${API_URL}/finance/cost-centers`)).json());
 export const fetchMachiningOperations = async () => (await fetch(`${API_URL}/machining-operations`)).json();

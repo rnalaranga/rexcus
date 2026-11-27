@@ -8,7 +8,7 @@ import {
   CreditCard, Paperclip, Upload, Eye, Trash2, Building2
 } from 'lucide-react';
 import { formatCurrency, formatDate, openDataUriOrUrl } from '@/lib/utils';
-import { settleVendorOutstanding, fetchAccounts, uploadFileToStorage } from '@/lib/api';
+import { settleVendorOutstanding, reallocateVendorPayment, fetchAccounts, uploadFileToStorage } from '@/lib/api';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { AccountAutocomplete } from '@/components/ui/AccountAutocomplete';
 
@@ -18,6 +18,7 @@ interface MultiBillSettlementModalProps {
   supplier?: any; // { id, name, company }
   allSuppliers?: any[];
   openBills: any[]; // All open bills across the system
+  editingVoucher?: any; // Optional: existing payment voucher to edit/reallocate
   onSuccess: (result: any) => void;
 }
 
@@ -27,6 +28,7 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
   supplier,
   allSuppliers = [],
   openBills = [],
+  editingVoucher,
   onSuccess
 }) => {
   // Selected Supplier ID
@@ -65,8 +67,20 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
     }
   }, [isOpen]);
 
-  // Initialize selected supplier
+  // Initialize selected supplier & editingVoucher fields
   useEffect(() => {
+    if (editingVoucher) {
+      if (editingVoucher.payeeId) setSelectedSupplierId(editingVoucher.payeeId);
+      if (editingVoucher.date) setPaymentDate(String(editingVoucher.date).slice(0, 10));
+      if (editingVoucher.paymentMethod) setPaymentMethod(editingVoucher.paymentMethod);
+      if (editingVoucher.bankAccountId) setCreditAccountId(editingVoucher.bankAccountId);
+      if (editingVoucher.accountId) setDebitAccountId(editingVoucher.accountId);
+      if (editingVoucher.description) setNotes(editingVoucher.description);
+      if (editingVoucher.amount) setTotalAmount(String(editingVoucher.amount));
+      setAllocations({});
+      setErrorMsg(null);
+      return;
+    }
     if (supplier?.id || supplier?.supplierId) {
       setSelectedSupplierId(supplier.id || supplier.supplierId);
     } else if (allSuppliers.length > 0 && !selectedSupplierId) {
@@ -79,7 +93,7 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
         setSelectedSupplierId(allSuppliers[0].id);
       }
     }
-  }, [supplier, allSuppliers, openBills]);
+  }, [editingVoucher, supplier, allSuppliers, openBills]);
 
   // Set default accounts once COA is loaded
   useEffect(() => {
@@ -177,12 +191,30 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
     setErrorMsg(null);
   };
 
-  // When total amount input changes, re-allocate
+  // When total amount input changes, allocate to already-selected bills first (if any), otherwise FIFO
   const handleTotalAmountChange = (valStr: string) => {
     setTotalAmount(valStr);
     const num = parseFloat(valStr);
     if (!isNaN(num) && num > 0) {
-      handleAutoAllocate(num);
+      const selectedIds = Object.keys(allocations).filter(id => Number(allocations[id]) > 0);
+      if (selectedIds.length > 0) {
+        let remaining = Math.max(0, num);
+        const newAllocations: Record<string, number> = {};
+        for (const b of supplierBills) {
+          if (!selectedIds.includes(b.id) || remaining <= 0) {
+            newAllocations[b.id] = 0;
+            continue;
+          }
+          const canTake = Math.min(b.balanceDue, remaining);
+          const rounded = Math.round(canTake * 100) / 100;
+          newAllocations[b.id] = rounded;
+          remaining = Math.round((remaining - rounded) * 100) / 100;
+        }
+        setAllocations(newAllocations);
+        setErrorMsg(null);
+      } else {
+        handleAutoAllocate(num);
+      }
     } else {
       setAllocations({});
     }
@@ -308,22 +340,33 @@ export const MultiBillSettlementModal: React.FC<MultiBillSettlementModalProps> =
 
     setSubmitting(true);
     try {
-      const result = await settleVendorOutstanding({
-        supplierId: selectedSupplierId,
-        supplierName: currentSupplier?.company || currentSupplier?.name || 'Vendor',
-        paymentDate,
-        paymentMethod,
-        creditAccountId: creditAccountId || undefined,
-        debitAccountId: debitAccountId || undefined,
-        referenceNo: referenceNo.trim() || undefined,
-        notes: notes.trim() || undefined,
-        totalAmount: numTotal,
-        chequeNo: paymentMethod === 'Cheque' ? (chequeNo.trim() || referenceNo.trim()) : undefined,
-        chequeDate: paymentMethod === 'Cheque' ? chequeDate : undefined,
-        bankName: paymentMethod === 'Cheque' ? bankName.trim() : undefined,
-        depositSlip: depositSlip || undefined,
-        allocations: payloadAllocations
-      });
+      const result = editingVoucher
+        ? await reallocateVendorPayment(editingVoucher.id || editingVoucher.voucherNo, {
+            supplierId: selectedSupplierId,
+            paymentDate,
+            paymentMethod,
+            creditAccountId: creditAccountId || undefined,
+            debitAccountId: debitAccountId || undefined,
+            notes: notes.trim() || undefined,
+            totalAmount: numTotal,
+            allocations: payloadAllocations
+          })
+        : await settleVendorOutstanding({
+            supplierId: selectedSupplierId,
+            supplierName: currentSupplier?.company || currentSupplier?.name || 'Vendor',
+            paymentDate,
+            paymentMethod,
+            creditAccountId: creditAccountId || undefined,
+            debitAccountId: debitAccountId || undefined,
+            referenceNo: referenceNo.trim() || undefined,
+            notes: notes.trim() || undefined,
+            totalAmount: numTotal,
+            chequeNo: paymentMethod === 'Cheque' ? (chequeNo.trim() || referenceNo.trim()) : undefined,
+            chequeDate: paymentMethod === 'Cheque' ? chequeDate : undefined,
+            bankName: paymentMethod === 'Cheque' ? bankName.trim() : undefined,
+            depositSlip: depositSlip || undefined,
+            allocations: payloadAllocations
+          });
 
       onSuccess(result);
       onClose();

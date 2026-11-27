@@ -25,6 +25,7 @@ const routeLoaders: Record<string, () => Promise<any>> = {
 
   // Production
   '/production': () => import('@/pages/production/WorkOrders'),
+  '/production/designer': () => import('@/pages/production/DesignerDashboard'),
   '/production/service-jobs': () => import('@/pages/production/ServiceInspectionHub'),
   '/production/planning': () => import('@/pages/production/WorkshopPlanning'),
   '/production/machinery': () => import('@/pages/production/Machinery'),

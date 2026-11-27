@@ -58,6 +58,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'Production', icon: Factory, active: true,
     items: [
+      { label: 'Designer Dashboard', path: '/production/designer', icon: SlidersHorizontal, permission: 'production.work_orders.view' },
       { label: 'Work Orders',       path: '/production',           icon: Factory,  permission: 'production.work_orders.view' },
       { label: 'Service & Inspection', path: '/production/service-jobs', icon: Wrench, permission: 'production.work_orders.view' },
       { label: 'Workshop Planning', path: '/production/planning',  icon: Calendar, badge: 'AI', permission: 'production.work_orders.view' },
@@ -230,13 +231,14 @@ export const Sidebar: React.FC = () => {
                     const Icon = item.icon
                     const isActive =
                       location.pathname === item.path ||
-                      (item.path !== '/crm' && item.path !== '/finance' && location.pathname.startsWith(item.path))
+                      (item.path === '/production' && location.pathname.startsWith('/production/work-orders')) ||
+                      (item.path !== '/crm' && item.path !== '/finance' && item.path !== '/production' && location.pathname.startsWith(item.path))
 
                     return (
                       <NavLink
                         key={item.label}
                         to={item.path}
-                        end={item.path === '/crm' || item.path === '/finance'}
+                        end={item.path === '/crm' || item.path === '/finance' || item.path === '/production'}
                         onClick={() => startNavigating(item.path)}
                         onMouseEnter={() => prefetchRoute(item.path)}
                         onTouchStart={() => prefetchRoute(item.path)}

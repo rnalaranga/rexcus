@@ -52,7 +52,7 @@ const cleanDescLines = (rawDesc: string) => {
   return { titleLine, detailLines: remaining.join('\n') };
 };
 
-export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, type: string, lead: any, settings: any }) => {
+export const QuotationPrintView = ({ data, type, lead, settings, hidePrices = false }: { data: any, type: string, lead: any, settings: any, hidePrices?: boolean }) => {
   const quotationType = type || 'main'
   
   // Safe extraction of all fields
@@ -602,7 +602,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
 
           {/* Title */}
           <div className="text-center font-bold text-[14px] py-1 border-b border-black tracking-widest uppercase bg-gray-50/50 print-no-break">
-            QUOTATION
+            {hidePrices ? 'QUOTATION — TECHNICAL SPECIFICATION (NO PRICING)' : 'QUOTATION'}
           </div>
 
           {/* TO / Details */}
@@ -672,17 +672,17 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
           {/* Table Container - Uses true HTML table with fixed layout for 100% pixel-perfect column alignment */}
           <table className="w-full text-[11px] border-collapse" style={{ tableLayout: 'fixed', borderSpacing: 0 }}>
             <colgroup>
-              <col style={{ width: '55%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: hidePrices ? '82%' : '55%' }} />
+              <col style={{ width: hidePrices ? '18%' : '10%' }} />
+              {!hidePrices && <col style={{ width: '15%' }} />}
+              {!hidePrices && <col style={{ width: '20%' }} />}
             </colgroup>
             <thead>
               <tr className="font-bold border-b border-black text-center bg-gray-50 print-no-break">
                 <th className="p-1.5 border-r border-black font-bold text-center">DESCRIPTION</th>
-                <th className="p-1.5 border-r border-black font-bold text-center">QTY</th>
-                <th className="p-1.5 border-r border-black font-bold text-center leading-tight">UNIT PRICE<br/>({displayCurrency})</th>
-                <th className="p-1.5 font-bold text-center leading-tight">AMOUNT<br/>({displayCurrency})</th>
+                <th className={`p-1.5 ${hidePrices ? '' : 'border-r border-black'} font-bold text-center`}>QTY</th>
+                {!hidePrices && <th className="p-1.5 border-r border-black font-bold text-center leading-tight">UNIT PRICE<br/>({displayCurrency})</th>}
+                {!hidePrices && <th className="p-1.5 font-bold text-center leading-tight">AMOUNT<br/>({displayCurrency})</th>}
               </tr>
             </thead>
             <tbody>
@@ -702,33 +702,38 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       )}
                       {item.note && <div className="text-[10px] text-gray-500 italic mt-0.5">{item.note}</div>}
                     </td>
-                    <td className="p-1.5 border-r border-black text-center align-top font-mono font-medium">
+                    <td className={`p-1.5 ${hidePrices ? '' : 'border-r border-black'} text-center align-top font-mono font-medium`}>
                       {Number(item.qty || 0).toFixed(2)}
                     </td>
-                    <td className="p-1.5 border-r border-black text-right align-top font-mono">
-                      {((Number(item.unitPrice) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
-                    <td className="p-1.5 text-right align-top font-mono font-semibold">
-                      {(((Number(item.qty) * Number(item.unitPrice)) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </td>
+                    {!hidePrices && (
+                      <td className="p-1.5 border-r border-black text-right align-top font-mono">
+                        {((Number(item.unitPrice) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </td>
+                    )}
+                    {!hidePrices && (
+                      <td className="p-1.5 text-right align-top font-mono font-semibold">
+                        {(((Number(item.qty) * Number(item.unitPrice)) || 0) * (isProductQuote ? (1 / unitPriceDivisor) : multiplier)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {quotationType === 'job' && (
                 <tr>
-                  <td colSpan={4} className="font-bold italic text-gray-500 text-center py-6">
+                  <td colSpan={hidePrices ? 2 : 4} className="font-bold italic text-gray-500 text-center py-6">
                     [Internal Job Items / Costing - Use Customer Quote for Print]
                   </td>
                 </tr>
               )}
               {custItems.length === 0 && quotationType !== 'job' && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-gray-400 italic text-[11px] border-b border-black/20">
+                  <td colSpan={hidePrices ? 2 : 4} className="p-4 text-center text-gray-400 italic text-[11px] border-b border-black/20">
                     No line items entered.
                   </td>
                 </tr>
               )}
             </tbody>
+            {!hidePrices && (
             <tfoot>
               {/* Sub Total */}
               <tr className="border-t border-b border-black print-no-break h-6 text-[11px]">
@@ -791,12 +796,15 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                 </td>
               </tr>
             </tfoot>
+            )}
           </table>
 
           {/* Value in words */}
-          <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
-            <span className="uppercase">VALUE : {displayCurrency} {toWords(Math.round(displayGrandTotal), displayCurrency)}</span>
-          </div>
+          {!hidePrices && (
+            <div className="py-1.5 px-3 border-b border-black text-[10.5px] font-bold print-no-break bg-gray-50/30">
+              <span className="uppercase">VALUE : {displayCurrency} {toWords(Math.round(displayGrandTotal), displayCurrency)}</span>
+            </div>
+          )}
 
           {/* Footer Notes & Bank */}
           <div className="flex print-no-break">
@@ -804,6 +812,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
               <div className="font-bold underline mb-0.5">TERMS & CONDITIONS</div>
               <table className="w-full">
                 <tbody>
+                  {!hidePrices && (
                   <tr>
                     <td className="w-24 align-top font-medium">Payment terms</td>
                     <td className="align-top">
@@ -813,6 +822,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                       </div>
                     </td>
                   </tr>
+                  )}
                   <tr>
                     <td className="w-24 align-top font-medium">Validity</td>
                     <td className="align-top">
@@ -833,7 +843,7 @@ export const QuotationPrintView = ({ data, type, lead, settings }: { data: any, 
                   </tr>
                 </tbody>
               </table>
-              {activeBank && (
+              {activeBank && !hidePrices && (
                 <>
                   <div className="mt-2 font-bold underline mb-0.5">BANK DETAILS</div>
                   <table className="w-full">

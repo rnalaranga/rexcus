@@ -112,9 +112,12 @@ export const SalesReportsHub: React.FC = () => {
       const customer = customers.find((c: any) => c.id === o.customerId) || leads.find((l: any) => l.id === o.customerId);
       const customerName = o.customerName || customer?.company || customer?.name || 'Unknown Client';
       const orderTotal = Number(o.totalPrice || o.total || 0);
+      const orderTax = Number(o.vatAmount ?? o.taxAmount ?? 0);
+      const orderExclVat = Math.max(0, orderTotal - orderTax);
       const currency = o.currency || customer?.currency || 'LKR';
       const rate = Number(o.exchangeRate || 1);
       const orderTotalLKR = currency === 'USD' ? orderTotal * rate : orderTotal;
+      const orderExclVatLKR = currency === 'USD' ? orderExclVat * rate : orderExclVat;
       const status = (o.status || 'pending').toLowerCase();
       const isDispatched = Boolean(o.isDispatched || Number(o.dispatchedQty || 0) >= Number(o.qty || 1));
       const hasInvoice = Boolean(o.invoiceNo || o.invoiceId);
@@ -145,6 +148,8 @@ export const SalesReportsHub: React.FC = () => {
         currency,
         orderTotal,
         orderTotalLKR,
+        orderExclVat,
+        orderExclVatLKR,
         productName: o.productName || 'Order Items',
         itemsCount,
         notes: o.notes || ''
@@ -344,23 +349,31 @@ export const SalesReportsHub: React.FC = () => {
   const orderStats = useMemo(() => {
     const totalCount = filteredOrders.length;
     const totalValueLKR = filteredOrders.reduce((acc, o) => acc + o.orderTotalLKR, 0);
+    const totalValueExclVatLKR = filteredOrders.reduce((acc, o) => acc + o.orderExclVatLKR, 0);
     const dispatchedOrders = filteredOrders.filter(o => o.isDispatched);
     const dispatchedValueLKR = dispatchedOrders.reduce((acc, o) => acc + o.orderTotalLKR, 0);
+    const dispatchedValueExclVatLKR = dispatchedOrders.reduce((acc, o) => acc + o.orderExclVatLKR, 0);
     const invoicedOrders = filteredOrders.filter(o => o.hasInvoice);
     const invoicedValueLKR = invoicedOrders.reduce((acc, o) => acc + o.orderTotalLKR, 0);
+    const invoicedValueExclVatLKR = invoicedOrders.reduce((acc, o) => acc + o.orderExclVatLKR, 0);
     const pendingOrders = filteredOrders.filter(o => !o.isDispatched && o.status !== 'cancelled');
     const pendingValueLKR = pendingOrders.reduce((acc, o) => acc + o.orderTotalLKR, 0);
+    const pendingValueExclVatLKR = pendingOrders.reduce((acc, o) => acc + o.orderExclVatLKR, 0);
     const avgOrderValue = totalCount > 0 ? totalValueLKR / totalCount : 0;
 
     return {
       totalCount,
       totalValueLKR,
+      totalValueExclVatLKR,
       dispatchedCount: dispatchedOrders.length,
       dispatchedValueLKR,
+      dispatchedValueExclVatLKR,
       invoicedCount: invoicedOrders.length,
       invoicedValueLKR,
+      invoicedValueExclVatLKR,
       pendingCount: pendingOrders.length,
       pendingValueLKR,
+      pendingValueExclVatLKR,
       avgOrderValue
     };
   }, [filteredOrders]);
@@ -894,8 +907,9 @@ export const SalesReportsHub: React.FC = () => {
               <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Total Sales Orders</span>
               <div className="text-2xl font-black text-primary mt-1 font-mono">{orderStats.totalCount}</div>
             </div>
-            <div className="text-[11px] text-muted font-medium mt-2">
-              Value: <strong className="text-blue-600 font-mono">{formatCurrency(orderStats.totalValueLKR)}</strong>
+            <div className="text-[11px] text-muted font-medium mt-2 space-y-0.5">
+              <div>With VAT: <strong className="text-blue-600 font-mono">{formatCurrency(orderStats.totalValueLKR)}</strong></div>
+              <div>Excl. VAT: <strong className="text-primary font-mono">{formatCurrency(orderStats.totalValueExclVatLKR)}</strong></div>
             </div>
           </GlassCard>
 
@@ -904,8 +918,9 @@ export const SalesReportsHub: React.FC = () => {
               <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Dispatched / Delivered</span>
               <div className="text-2xl font-black text-emerald-600 mt-1 font-mono">{orderStats.dispatchedCount}</div>
             </div>
-            <div className="text-[11px] text-muted font-medium mt-2">
-              Value: <strong className="text-emerald-600 font-mono">{formatCurrency(orderStats.dispatchedValueLKR)}</strong>
+            <div className="text-[11px] text-muted font-medium mt-2 space-y-0.5">
+              <div>With VAT: <strong className="text-emerald-600 font-mono">{formatCurrency(orderStats.dispatchedValueLKR)}</strong></div>
+              <div>Excl. VAT: <strong className="text-primary font-mono">{formatCurrency(orderStats.dispatchedValueExclVatLKR)}</strong></div>
             </div>
           </GlassCard>
 
@@ -914,8 +929,9 @@ export const SalesReportsHub: React.FC = () => {
               <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Pending Fulfillment</span>
               <div className="text-2xl font-black text-amber-500 mt-1 font-mono">{orderStats.pendingCount}</div>
             </div>
-            <div className="text-[11px] text-muted font-medium mt-2">
-              Backlog: <strong className="text-amber-500 font-mono">{formatCurrency(orderStats.pendingValueLKR)}</strong>
+            <div className="text-[11px] text-muted font-medium mt-2 space-y-0.5">
+              <div>With VAT: <strong className="text-amber-500 font-mono">{formatCurrency(orderStats.pendingValueLKR)}</strong></div>
+              <div>Excl. VAT: <strong className="text-primary font-mono">{formatCurrency(orderStats.pendingValueExclVatLKR)}</strong></div>
             </div>
           </GlassCard>
 
@@ -924,8 +940,9 @@ export const SalesReportsHub: React.FC = () => {
               <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">Commercial Invoiced</span>
               <div className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1 font-mono">{orderStats.invoicedCount}</div>
             </div>
-            <div className="text-[11px] text-muted font-medium mt-2">
-              Invoiced: <strong className="text-purple-600 dark:text-purple-400 font-mono">{formatCurrency(orderStats.invoicedValueLKR)}</strong>
+            <div className="text-[11px] text-muted font-medium mt-2 space-y-0.5">
+              <div>With VAT: <strong className="text-purple-600 dark:text-purple-400 font-mono">{formatCurrency(orderStats.invoicedValueLKR)}</strong></div>
+              <div>Excl. VAT: <strong className="text-primary font-mono">{formatCurrency(orderStats.invoicedValueExclVatLKR)}</strong></div>
             </div>
           </GlassCard>
         </div>

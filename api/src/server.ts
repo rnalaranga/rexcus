@@ -1767,6 +1767,12 @@ async function runDatabaseSync() {
     "ALTER TABLE purchase_orders ADD COLUMN billingStatus VARCHAR(30) DEFAULT 'unbilled'",
     "ALTER TABLE purchase_orders ADD COLUMN billIds TEXT DEFAULT NULL",
     "ALTER TABLE purchase_orders ADD COLUMN invoiceNos TEXT DEFAULT NULL",
+    "ALTER TABLE purchase_orders ADD COLUMN advancePaid DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE purchase_orders ADD COLUMN advanceVouchers TEXT DEFAULT NULL",
+    "ALTER TABLE supplier_bills ADD COLUMN advanceApplied DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE supplier_bills ADD COLUMN advanceVoucherNos VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE payment_vouchers ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE supplier_ledger ADD COLUMN poId VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN items TEXT DEFAULT NULL",
     "ALTER TABLE supplier_bills ADD COLUMN subtotal DECIMAL(15,2) DEFAULT 0.00",
     "ALTER TABLE supplier_bills ADD COLUMN taxAmount DECIMAL(15,2) DEFAULT 0.00",
@@ -9439,6 +9445,16 @@ app.delete('/api/purchasing/mrs/:id', async (req, res) => {
 app.get('/api/purchasing/pos', async (req, res) => {
   try {
     const [rows]: any = await db.query('SELECT * FROM purchase_orders ORDER BY date DESC, createdAt DESC');
+    let pvByPo = new Map<string, any[]>();
+    try {
+      const [pvRows]: any = await db.query('SELECT * FROM payment_vouchers WHERE poId IS NOT NULL AND poId != "" ORDER BY date DESC, id DESC');
+      for (const pv of (pvRows || [])) {
+        const key = String(pv.poId).trim();
+        if (!pvByPo.has(key)) pvByPo.set(key, []);
+        pvByPo.get(key)!.push(pv);
+      }
+    } catch (e) {}
+
     for (const r of rows) {
       if (typeof r.mrIds === 'string') {
         try { r.mrIds = JSON.parse(r.mrIds); } catch(e) { r.mrIds = [r.mrId].filter(Boolean); }
@@ -9455,6 +9471,35 @@ app.get('/api/purchasing/pos', async (req, res) => {
       } else if (!r.invoiceNos) {
         r.invoiceNos = [];
       }
+      if (typeof r.advanceVouchers === 'string') {
+        try { r.advanceVouchers = JSON.parse(r.advanceVouchers); } catch(e) { r.advanceVouchers = []; }
+      } else if (!Array.isArray(r.advanceVouchers)) {
+        r.advanceVouchers = [];
+      }
+      const linkedPvs = pvByPo.get(String(r.id).trim()) || [];
+      if (linkedPvs.length > 0) {
+        const existingVNos = new Set(r.advanceVouchers.map((v: any) => v.voucherNo || v.id));
+        for (const pv of linkedPvs) {
+          if (!existingVNos.has(pv.voucherNo) && !existingVNos.has(pv.id)) {
+            r.advanceVouchers.push({
+              id: pv.id,
+              voucherNo: pv.voucherNo,
+              amount: Number(pv.amount || 0),
+              date: pv.date,
+              paymentMethod: pv.paymentMethod,
+              chequeNo: pv.chequeNo,
+              bankAccountId: pv.bankAccountId,
+              accountId: pv.accountId,
+              description: pv.description,
+              depositSlip: pv.depositSlip
+            });
+          }
+        }
+        const sumPv = r.advanceVouchers.reduce((s: number, v: any) => s + Number(v.amount || 0), 0);
+        if (sumPv > Number(r.advancePaid || 0)) {
+          r.advancePaid = sumPv;
+        }
+      }
     }
     res.json(rows);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
@@ -9470,8 +9515,321 @@ app.get('/api/purchasing/pos/:id', async (req, res) => {
     } else if (!r.mrIds) {
       r.mrIds = r.mrId ? [r.mrId] : [];
     }
+    if (typeof r.advanceVouchers === 'string') {
+      try { r.advanceVouchers = JSON.parse(r.advanceVouchers); } catch(e) { r.advanceVouchers = []; }
+    } else if (!Array.isArray(r.advanceVouchers)) {
+      r.advanceVouchers = [];
+    }
     res.json(r);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// Record PO Advance Payment & Generate Payment Voucher + GL Entry + Supplier Ledger + Cashflow
+app.post('/api/purchasing/pos/:id/advance-payment', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const poId = req.params.id;
+    const data = { ...req.body };
+    const numAmount = Number(data.amount || 0);
+
+    if (isNaN(numAmount) || numAmount <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Please enter a valid advance amount greater than 0' });
+    }
+
+    const [poRows]: any = await conn.query('SELECT * FROM purchase_orders WHERE id = ? LIMIT 1', [poId]);
+    if (!poRows || poRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Purchase Order not found' });
+    }
+    const po = poRows[0];
+    const supplierId = data.supplierId || po.supplierId;
+
+    let supplierName = data.supplierName || 'Vendor';
+    if (supplierId) {
+      const [sRows]: any = await conn.query('SELECT name, company FROM suppliers WHERE id = ? LIMIT 1', [supplierId]);
+      if (sRows && sRows.length > 0) {
+        supplierName = sRows[0].company || sRows[0].name || supplierName;
+      }
+    }
+
+    const formattedDate = data.date ? String(data.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const paymentMethod = data.paymentMethod || 'Bank Transfer';
+
+    // 1. Resolve Credit Account (FROM Account: Bank or Cash)
+    let finalCreditAccId = data.creditAccountId || null;
+    let finalCreditAccName = paymentMethod === 'Cash' ? 'Cash in Hand' : 'Bank Account';
+    if (finalCreditAccId) {
+      const [cRows]: any = await conn.query('SELECT id, code, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalCreditAccId]);
+      if (cRows && cRows.length > 0) {
+        finalCreditAccId = cRows[0].id;
+        finalCreditAccName = `${cRows[0].code ? cRows[0].code + ' - ' : ''}${cRows[0].name}`;
+      }
+    } else {
+      const isCash = paymentMethod === 'Cash';
+      const [cRows]: any = await conn.query(
+        'SELECT id, code, name FROM chart_of_accounts WHERE type = "Asset" AND (subtype = ? OR name LIKE ?) LIMIT 1',
+        [isCash ? 'Cash' : 'Bank', isCash ? '%Cash%' : '%Bank%']
+      );
+      if (cRows && cRows.length > 0) {
+        finalCreditAccId = cRows[0].id;
+        finalCreditAccName = `${cRows[0].code ? cRows[0].code + ' - ' : ''}${cRows[0].name}`;
+      } else {
+        finalCreditAccId = isCash ? 'acc_1100' : 'acc_1000';
+      }
+    }
+
+    // 2. Resolve Debit Account (TO Account: Supplier Advances / Prepayments or Accounts Payable)
+    let finalDebitAccId = data.debitAccountId || null;
+    let finalDebitAccName = 'Supplier Advances / Prepayments';
+    if (finalDebitAccId) {
+      const [dRows]: any = await conn.query('SELECT id, code, name FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalDebitAccId]);
+      if (dRows && dRows.length > 0) {
+        finalDebitAccId = dRows[0].id;
+        finalDebitAccName = `${dRows[0].code ? dRows[0].code + ' - ' : ''}${dRows[0].name}`;
+      }
+    } else {
+      const [advRows]: any = await conn.query(
+        'SELECT id, code, name FROM chart_of_accounts WHERE (code = "1450" OR name LIKE "%Advance%Supplier%" OR name LIKE "%Supplier%Advance%" OR name LIKE "%Prepayment%") LIMIT 1'
+      );
+      if (advRows && advRows.length > 0) {
+        finalDebitAccId = advRows[0].id;
+        finalDebitAccName = `${advRows[0].code ? advRows[0].code + ' - ' : ''}${advRows[0].name}`;
+      } else {
+        const [apRows]: any = await conn.query(
+          'SELECT id, code, name FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%") AND type = "Liability" LIMIT 1'
+        );
+        if (apRows && apRows.length > 0) {
+          finalDebitAccId = apRows[0].id;
+          finalDebitAccName = `${apRows[0].code ? apRows[0].code + ' - ' : ''}${apRows[0].name}`;
+        } else {
+          finalDebitAccId = 'acc_2000';
+          finalDebitAccName = '2000 - Accounts Payable';
+        }
+      }
+    }
+
+    // 3. Generate Payment Voucher sequence number
+    await conn.query(`
+      INSERT INTO document_sequences (id, name, prefix, next_number, padding, include_user_prefix, include_customer_prefix, updated_at) 
+      VALUES ('payment_voucher', 'Payment Vouchers', 'PV-', 1001, 4, 0, 0, NOW()) 
+      ON DUPLICATE KEY UPDATE updated_at = NOW()
+    `);
+    const [seqRow]: any = await conn.query("SELECT next_number, padding, prefix FROM document_sequences WHERE id = 'payment_voucher'");
+    const nextSeq = seqRow && seqRow[0] ? seqRow[0].next_number : 1001;
+    const prefix = seqRow && seqRow[0] ? seqRow[0].prefix : 'PV-';
+    const padding = seqRow && seqRow[0] ? seqRow[0].padding : 4;
+    const currentYY = String(new Date().getFullYear()).slice(-2);
+    const voucherNo = data.voucherNo || `${prefix}${currentYY}-${String(nextSeq).padStart(padding, '0')}`;
+    await conn.query("UPDATE document_sequences SET next_number = next_number + 1 WHERE id = 'payment_voucher'");
+
+    const docId = `VOU-PO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const descText = data.notes?.trim() || `Advance Payment for Purchase Order #${poId} (${finalCreditAccName} → ${finalDebitAccName})`;
+
+    const voucherPayload: any = {
+      id: docId,
+      voucherNo,
+      date: formattedDate,
+      payeeType: 'supplier',
+      payeeId: supplierId || null,
+      payeeName: supplierName,
+      category: 'PO Advance Payment',
+      amount: numAmount,
+      paymentMethod,
+      chequeNo: data.chequeNo ? String(data.chequeNo).trim() : null,
+      chequeDate: data.chequeDate || null,
+      bankName: data.bankName ? String(data.bankName).trim() : null,
+      chequeStatus: data.chequeNo ? 'Pending' : null,
+      transactionRef: data.referenceNo ? String(data.referenceNo).trim() : null,
+      bankAccountId: finalCreditAccId,
+      accountId: finalDebitAccId,
+      relatedBillId: null,
+      relatedBillNo: `PO: ${poId}`,
+      poId,
+      description: descText,
+      preparedBy: data.preparedBy || 'Accounts Officer',
+      depositSlip: data.depositSlip || null,
+      status: 'Paid'
+    };
+
+    const [pvCols]: any = await conn.query('SHOW COLUMNS FROM payment_vouchers');
+    const validPvCols = new Set(pvCols.map((c: any) => c.Field));
+    const cleanPvPayload: any = {};
+    for (const [k, v] of Object.entries(voucherPayload)) {
+      if (validPvCols.has(k)) cleanPvPayload[k] = v;
+    }
+    await conn.query('INSERT INTO payment_vouchers SET ?', cleanPvPayload);
+
+    // 4. Record in supplier_ledger
+    if (supplierId) {
+      const ledgerId = `SL-ADV-${voucherNo}`;
+      const ledgerPayload: any = {
+        id: ledgerId,
+        supplierId,
+        poId,
+        date: `${formattedDate} 12:00:00`,
+        type: 'advance',
+        referenceNo: voucherNo,
+        voucherNo,
+        description: `PO Advance Payment (PO #${poId}) via Voucher ${voucherNo}${data.notes ? ' - ' + data.notes : ''}`,
+        debit: 0,
+        credit: numAmount,
+        amount: numAmount,
+        paymentMethod,
+        chequeNo: data.chequeNo || null,
+        chequeDate: data.chequeDate || null,
+        bankName: data.bankName || null,
+        chequeStatus: data.chequeNo ? 'Pending' : null,
+        transactionRef: data.referenceNo || null,
+        depositSlip: data.depositSlip || null,
+        debitAccountId: finalDebitAccId,
+        creditAccountId: finalCreditAccId,
+        debitAccountName: finalDebitAccName,
+        creditAccountName: finalCreditAccName,
+        notes: descText
+      };
+      const [slCols]: any = await conn.query('SHOW COLUMNS FROM supplier_ledger');
+      const validSlCols = new Set(slCols.map((c: any) => c.Field));
+      const cleanSlPayload: any = {};
+      for (const [k, v] of Object.entries(ledgerPayload)) {
+        if (validSlCols.has(k)) cleanSlPayload[k] = v;
+      }
+      await conn.query('INSERT INTO supplier_ledger SET ?', cleanSlPayload);
+    }
+
+    // 5. If Cash payment, also record in cashbook_entries for Daily Cashbook
+    if (paymentMethod === 'Cash') {
+      try {
+        const cbId = `CB-ADV-${Date.now().toString().slice(-6)}`;
+        await conn.query('INSERT INTO cashbook_entries SET ?', {
+          id: cbId,
+          date: formattedDate,
+          time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          entryType: 'OUT',
+          amount: numAmount,
+          particulars: `PO Advance Voucher ${voucherNo} (PO #${poId}): ${supplierName}`,
+          accountId: finalDebitAccId,
+          cashAccountId: finalCreditAccId,
+          referenceNo: voucherNo,
+          partyName: supplierName,
+          createdBy: data.preparedBy || 'Accounts Officer',
+          status: 'approved',
+          source: 'desktop',
+          voucherNo
+        });
+      } catch (cbErr) {
+        console.warn('Cashbook entry warning for PO advance:', cbErr);
+      }
+    }
+
+    // 6. Post General Ledger Journal Entry (Debit: Supplier Advance / AP, Credit: Bank / Cash)
+    const journalId = `JE-${voucherNo}`;
+    await conn.query('INSERT INTO journal_entries SET ?', {
+      id: journalId,
+      date: `${formattedDate} 12:00:00`,
+      reference: voucherNo,
+      description: `PO Advance Payment Voucher ${voucherNo} for PO #${poId} (${supplierName})`,
+      totalAmount: numAmount
+    });
+
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-1`,
+      entryId: journalId,
+      accountId: finalDebitAccId,
+      debit: numAmount,
+      credit: 0,
+      description: `Advance to Vendor (${supplierName}) for PO #${poId}`,
+      partyType: 'Supplier',
+      partyId: supplierId || null
+    });
+
+    const [dAccTypeRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalDebitAccId]);
+    const dAccType = dAccTypeRow?.[0]?.type || 'Asset';
+    if (dAccType === 'Liability' || dAccType === 'Equity' || dAccType === 'Revenue') {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, finalDebitAccId]);
+    } else {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, finalDebitAccId]);
+    }
+
+    await conn.query('INSERT INTO journal_lines SET ?', {
+      id: `JL-${journalId}-2`,
+      entryId: journalId,
+      accountId: finalCreditAccId,
+      debit: 0,
+      credit: numAmount,
+      description: `Paid from ${finalCreditAccName} for PO #${poId} (${voucherNo})`,
+      partyType: 'Supplier',
+      partyId: supplierId || null
+    });
+
+    const [cAccTypeRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [finalCreditAccId]);
+    const cAccType = cAccTypeRow?.[0]?.type || 'Asset';
+    if (cAccType === 'Liability' || cAccType === 'Equity' || cAccType === 'Revenue') {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numAmount, finalCreditAccId]);
+    } else {
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numAmount, finalCreditAccId]);
+    }
+
+    // 7. Update purchase_orders advancePaid and advanceVouchers
+    let currentVouchers: any[] = [];
+    if (po.advanceVouchers) {
+      try {
+        currentVouchers = typeof po.advanceVouchers === 'string' ? JSON.parse(po.advanceVouchers) : po.advanceVouchers;
+      } catch {
+        currentVouchers = [];
+      }
+    }
+    if (!Array.isArray(currentVouchers)) currentVouchers = [];
+
+    const newVoucherSummary = {
+      id: docId,
+      voucherNo,
+      poId,
+      amount: numAmount,
+      date: formattedDate,
+      paymentMethod,
+      chequeNo: data.chequeNo || null,
+      bankName: data.bankName || null,
+      referenceNo: data.referenceNo || null,
+      debitAccountId: finalDebitAccId,
+      debitAccountName: finalDebitAccName,
+      creditAccountId: finalCreditAccId,
+      creditAccountName: finalCreditAccName,
+      description: descText,
+      depositSlip: data.depositSlip || null
+    };
+    currentVouchers.push(newVoucherSummary);
+    const newAdvancePaid = Number(po.advancePaid || 0) + numAmount;
+
+    await conn.query(
+      'UPDATE purchase_orders SET advancePaid = ?, advanceVouchers = ?, updatedAt = NOW() WHERE id = ?',
+      [newAdvancePaid, JSON.stringify(currentVouchers), poId]
+    );
+
+    await conn.commit();
+
+    if (supplierId) {
+      try {
+        await syncSupplierBalance(supplierId);
+      } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      poId,
+      voucherId: docId,
+      voucherNo,
+      advancePaid: newAdvancePaid,
+      voucher: { ...voucherPayload, debitAccountName: finalDebitAccName, creditAccountName: finalCreditAccName }
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('PO advance payment error:', error);
+    res.status(500).json({ error: error.message || 'Failed to record PO advance payment' });
+  } finally {
+    conn.release();
+  }
 });
 
 app.post('/api/purchasing/pos', async (req, res) => {
@@ -10450,7 +10808,72 @@ app.post('/api/purchasing/bills', async (req, res) => {
       data.billNo = data.id;
     }
 
+    // 3. Auto-apply PO Advance Payment (if linked PO has advancePaid not yet consumed by other bills)
+    const targetPoIds: string[] = [];
+    if (data.poId) targetPoIds.push(String(data.poId));
+    if (data.poIds) {
+      try {
+        const parsedPoIds = typeof data.poIds === 'string' ? JSON.parse(data.poIds) : data.poIds;
+        if (Array.isArray(parsedPoIds)) {
+          parsedPoIds.forEach((pid: any) => {
+            if (pid && !targetPoIds.includes(String(pid))) targetPoIds.push(String(pid));
+          });
+        }
+      } catch (e) {}
+    }
+
+    let appliedAdvanceAmount = Number(rawData.advanceApplied || 0);
+    const appliedVoucherNoList: string[] = [];
+
+    if (targetPoIds.length > 0 && rawData.applyPoAdvance !== false) {
+      let totalPoAdvance = 0;
+      for (const pid of targetPoIds) {
+        const [poRows]: any = await db.query('SELECT advancePaid, advanceVouchers FROM purchase_orders WHERE id = ? LIMIT 1', [pid]);
+        if (poRows && poRows.length > 0) {
+          totalPoAdvance += Number(poRows[0].advancePaid || 0);
+          try {
+            const vList = typeof poRows[0].advanceVouchers === 'string' ? JSON.parse(poRows[0].advanceVouchers) : poRows[0].advanceVouchers;
+            if (Array.isArray(vList)) {
+              vList.forEach((v: any) => {
+                if (v?.voucherNo && !appliedVoucherNoList.includes(v.voucherNo)) {
+                  appliedVoucherNoList.push(v.voucherNo);
+                }
+              });
+            }
+          } catch (e) {}
+        }
+        const [prevBills]: any = await db.query('SELECT SUM(COALESCE(advanceApplied, paidAmount, 0)) as usedAdv FROM supplier_bills WHERE poId = ? AND id != ?', [pid, data.id]);
+        const usedOnPrev = Number(prevBills?.[0]?.usedAdv || 0);
+        totalPoAdvance = Math.max(0, totalPoAdvance - usedOnPrev);
+      }
+
+      if (appliedAdvanceAmount <= 0 && totalPoAdvance > 0) {
+        appliedAdvanceAmount = Math.min(Number(data.amount || 0), totalPoAdvance);
+      }
+    }
+
+    if (appliedAdvanceAmount > 0) {
+      const billAmt = Number(data.amount || 0);
+      const finalPaid = Math.min(billAmt, Number(data.paidAmount || 0) + appliedAdvanceAmount);
+      data.paidAmount = finalPaid;
+      if (validCols.has('advanceApplied')) data.advanceApplied = appliedAdvanceAmount;
+      if (validCols.has('advanceVoucherNos') && appliedVoucherNoList.length > 0) {
+        data.advanceVoucherNos = appliedVoucherNoList.join(', ');
+      }
+      data.status = finalPaid >= (billAmt - 0.01) && billAmt > 0 ? 'paid' : (finalPaid > 0.01 ? 'partial' : 'unpaid');
+    }
+
     await db.query('INSERT INTO supplier_bills SET ?', data);
+
+    // Link any PO Advance payment_vouchers to this newly created bill
+    if (appliedAdvanceAmount > 0 && targetPoIds.length > 0) {
+      try {
+        await db.query(
+          'UPDATE payment_vouchers SET relatedBillId = COALESCE(relatedBillId, ?), relatedBillNo = ? WHERE poId IN (?)',
+          [data.id, `PO: ${targetPoIds.join(', ')} → Bill: ${data.invoiceNo || data.id}`, targetPoIds]
+        );
+      } catch (eLink) {}
+    }
 
     // Also automatically create corresponding ledger entry in supplier_ledger
     if (data.supplierId && data.amount) {
@@ -12711,6 +13134,255 @@ app.post('/api/finance/payables/settle', async (req, res) => {
     await conn.rollback();
     console.error('Vendor settlement error:', error);
     res.status(500).json({ error: error.message || 'Failed to settle vendor bills' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Reallocate / Edit an existing Vendor Payment Voucher (updates bills, supplier_ledger, payment_vouchers, and GL journal_entries)
+app.put('/api/finance/payment-vouchers/:id/reallocate', async (req, res) => {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const {
+      supplierId,
+      paymentDate,
+      paymentMethod,
+      creditAccountId,
+      debitAccountId,
+      notes,
+      totalAmount,
+      allocations,
+      reverseBills // optional: [{ billId, amount }]
+    } = req.body;
+
+    // 1. Find existing payment_voucher and/or supplier_ledger record
+    const [pvRows]: any = await conn.query(
+      'SELECT * FROM payment_vouchers WHERE id = ? OR voucherNo = ? LIMIT 1',
+      [id, id]
+    );
+    const pv = pvRows[0] || null;
+
+    const voucherNo = pv?.voucherNo || id.replace(/^VOU-SL-/, '').replace(/^VOU-/, '');
+    const slId = pv?.id?.startsWith('VOU-') ? pv.id.replace(/^VOU-/, '') : `SL-${voucherNo}`;
+
+    const [slRows]: any = await conn.query(
+      'SELECT * FROM supplier_ledger WHERE id = ? OR referenceNo = ? OR voucherNo = ? LIMIT 1',
+      [slId, voucherNo, voucherNo]
+    );
+    const sl = slRows[0] || null;
+
+    if (!pv && !sl) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Payment voucher not found' });
+    }
+
+    const oldAmount = Number(pv?.amount || sl?.amount || sl?.credit || 0);
+    const numTotal = Number(totalAmount !== undefined ? totalAmount : oldAmount);
+    if (isNaN(numTotal) || numTotal <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Total payment amount must be greater than zero' });
+    }
+
+    if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one bill must be selected for allocation' });
+    }
+
+    const validAllocations = allocations.filter((a: any) => Number(a.allocatedAmount) > 0);
+    if (validAllocations.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'At least one bill must have an allocated amount greater than zero' });
+    }
+
+    const totalAllocated = validAllocations.reduce((sum: number, a: any) => sum + Number(a.allocatedAmount), 0);
+    if (Math.abs(numTotal - totalAllocated) > 0.05) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Allocated sum (${totalAllocated.toFixed(2)}) does not match Total Payment Amount (${numTotal.toFixed(2)})`
+      });
+    }
+
+    const targetSupplierId = supplierId || pv?.payeeId || sl?.supplierId;
+
+    // 2. Reverse previous bill allocations
+    if (Array.isArray(reverseBills) && reverseBills.length > 0) {
+      for (const rb of reverseBills) {
+        const revAmt = Number(rb.amount || 0);
+        if (revAmt <= 0 || !rb.billId) continue;
+        const [bRows]: any = await conn.query('SELECT * FROM supplier_bills WHERE id = ? OR invoiceNo = ? LIMIT 1', [rb.billId, rb.billId]);
+        if (bRows.length > 0) {
+          const b = bRows[0];
+          const bTotal = Number(b.amount || 0);
+          const newPaid = Math.max(0, Number(b.paidAmount || 0) - revAmt);
+          const newStatus = newPaid >= (bTotal - 0.01) ? 'paid' : (newPaid > 0.01 ? 'partial' : 'unpaid');
+          await conn.query('UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?', [newPaid, newStatus, b.id]);
+        }
+      }
+    } else if (pv?.relatedBillId) {
+      const [bRows]: any = await conn.query('SELECT * FROM supplier_bills WHERE id = ? LIMIT 1', [pv.relatedBillId]);
+      if (bRows.length > 0) {
+        const b = bRows[0];
+        const bTotal = Number(b.amount || 0);
+        const newPaid = Math.max(0, Number(b.paidAmount || 0) - oldAmount);
+        const newStatus = newPaid >= (bTotal - 0.01) ? 'paid' : (newPaid > 0.01 ? 'partial' : 'unpaid');
+        await conn.query('UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?', [newPaid, newStatus, b.id]);
+      }
+    }
+
+    // 3. Apply new bill allocations
+    const settledBillNumbers: string[] = [];
+    const settledBillIds: string[] = [];
+    for (const alloc of validAllocations) {
+      const allocAmt = Number(alloc.allocatedAmount);
+      const [billRows]: any = await conn.query(
+        'SELECT * FROM supplier_bills WHERE id = ? OR invoiceNo = ? LIMIT 1',
+        [alloc.billId, alloc.billId]
+      );
+      if (billRows.length === 0) continue;
+      const b = billRows[0];
+      const bTotal = Number(b.amount || 0);
+      const prevPaid = Number(b.paidAmount || 0);
+      const newPaid = prevPaid + allocAmt;
+      const newStatus = newPaid >= (bTotal - 0.01) ? 'paid' : (newPaid > 0.01 ? 'partial' : 'unpaid');
+
+      await conn.query(
+        'UPDATE supplier_bills SET paidAmount = ?, status = ?, updatedAt = NOW() WHERE id = ?',
+        [newPaid, newStatus, b.id]
+      );
+      settledBillNumbers.push(b.invoiceNo || b.id);
+      settledBillIds.push(b.id);
+    }
+
+    const settledBillsText = settledBillNumbers.join(', ');
+    const formattedDate = paymentDate ? String(paymentDate).slice(0, 10) : (pv?.date ? String(pv.date).slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const finalMethod = paymentMethod || pv?.paymentMethod || sl?.paymentMethod || 'Bank Transfer';
+    const finalDesc = notes?.trim() || `Payment for Bill(s): ${settledBillsText}`;
+
+    // 4. Update supplier_ledger
+    if (sl) {
+      await conn.query(
+        `UPDATE supplier_ledger SET
+          date = ?, description = ?, credit = ?, amount = ?, paymentMethod = ?,
+          debitAccountId = COALESCE(?, debitAccountId),
+          creditAccountId = COALESCE(?, creditAccountId)
+         WHERE id = ?`,
+        [`${formattedDate} 12:00:00`, finalDesc, numTotal, numTotal, finalMethod, debitAccountId || null, creditAccountId || null, sl.id]
+      );
+    }
+
+    // 5. Update payment_vouchers
+    if (pv) {
+      await conn.query(
+        `UPDATE payment_vouchers SET
+          date = ?, amount = ?, paymentMethod = ?, description = ?,
+          relatedBillId = ?, relatedBillNo = ?,
+          bankAccountId = COALESCE(?, bankAccountId),
+          accountId = COALESCE(?, accountId)
+         WHERE id = ?`,
+        [
+          formattedDate,
+          numTotal,
+          finalMethod,
+          finalDesc,
+          settledBillIds[0] || null,
+          settledBillsText || null,
+          creditAccountId || null,
+          debitAccountId || null,
+          pv.id
+        ]
+      );
+    }
+
+    // 6. Update General Ledger Journal Entry & Lines
+    const journalId = `JE-${voucherNo}`;
+    const [jeRows]: any = await conn.query(
+      'SELECT * FROM journal_entries WHERE id = ? OR reference = ? LIMIT 1',
+      [journalId, voucherNo]
+    );
+    if (jeRows.length > 0) {
+      const je = jeRows[0];
+      const [lines]: any = await conn.query('SELECT * FROM journal_lines WHERE entryId = ?', [je.id]);
+
+      // Reverse old COA balances from existing lines
+      for (const ln of lines) {
+        const lnDebit = Number(ln.debit || 0);
+        const lnCredit = Number(ln.credit || 0);
+        const [accRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [ln.accountId]);
+        const accType = accRow[0]?.type || 'Asset';
+        // Normal balance: Asset/Expense = Debit+, Liability/Equity/Revenue = Credit+
+        if (accType === 'Liability' || accType === 'Equity' || accType === 'Revenue') {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance + ? - ? WHERE id = ?', [lnDebit, lnCredit, ln.accountId]);
+        } else {
+          await conn.query('UPDATE chart_of_accounts SET balance = balance - ? + ? WHERE id = ?', [lnDebit, lnCredit, ln.accountId]);
+        }
+      }
+
+      const oldDebitLine = lines.find((l: any) => Number(l.debit) > 0);
+      const oldCreditLine = lines.find((l: any) => Number(l.credit) > 0);
+      const newDebitAccId = debitAccountId || oldDebitLine?.accountId || sl?.debitAccountId || 'acc_2000';
+      const newCreditAccId = creditAccountId || oldCreditLine?.accountId || sl?.creditAccountId || 'acc_1000';
+
+      await conn.query(
+        'UPDATE journal_entries SET date = ?, description = ?, totalAmount = ? WHERE id = ?',
+        [`${formattedDate} 12:00:00`, `Vendor Bill Payment Voucher: ${voucherNo} (${settledBillsText})`, numTotal, je.id]
+      );
+
+      await conn.query('DELETE FROM journal_lines WHERE entryId = ?', [je.id]);
+
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${je.id}-1`,
+        entryId: je.id,
+        accountId: newDebitAccId,
+        debit: numTotal,
+        credit: 0,
+        description: `Settlement of AP for Bills: ${settledBillsText}`,
+        partyType: 'Supplier',
+        partyId: targetSupplierId || null
+      });
+      await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, newDebitAccId]);
+
+      await conn.query('INSERT INTO journal_lines SET ?', {
+        id: `JL-${je.id}-2`,
+        entryId: je.id,
+        accountId: newCreditAccId,
+        debit: 0,
+        credit: numTotal,
+        description: `Disbursement for: ${settledBillsText}`,
+        partyType: 'Supplier',
+        partyId: targetSupplierId || null
+      });
+
+      const [cAccRow]: any = await conn.query('SELECT type FROM chart_of_accounts WHERE id = ? LIMIT 1', [newCreditAccId]);
+      const cAccType = cAccRow[0]?.type || 'Asset';
+      if (cAccType === 'Liability' || cAccType === 'Equity' || cAccType === 'Revenue') {
+        await conn.query('UPDATE chart_of_accounts SET balance = balance + ? WHERE id = ?', [numTotal, newCreditAccId]);
+      } else {
+        await conn.query('UPDATE chart_of_accounts SET balance = balance - ? WHERE id = ?', [numTotal, newCreditAccId]);
+      }
+    }
+
+    await conn.commit();
+
+    if (targetSupplierId) {
+      try {
+        await syncSupplierBalance(targetSupplierId);
+      } catch (eSync) {}
+    }
+
+    res.json({
+      success: true,
+      voucherNo,
+      settledBills: settledBillNumbers,
+      totalAmount: numTotal,
+      journalEntryId: journalId
+    });
+  } catch (error: any) {
+    await conn.rollback();
+    console.error('Reallocate vendor payment error:', error);
+    res.status(500).json({ error: error.message || 'Failed to reallocate vendor payment' });
   } finally {
     conn.release();
   }
@@ -14991,11 +15663,15 @@ app.get('/api/finance/daily-cash-flow', async (req, res) => {
         pv.bankName,
         CASE WHEN pv.paymentMethod = 'Cheque' OR pv.chequeNo IS NOT NULL THEN COALESCE(pv.chequeStatus, 'Pending') ELSE NULL END as chequeStatus,
         pv.transactionRef,
-        COALESCE(acc.name, 'Bank/Cash') as accountName,
+        CASE
+          WHEN bankAcc.name IS NOT NULL AND acc.name IS NOT NULL AND bankAcc.id != acc.id THEN CONCAT(bankAcc.name, ' → ', acc.name)
+          ELSE COALESCE(bankAcc.name, acc.name, 'Bank/Cash')
+        END as accountName,
         COALESCE(pv.preparedBy, 'Finance') as handledBy,
         pv.depositSlip,
         'payment_vouchers' as sourceTable
       FROM payment_vouchers pv
+      LEFT JOIN chart_of_accounts bankAcc ON pv.bankAccountId = bankAcc.id
       LEFT JOIN chart_of_accounts acc ON pv.accountId = acc.id
       WHERE pv.date BETWEEN ? AND ?
     `, [start, end]);

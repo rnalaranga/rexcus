@@ -19,6 +19,8 @@ import { ProductAutocomplete } from '@/components/ui/ProductAutocomplete';
 import { SupplierAutocomplete } from '@/components/ui/SupplierAutocomplete';
 import { QuickSupplierModal } from '@/components/purchasing/QuickSupplierModal';
 import { QuickItemModal } from '@/components/purchasing/QuickItemModal';
+import { RecordPoAdvanceModal } from '@/components/purchasing/RecordPoAdvanceModal';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
 import { POPrintView } from '@/components/purchasing/POPrintView';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,7 +64,7 @@ export const POBuilder: React.FC = () => {
   const { data: suppliers, refetch: refetchSuppliers } = useSuppliers();
   const { data: inventory, refetch: refetchInventory } = useInventory();
   const { data: mrs } = useMaterialRequests();
-  const { data: pos } = usePurchaseOrders();
+  const { data: pos, refetch: refetchPOs } = usePurchaseOrders();
   const { data: taxProfiles } = useTaxProfiles();
   const { data: allBills } = useBills();
   const { settings } = useSettings();
@@ -70,6 +72,8 @@ export const POBuilder: React.FC = () => {
 
   const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
   const [showQuickItemModal, setShowQuickItemModal] = useState(false);
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null);
 
   const handleSupplierCreated = (newSupplier: any) => {
     refetchSuppliers();
@@ -1351,6 +1355,92 @@ export const POBuilder: React.FC = () => {
               </div>
             </GlassCard>
 
+            {/* PO ADVANCE PAYMENTS & VOUCHERS SECTION */}
+            <GlassCard className="p-5 border-t-2 border-t-emerald-500 space-y-4">
+              {(() => {
+                const currentPoRecord = pos.find((p: any) => p.id === docNo);
+                const advPaid = Number(currentPoRecord?.advancePaid || 0);
+                const advVouchers: any[] = Array.isArray(currentPoRecord?.advanceVouchers) ? currentPoRecord.advanceVouchers : [];
+                const selectedSupp = suppliers.find((s: any) => s.id === supplierId);
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-[12px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-2">
+                        <CreditCard size={16} /> PO Advance Payments ({advVouchers.length})
+                      </h2>
+                      <Badge
+                        value={advPaid >= grandTotal - 0.01 && grandTotal > 0 ? 'Advance Paid (Full)' : advPaid > 0 ? 'Advance Paid' : 'No Advance'}
+                        size="sm"
+                      />
+                    </div>
+
+                    <div className="bg-surface/50 p-3 rounded-lg border border-theme-subtle space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted">PO Total Value:</span>
+                        <span className="font-mono font-bold text-primary">{formatCurrency(grandTotal, true)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted">Advance Paid to Vendor:</span>
+                        <span className="font-mono font-bold text-emerald-500">{formatCurrency(advPaid, true)}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle">
+                        <span className="font-semibold text-primary">Remaining Balance on PO:</span>
+                        <span className="font-mono font-black text-amber-500">
+                          {formatCurrency(Math.max(0, grandTotal - advPaid), true)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!id}
+                      onClick={() => setShowAdvanceModal(true)}
+                      className="w-full text-xs font-bold py-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+                      title={!id ? 'Save the Purchase Order first before recording an advance payment' : 'Record Vendor Advance Payment & Issue Payment Voucher'}
+                    >
+                      + Pay Vendor Advance (Issue Payment Voucher)
+                    </Button>
+
+                    {advVouchers.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-theme-subtle">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted block">
+                          Issued Advance Vouchers for this PO
+                        </span>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {advVouchers.map((v: any, idx: number) => (
+                            <div key={v.id || v.voucherNo || idx} className="p-2 bg-surface2/60 border border-theme-subtle rounded flex items-center justify-between text-xs">
+                              <div>
+                                <p className="font-bold text-emerald-500 font-mono">{v.voucherNo}</p>
+                                <p className="text-[10px] text-muted">{v.date} • {v.paymentMethod}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-primary">{formatCurrency(Number(v.amount || 0), true)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPrintVoucher({
+                                      ...v,
+                                      payeeName: selectedSupp?.company || selectedSupp?.name || 'Vendor',
+                                      category: 'PO Advance Payment',
+                                      relatedBillNo: `PO: ${docNo}`,
+                                    })
+                                  }
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded hover:bg-blue-500/20 flex items-center gap-1"
+                                >
+                                  <Printer size={10} /> Print
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </GlassCard>
+
             {/* VENDOR INVOICES & BILLS SECTION (Multi-Invoice Support) */}
             <GlassCard className="p-5 border-t-2 border-t-amber-500 space-y-4">
               <div className="flex items-center justify-between">
@@ -1696,6 +1786,26 @@ export const POBuilder: React.FC = () => {
         </div>
       </Modal>
     )}
+
+    {showAdvanceModal && (
+      <RecordPoAdvanceModal
+        isOpen={showAdvanceModal}
+        onClose={() => setShowAdvanceModal(false)}
+        po={pos.find((p: any) => p.id === docNo) || { id: docNo, supplierId, totalAmount: grandTotal, date }}
+        supplierName={suppliers.find((s: any) => s.id === supplierId)?.company || suppliers.find((s: any) => s.id === supplierId)?.name || 'Vendor'}
+        toast={toast}
+        onSuccess={() => {
+          refetchPOs();
+        }}
+        onPrintVoucher={(v) => setPrintVoucher(v)}
+      />
+    )}
+
+    <PaymentVoucherPrintModal
+      isOpen={Boolean(printVoucher)}
+      onClose={() => setPrintVoucher(null)}
+      voucher={printVoucher}
+    />
   </div>
   );
 };

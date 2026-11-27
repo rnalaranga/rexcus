@@ -34,6 +34,7 @@ export const PayablesHub: React.FC = () => {
   const [loadingAging, setLoadingAging] = useState(true);
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
   const [showMultiSettlement, setShowMultiSettlement] = useState<boolean>(false);
+  const [editingVoucher, setEditingVoucher] = useState<any | null>(null);
   const [multiSettlementSupplier, setMultiSettlementSupplier] = useState<any | null>(null);
   const [vouchers, setVouchers] = useState<any[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
@@ -758,6 +759,20 @@ export const PayablesHub: React.FC = () => {
                             >
                               View / Print
                             </Button>
+                            {v.payeeType === 'supplier' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingVoucher(v);
+                                  setMultiSettlementSupplier(suppliers.find((s: any) => s.id === v.payeeId) || { id: v.payeeId, name: v.payeeName });
+                                  setShowMultiSettlement(true);
+                                }}
+                                className="h-7 text-[11px] text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                              >
+                                Edit / Reallocate
+                              </Button>
+                            )}
                             {v.depositSlip && (
                               <Button
                                 variant="outline"
@@ -825,14 +840,16 @@ export const PayablesHub: React.FC = () => {
           onClose={() => {
             setShowMultiSettlement(false);
             setMultiSettlementSupplier(null);
+            setEditingVoucher(null);
           }}
           supplier={multiSettlementSupplier}
           allSuppliers={suppliers}
           openBills={bills}
+          editingVoucher={editingVoucher}
           onSuccess={() => {
             refetchBills();
             loadAging();
-            toast?.('Vendor bills settled successfully!', 'success');
+            toast?.(editingVoucher ? 'Payment reallocated & GL updated!' : 'Vendor bills settled successfully!', 'success');
           }}
         />
       )}

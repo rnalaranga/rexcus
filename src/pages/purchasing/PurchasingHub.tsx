@@ -26,6 +26,8 @@ import { PageHelpButton } from '@/components/help/PageHelpButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { RecordBillPaymentModal } from '@/components/purchasing/RecordBillPaymentModal';
+import { RecordPoAdvanceModal } from '@/components/purchasing/RecordPoAdvanceModal';
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal';
 import { ViewVendorBillModal } from '@/components/purchasing/ViewVendorBillModal';
 
 type Tab = 'po' | 'mr' | 'grn' | 'bill' | 'gate_pass';
@@ -45,6 +47,8 @@ export const PurchasingHub: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [paymentBill, setPaymentBill] = useState<any | null>(null);
+  const [advancePo, setAdvancePo] = useState<any | null>(null);
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null);
   const [viewingBill, setViewingBill] = useState<any | null>(null);
   const navigate = useNavigate();
 
@@ -447,6 +451,44 @@ export const PurchasingHub: React.FC = () => {
                   >
                     <PackageCheck size={13} className="text-emerald-500" />
                     <span>{row.status?.toLowerCase() === 'partially_received' ? 'Receive Balance (GRN)' : 'Receive GRN'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  data-no-row-click="true"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDropdown();
+                    setAdvancePo(row);
+                  }}
+                  className="w-full text-left px-3.5 py-1.5 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 cursor-pointer transition-colors font-bold"
+                >
+                  <CreditCard size={13} className="text-emerald-500" />
+                  <span>Pay Vendor Advance (+ Voucher)</span>
+                </button>
+
+                {Array.isArray(row.advanceVouchers) && row.advanceVouchers.length > 0 && (
+                  <button
+                    type="button"
+                    data-no-row-click="true"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeDropdown();
+                      const latestV = row.advanceVouchers[row.advanceVouchers.length - 1];
+                      setPrintVoucher({
+                        ...latestV,
+                        payeeName: getSupplierName(row.supplierId),
+                        category: 'PO Advance Payment',
+                        relatedBillNo: `PO: ${row.id}`,
+                      });
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 flex items-center gap-2 cursor-pointer transition-colors font-medium"
+                  >
+                    <Printer size={13} className="text-purple-500" />
+                    <span>Print Advance Voucher ({row.advanceVouchers[row.advanceVouchers.length - 1].voucherNo})</span>
                   </button>
                 )}
 
@@ -1022,14 +1064,40 @@ export const PurchasingHub: React.FC = () => {
           key: 'totalAmount', header: 'Value & Tax / Paid', align: 'right', sortable: true,
           render: (v, row) => {
             const matchedBills = bills.filter((b: any) => b.poId === row.id || (row.invoiceNos && row.invoiceNos.includes(b.invoiceNo)));
-            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const billPaid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const advPaid = Number(row.advancePaid || 0);
+            const advVouchers: any[] = Array.isArray(row.advanceVouchers) ? row.advanceVouchers : [];
+            const totalPaid = Math.max(billPaid, advPaid);
             return (
               <div className="text-right">
                 <span className="text-xs font-black font-mono text-primary block">{formatCurrency(Number(v || 0))}</span>
                 {renderTaxPills(row)}
-                {paid > 0 && (
-                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
-                    Paid: {formatCurrency(paid, true)}
+                {advPaid > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (advVouchers.length > 0) {
+                        const latestV = advVouchers[advVouchers.length - 1];
+                        setPrintVoucher({
+                          ...latestV,
+                          payeeName: getSupplierName(row.supplierId),
+                          category: 'PO Advance Payment',
+                          relatedBillNo: `PO: ${row.id}`,
+                        });
+                      } else {
+                        setAdvancePo(row);
+                      }
+                    }}
+                    className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer"
+                    title="Click to View / Print PO Advance Payment Voucher"
+                  >
+                    Adv Paid: {formatCurrency(advPaid, true)}
+                  </button>
+                )}
+                {billPaid > 0 && billPaid > advPaid && (
+                  <span className="inline-block mt-1 ml-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-blue-500/10 text-blue-600 border border-blue-500/25">
+                    Paid: {formatCurrency(totalPaid, true)}
                   </span>
                 )}
               </div>
@@ -1110,6 +1178,23 @@ export const PurchasingHub: React.FC = () => {
               });
             });
 
+            const advVouchers: any[] = Array.isArray(row.advanceVouchers) ? row.advanceVouchers : [];
+            advVouchers.forEach((v: any) => {
+              traces.push({
+                type: 'receipt',
+                title: 'PO Advance Payment Voucher',
+                reference: v.voucherNo || v.id,
+                subtitle: `Advance Paid: ${formatCurrency(Number(v.amount || 0))} • ${v.paymentMethod || 'Bank Transfer'}`,
+                statusBadge: { label: 'Advance Paid', variant: 'success' },
+                onClick: () => setPrintVoucher({
+                  ...v,
+                  payeeName: getSupplierName(row.supplierId),
+                  category: 'PO Advance Payment',
+                  relatedBillNo: `PO: ${row.id}`
+                })
+              });
+            });
+
             return (
               <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
                 <TraceabilityDropdown
@@ -1127,10 +1212,15 @@ export const PurchasingHub: React.FC = () => {
             const billed = matchedBills.length > 0
               ? matchedBills.reduce((s: number, b: any) => s + Number(b.amount || b.totalAmount || 0), 0)
               : Number(row.billedAmount || 0);
-            const paid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const billPaid = matchedBills.reduce((s: number, b: any) => s + Number(b.paidAmount || 0), 0);
+            const advPaid = Number(row.advancePaid || 0);
             const total = Number(row.totalAmount || 0);
             const bStatus = row.billingStatus || (billed >= total - 0.01 && total > 0 ? 'billed' : billed > 0 ? 'partially_billed' : 'unbilled');
-            const pStatus = paid >= billed - 0.01 && billed > 0 ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
+            const pStatus = (billPaid >= billed - 0.01 && billed > 0) || (advPaid >= total - 0.01 && total > 0)
+              ? 'Paid'
+              : (billPaid > 0 || advPaid > 0)
+              ? 'Adv / Partial'
+              : 'Unpaid';
             return (
               <div className="flex flex-col items-center gap-1">
                 <Badge value={String(v)} size="sm" />
@@ -1139,9 +1229,17 @@ export const PurchasingHub: React.FC = () => {
                     ? 'bg-blue-500/10 text-blue-600 border-blue-500/25'
                     : bStatus === 'partially_billed'
                     ? 'bg-amber-500/10 text-amber-600 border-amber-500/25'
+                    : advPaid > 0
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                     : 'bg-surface2 text-muted border-theme-subtle'
                 }`}>
-                  {bStatus === 'billed' ? `Billed • ${pStatus}` : bStatus === 'partially_billed' ? `Part. Billed • ${pStatus}` : 'Unbilled'}
+                  {bStatus === 'billed'
+                    ? `Billed • ${pStatus}`
+                    : bStatus === 'partially_billed'
+                    ? `Part. Billed • ${pStatus}`
+                    : advPaid > 0
+                    ? (advPaid >= total - 0.01 && total > 0 ? 'Advance Paid (Full)' : 'Advance Paid')
+                    : 'Unbilled'}
                 </span>
               </div>
             );
@@ -1151,6 +1249,14 @@ export const PurchasingHub: React.FC = () => {
           key: 'actions', header: 'Actions', align: 'right',
           render: (_, row) => (
             <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setAdvancePo(row)}
+                className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+                title="Pay Vendor Advance & Issue Payment Voucher for this PO"
+              >
+                <CreditCard size={11} /> Pay Adv
+              </button>
               {row.status !== 'received' && (
                 <button
                   type="button"
@@ -2203,6 +2309,29 @@ export const PurchasingHub: React.FC = () => {
           onPayBill={(b) => setPaymentBill(b)}
         />
       )}
+
+      {/* Record PO Advance Payment & Issue Payment Voucher Modal */}
+      {advancePo && (
+        <RecordPoAdvanceModal
+          isOpen={Boolean(advancePo)}
+          onClose={() => setAdvancePo(null)}
+          po={advancePo}
+          supplierName={getSupplierName(advancePo.supplierId)}
+          toast={toast}
+          onSuccess={() => {
+            refetchPOs();
+            refetchBills();
+          }}
+          onPrintVoucher={(v) => setPrintVoucher(v)}
+        />
+      )}
+
+      {/* Print PO Advance Payment Voucher Modal */}
+      <PaymentVoucherPrintModal
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
+        voucher={printVoucher}
+      />
     </div>
   );
 };

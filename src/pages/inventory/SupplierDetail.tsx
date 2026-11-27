@@ -12,9 +12,12 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { useSupplierLedger } from '@/hooks/useData'
+import { usePurchaseOrders } from '@/hooks/usePurchasing'
 import { useAccounts } from '@/hooks/useFinance'
 import { fetchSupplierById, updateSupplier, createSupplierLedgerEntry, deleteSupplierLedgerEntry, uploadFileToStorage } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { RecordPoAdvanceModal } from '@/components/purchasing/RecordPoAdvanceModal'
+import { PaymentVoucherPrintModal } from '@/components/finance/PaymentVoucherPrintModal'
 
 const TRANSACTION_TYPES = [
   { value: 'purchase', label: 'Purchase / Invoice', icon: '📦', debitSide: 'debit', badgeColor: 'bg-red-500/10 text-red-500 border-red-500/20' },
@@ -30,6 +33,7 @@ export const SupplierDetail: React.FC = () => {
   const [supplier, setSupplier] = useState<any>(null)
   const [loadingSupplier, setLoadingSupplier] = useState(true)
   const { data: ledger, loading: loadingLedger, refetch, setData } = useSupplierLedger(id || '')
+  const { data: allPos = [], refetch: refetchPOs } = usePurchaseOrders()
   const { data: accounts } = useAccounts()
   
   // Modals state
@@ -38,6 +42,12 @@ export const SupplierDetail: React.FC = () => {
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [advancePo, setAdvancePo] = useState<any | null>(null)
+  const [printVoucher, setPrintVoucher] = useState<any | null>(null)
+
+  const supplierPOs = useMemo(() => {
+    return (allPos || []).filter((p: any) => String(p.supplierId) === String(id));
+  }, [allPos, id])
   
   const [submittingLedger, setSubmittingLedger] = useState(false)
   const [savingSupplier, setSavingSupplier] = useState(false)
@@ -897,6 +907,116 @@ export const SupplierDetail: React.FC = () => {
 
       </div>
 
+      {/* Purchase Orders & PO Advance Payments Section */}
+      {supplierPOs.length > 0 && (
+        <GlassCard className="p-5 border-t-2 border-t-emerald-500 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-primary uppercase tracking-wider flex items-center gap-2">
+                <Package size={16} className="text-emerald-500" />
+                Purchase Orders &amp; Advance Payments ({supplierPOs.length})
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Track Purchase Orders issued to {supplier.name}, advance payments paid, and linked Payment Vouchers
+              </p>
+            </div>
+            <div className="text-right font-mono text-xs">
+              <span className="text-muted">Total PO Advances Paid: </span>
+              <strong className="text-emerald-500 text-sm">
+                {formatCurrency(
+                  supplierPOs.reduce((s: number, p: any) => s + Number(p.advancePaid || 0), 0),
+                  true
+                )}
+              </strong>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-theme-subtle rounded-lg">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-surface2/60 border-b border-theme-subtle text-[10px] uppercase font-bold text-muted">
+                  <th className="py-2.5 px-3">PO #</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3 text-right">PO Total</th>
+                  <th className="py-2.5 px-3 text-right">Advance Paid</th>
+                  <th className="py-2.5 px-3">Advance Payment Vouchers</th>
+                  <th className="py-2.5 px-3 text-center">Status</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-theme-subtle">
+                {supplierPOs.map((po: any) => {
+                  const advPaid = Number(po.advancePaid || 0);
+                  const advVouchers: any[] = Array.isArray(po.advanceVouchers) ? po.advanceVouchers : [];
+                  return (
+                    <tr key={po.id} className="hover:bg-surface2/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/purchasing/po-builder/${po.id}`)}
+                          className="hover:underline"
+                        >
+                          {po.id}
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-muted">
+                        {po.date ? String(po.date).slice(0, 10) : '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-primary">
+                        {formatCurrency(Number(po.totalAmount || 0), true)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-500">
+                        {advPaid > 0 ? formatCurrency(advPaid, true) : '—'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {advVouchers.length === 0 ? (
+                          <span className="text-[11px] text-muted italic">No advance voucher</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {advVouchers.map((v: any, idx: number) => (
+                              <button
+                                key={v.id || v.voucherNo || idx}
+                                type="button"
+                                onClick={() =>
+                                  setPrintVoucher({
+                                    ...v,
+                                    payeeName: supplier.name,
+                                    category: 'PO Advance Payment',
+                                    relatedBillNo: `PO: ${po.id}`,
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25"
+                                title="Click to View / Print Payment Voucher"
+                              >
+                                <Printer size={10} />
+                                {v.voucherNo} ({formatCurrency(Number(v.amount || 0))})
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <Badge value={po.status || 'Ordered'} size="sm" />
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAdvancePo(po)}
+                          className="h-7 px-2.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                        >
+                          + Pay Advance
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+      )}
+
       {/* Supplier Transaction Ledger & Statement Section */}
       <GlassCard className="p-0 overflow-hidden border border-theme-subtle">
         
@@ -1062,7 +1182,18 @@ export const SupplierDetail: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs font-mono font-semibold text-primary">
-                        {row.referenceNo || row.reference || '—'}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{row.referenceNo || row.reference || '—'}</span>
+                          {row.poId && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/purchasing/po-builder/${row.poId}`)}
+                              className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:underline"
+                            >
+                              PO: {row.poId}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-secondary max-w-xs">
                         <div className="truncate font-medium">{row.description || row.notes || '—'}</div>
@@ -1122,13 +1253,41 @@ export const SupplierDetail: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setDeleteTarget(row.id)}
-                          className="p-1 hover:bg-red-500/20 rounded-md text-muted hover:text-red-500 transition-colors"
-                          title="Delete Entry"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {(row.type === 'payment' || row.type === 'advance') && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPrintVoucher({
+                                  id: row.id,
+                                  voucherNo: row.voucherNo || row.referenceNo || row.id,
+                                  date: String(row.date).slice(0, 10),
+                                  payeeName: supplier.name,
+                                  category: row.type === 'advance' ? 'PO Advance Payment' : 'Vendor Bill Payment',
+                                  amount: Number(row.credit || row.amount || 0),
+                                  paymentMethod: row.paymentMethod || 'Bank Transfer',
+                                  chequeNo: row.chequeNo,
+                                  chequeDate: row.chequeDate,
+                                  bankName: row.bankName,
+                                  relatedBillNo: row.poId ? `PO: ${row.poId}` : row.referenceNo,
+                                  description: row.description,
+                                  depositSlip: row.depositSlip,
+                                })
+                              }
+                              className="p-1 hover:bg-blue-500/20 rounded-md text-blue-500 transition-colors"
+                              title="View / Print Payment Voucher"
+                            >
+                              <Printer size={13} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setDeleteTarget(row.id)}
+                            className="p-1 hover:bg-red-500/20 rounded-md text-muted hover:text-red-500 transition-colors"
+                            title="Delete Entry"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -2217,6 +2376,30 @@ export const SupplierDetail: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* PO Advance Payment Modal */}
+      {advancePo && (
+        <RecordPoAdvanceModal
+          isOpen={Boolean(advancePo)}
+          onClose={() => setAdvancePo(null)}
+          po={advancePo}
+          supplierName={supplier?.name}
+          toast={(msg, type) => showToast(type === 'error' ? 'error' : 'success', msg)}
+          onSuccess={() => {
+            refetch();
+            refetchPOs();
+            loadSupplierData();
+          }}
+          onPrintVoucher={(v) => setPrintVoucher(v)}
+        />
+      )}
+
+      {/* Print Payment Voucher Modal */}
+      <PaymentVoucherPrintModal
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
+        voucher={printVoucher}
+      />
     </div>
   )
 }

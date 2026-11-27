@@ -62,6 +62,7 @@ const CustomReportBuilder = lazy(() => import('@/pages/finance/CustomReportBuild
 const FinanceDashboard = lazy(() => import('@/pages/finance/FinanceDashboard').then(m => ({ default: m.FinanceDashboard })))
 
 // Lazy-loaded Production Pages
+const DesignerDashboard = lazy(() => import('@/pages/production/DesignerDashboard').then(m => ({ default: m.DesignerDashboard })))
 const Machinery = lazy(() => import('@/pages/production/Machinery').then(m => ({ default: m.Machinery })))
 const WorkshopPlanning = lazy(() => import('@/pages/production/WorkshopPlanning').then(m => ({ default: m.WorkshopPlanning })))
 const WorkOrders = lazy(() => import('@/pages/production/WorkOrders').then(m => ({ default: m.WorkOrders })))
@@ -215,6 +216,8 @@ function AppRoutes() {
 
             {/* Production */}
             <Route path="/production" element={<WorkOrders />} />
+            <Route path="/production/designer" element={<DesignerDashboard />} />
+            <Route path="/designer" element={<Navigate to="/production/designer" replace />} />
             <Route path="/production/work-orders" element={<WorkOrders />} />
             <Route path="/production/work-orders/:id/adjust" element={<WorkOrderAdjustPage />} />
             <Route path="/production/work-orders/:id" element={<WorkOrderDetail />} />

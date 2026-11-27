@@ -329,6 +329,25 @@ export const BillBuilder: React.FC = () => {
     return Math.max(0, Number((combinedPoTotal - combinedBilledSoFar).toFixed(2)));
   }, [combinedPoTotal, combinedBilledSoFar]);
 
+  const [applyPoAdvance, setApplyPoAdvance] = useState<boolean>(true);
+
+  // Total PO Advance Paid & Available to Deduct on this Bill
+  const combinedPoAdvanceTotal = useMemo(() => {
+    return activeLinkedPOs.reduce((sum: number, p: any) => sum + Number(p.advancePaid || 0), 0);
+  }, [activeLinkedPOs]);
+
+  const combinedAdvanceVouchers = useMemo(() => {
+    return activeLinkedPOs.flatMap((p: any) => (Array.isArray(p.advanceVouchers) ? p.advanceVouchers : []));
+  }, [activeLinkedPOs]);
+
+  const availablePoAdvance = useMemo(() => {
+    const usedOnPrevBills = activePoBills.reduce(
+      (sum: number, b: any) => sum + Number(b.advanceApplied ?? b.paidAmount ?? 0),
+      0
+    );
+    return Math.max(0, Number((combinedPoAdvanceTotal - usedOnPrevBills).toFixed(2)));
+  }, [combinedPoAdvanceTotal, activePoBills]);
+
   // Unbilled / Open POs for current supplier
   const unbilledPOsForVendor = useMemo(() => {
     if (!supplierId) return [];
@@ -485,6 +504,18 @@ export const BillBuilder: React.FC = () => {
     });
   }, [activeLinkedPoIds, supplierId, grns]);
 
+  // If PO is selected and no GRN is chosen yet, automatically select the matching GRN so final bill takes GRN value
+  useEffect(() => {
+    if (!idParam && !grnId && activeLinkedPoIds.length > 0 && matchingGRNs.length > 0) {
+      const billedGrnIds = new Set(activePoBills.map((b: any) => b.grnId).filter(Boolean));
+      const unbilledGrn = matchingGRNs.find((g: any) => !billedGrnIds.has(g.id)) || matchingGRNs[0];
+      if (unbilledGrn) {
+        setGrnId(unbilledGrn.id);
+        loadItemsFromGRN(unbilledGrn.id);
+      }
+    }
+  }, [idParam, grnId, activeLinkedPoIds, matchingGRNs, activePoBills]);
+
   // Tax calculations for Bill
   const selectedTaxProfile = taxProfiles.find((t: any) => t.id === taxProfileId);
   let totalTax = 0;
@@ -605,6 +636,8 @@ export const BillBuilder: React.FC = () => {
   }
 
   const grandTotalBillValue = isTaxInclusive ? amount : (amount + totalTax);
+  const appliedAdvanceAmount = applyPoAdvance ? Math.min(grandTotalBillValue, availablePoAdvance) : 0;
+  const netPayableAfterAdvance = Math.max(0, Number((grandTotalBillValue - appliedAdvanceAmount).toFixed(2)));
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -724,6 +757,10 @@ export const BillBuilder: React.FC = () => {
         taxBreakdown: taxEnabled && taxBreakdown ? JSON.stringify(taxBreakdown) : null,
         isTaxInclusive: isTaxInclusive ? 1 : 0,
         hideVatSeparately: hideVatSeparately ? 1 : 0,
+        applyPoAdvance,
+        advanceApplied: appliedAdvanceAmount,
+        paidAmount: appliedAdvanceAmount,
+        advanceVoucherNos: combinedAdvanceVouchers.map((v: any) => v.voucherNo).filter(Boolean).join(', ') || null,
         notes, 
         billAttachment: billAttachment || null,
         billAttachmentName: billAttachmentName || null
@@ -732,7 +769,12 @@ export const BillBuilder: React.FC = () => {
       if (idParam) {
         await updateBill(docNo, payload);
       } else {
-        payload.status = 'unpaid';
+        payload.status =
+          appliedAdvanceAmount >= grandTotalBillValue - 0.01 && grandTotalBillValue > 0
+            ? 'paid'
+            : appliedAdvanceAmount > 0.01
+            ? 'partial'
+            : 'unpaid';
         await createBill(payload);
       }
       await refetchBills();
@@ -866,6 +908,12 @@ export const BillBuilder: React.FC = () => {
                     <div className="text-[10px] uppercase font-bold text-muted">Billed ({activePoBills.length} inv)</div>
                     <div className="text-xs font-black text-amber-500 font-mono">{formatCurrency(combinedBilledSoFar, true)}</div>
                   </div>
+                  {combinedPoAdvanceTotal > 0 && (
+                    <div className="text-right px-2 border-r border-theme-subtle">
+                      <div className="text-[10px] uppercase font-bold text-emerald-500">PO Advance Paid</div>
+                      <div className="text-xs font-black text-emerald-500 font-mono">{formatCurrency(combinedPoAdvanceTotal, true)}</div>
+                    </div>
+                  )}
                   <div className="text-right px-2">
                     <div className="text-[10px] uppercase font-bold text-muted">Balance to Bill</div>
                     <div className="text-xs font-black text-emerald-500 font-mono">{formatCurrency(remainingBalance, true)}</div>
@@ -1304,6 +1352,51 @@ export const BillBuilder: React.FC = () => {
                     )}
                   </div>
                 )}
+
+                {/* PO Advance Paid Deduction & Net Payable Summary Box */}
+                <div className="mt-3 p-3 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/30 space-y-2 text-xs font-mono">
+                  <div className="flex items-center justify-between text-secondary">
+                    <span className="font-sans font-bold uppercase text-[10px] tracking-wider">
+                      Total Bill Value {grnId ? `(From GRN #${grnId})` : ''}:
+                    </span>
+                    <span className="font-bold text-primary">{formatCurrency(grandTotalBillValue, true)}</span>
+                  </div>
+
+                  {availablePoAdvance > 0 && (
+                    <>
+                      <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
+                        <label className="flex items-center gap-1.5 cursor-pointer font-sans font-bold text-[11px]">
+                          <input
+                            type="checkbox"
+                            checked={applyPoAdvance}
+                            onChange={(e) => setApplyPoAdvance(e.target.checked)}
+                            className="rounded text-emerald-500 h-3.5 w-3.5"
+                          />
+                          <span>
+                            Less: PO Advance Paid
+                            {combinedAdvanceVouchers.length > 0
+                              ? ` (${combinedAdvanceVouchers.map((v: any) => v.voucherNo).join(', ')})`
+                              : ''}
+                          </span>
+                          <span className="px-1.5 py-0.2 text-[9px] uppercase bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30 rounded">
+                            PAID
+                          </span>
+                        </label>
+                        <span className="font-black">-{formatCurrency(appliedAdvanceAmount, true)}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1.5 border-t border-emerald-500/30 text-sm font-black">
+                        <span className="font-sans text-xs uppercase tracking-wider text-primary">
+                          Net Balance Payable to Vendor:
+                        </span>
+                        <span className={netPayableAfterAdvance <= 0.01 ? 'text-emerald-500' : 'text-amber-500'}>
+                          {formatCurrency(netPayableAfterAdvance, true)}
+                          {netPayableAfterAdvance <= 0.01 && grandTotalBillValue > 0 ? ' (FULLY PAID)' : ''}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </GlassCard>
           </div>
