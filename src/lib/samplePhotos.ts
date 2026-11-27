@@ -104,17 +104,6 @@ export function findMatchingSamplePhotos(
       if (gCleanNum && entityCleanLeadNums.includes(gCleanNum)) return true;
     }
 
-    // 4. Match on Customer Name if GRN is linked to the same customer/lead
-    if (entityCustNames.length > 0) {
-      const gCust = String(g.customerName || g.customerCompany || '').trim().toLowerCase();
-      if (gCust && entityCustNames.includes(gCust)) {
-        // If entity is lead or has matching lead/quote or order
-        if (entityCleanLeadNums.length > 0 || quoteNos.length > 0 || entity.orderNo) {
-          return true;
-        }
-      }
-    }
-
     return false;
   });
 
