@@ -134,14 +134,43 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     }
   }
 
-  // When taxes (VAT/SSCL) are separate, normalize any tax-inclusive line items & discount to tax-exclusive
-  // so the Sales Order matches the Quotation (line items & subtotal excl. tax, then tax added separately).
-  const hasSeparateTax = vatAmount > 0 || ssclAmount > 0 || taxAmount > 0;
-  const isTaxInclusive = rawIsTaxInclusive && !hasSeparateTax;
+  const tpId = String(order.taxProfileId || '');
+  const isOpt1Absorbed = tpId === 'tp_opt1_absorbed';
+  const isOpt2SsclAbsorbed = tpId === 'tp_opt2_sscl_absorbed_vat_sep' || tpId === 'tp_vat_sscl';
+
+  // Match QuotationPrintView tax profile display:
+  // - Option 1 (tp_opt1_absorbed): Both SSCL & VAT absorbed into unit prices & Total Value of Supply
+  // - Option 2 (tp_opt2_sscl_absorbed_vat_sep): SSCL absorbed into unit prices & subtotal, VAT shown separately
   const netSupplyBase = Math.max(0, totalPrice - taxAmount);
-  const taxDivisor = (rawIsTaxInclusive && hasSeparateTax && netSupplyBase > 0 && totalPrice > netSupplyBase)
+  let hasSeparateTax = vatAmount > 0 || ssclAmount > 0 || taxAmount > 0;
+  let isTaxInclusive = rawIsTaxInclusive && !hasSeparateTax;
+  let taxDivisor = (rawIsTaxInclusive && hasSeparateTax && netSupplyBase > 0 && totalPrice > netSupplyBase)
     ? (totalPrice / netSupplyBase)
     : 1;
+
+  if (isOpt1Absorbed && totalPrice > 0) {
+    vatAmount = 0;
+    ssclAmount = 0;
+    taxAmount = 0;
+    hasSeparateTax = false;
+    isTaxInclusive = true;
+    const baseForScale = rawSubtotal > 0 ? rawSubtotal : netSupplyBase;
+    if (!rawIsTaxInclusive && baseForScale > 0 && totalPrice > baseForScale) {
+      taxDivisor = baseForScale / totalPrice; // dividing by <1 multiplies unit prices up to absorbed total
+    } else {
+      taxDivisor = 1;
+    }
+  } else if (isOpt2SsclAbsorbed && totalPrice > 0 && !rawIsTaxInclusive) {
+    const ssclAbsorbedSub = Number((netSupplyBase * 1.025).toFixed(2));
+    if (ssclAbsorbedSub > 0 && ssclAbsorbedSub < totalPrice) {
+      ssclAmount = 0;
+      vatAmount = Number((totalPrice - ssclAbsorbedSub).toFixed(2));
+      taxAmount = vatAmount;
+      hasSeparateTax = true;
+      isTaxInclusive = false;
+      taxDivisor = 1 / 1.025; // dividing by 1/1.025 multiplies unit prices by 1.025
+    }
+  }
 
   const itemsAreTaxInclusive = taxDivisor > 1.001 && rawItemsSum > 0 && (
     Math.abs((rawItemsSum / taxDivisor) - rawSubtotal) < Math.abs(rawItemsSum - rawSubtotal) ||
