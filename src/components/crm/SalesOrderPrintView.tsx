@@ -148,6 +148,7 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     ? (totalPrice / netSupplyBase)
     : 1;
 
+  let itemMultiplier = 1;
   if (isOpt1Absorbed && totalPrice > 0) {
     vatAmount = 0;
     ssclAmount = 0;
@@ -156,10 +157,9 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     isTaxInclusive = true;
     const baseForScale = rawSubtotal > 0 ? rawSubtotal : netSupplyBase;
     if (!rawIsTaxInclusive && baseForScale > 0 && totalPrice > baseForScale) {
-      taxDivisor = baseForScale / totalPrice; // dividing by <1 multiplies unit prices up to absorbed total
-    } else {
-      taxDivisor = 1;
+      itemMultiplier = totalPrice / baseForScale;
     }
+    taxDivisor = 1;
   } else if (isOpt2SsclAbsorbed && totalPrice > 0 && !rawIsTaxInclusive) {
     const ssclAbsorbedSub = Number((netSupplyBase * 1.025).toFixed(2));
     if (ssclAbsorbedSub > 0 && ssclAbsorbedSub < totalPrice) {
@@ -168,7 +168,8 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
       taxAmount = vatAmount;
       hasSeparateTax = true;
       isTaxInclusive = false;
-      taxDivisor = 1 / 1.025; // dividing by 1/1.025 multiplies unit prices by 1.025
+      itemMultiplier = 1.025;
+      taxDivisor = 1;
     }
   }
 
@@ -181,17 +182,23 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     const itemQty = Number(item.qty) || 1;
     const rawUnitPrice = Number(item.unitPrice) || 0;
     const rawLineTotal = Number(item.amount) || (itemQty * rawUnitPrice);
-    const unitPrice = itemsAreTaxInclusive ? Number((rawUnitPrice / taxDivisor).toFixed(2)) : rawUnitPrice;
-    const amount = itemsAreTaxInclusive ? Number((rawLineTotal / taxDivisor).toFixed(2)) : rawLineTotal;
+    const unitPrice = itemsAreTaxInclusive
+      ? Number((rawUnitPrice / taxDivisor).toFixed(2))
+      : Number((rawUnitPrice * itemMultiplier).toFixed(2));
+    const amount = itemsAreTaxInclusive
+      ? Number((rawLineTotal / taxDivisor).toFixed(2))
+      : Number((rawLineTotal * itemMultiplier).toFixed(2));
     return { ...item, qty: itemQty, unitPrice, amount };
   });
 
   const displayItemsSum = displayItems.reduce((acc, it) => acc + it.amount, 0);
   const subtotal = itemsAreTaxInclusive
     ? displayItemsSum
-    : (taxDivisor > 1.001 && Math.abs((rawSubtotal / taxDivisor) - netSupplyBase) < Math.abs(rawSubtotal - netSupplyBase)
-      ? Number((rawSubtotal / taxDivisor).toFixed(2))
-      : rawSubtotal);
+    : itemMultiplier > 1.001
+      ? displayItemsSum
+      : (taxDivisor > 1.001 && Math.abs((rawSubtotal / taxDivisor) - netSupplyBase) < Math.abs(rawSubtotal - netSupplyBase)
+        ? Number((rawSubtotal / taxDivisor).toFixed(2))
+        : rawSubtotal);
 
   let discountAmount = rawDiscountAmount;
   if (rawDiscountAmount > 0 && taxDivisor > 1.001) {
