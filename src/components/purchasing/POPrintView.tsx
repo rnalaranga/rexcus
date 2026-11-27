@@ -9,6 +9,7 @@ export interface POPrintViewProps {
 
 export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings }) => {
   if (!po) return null;
+  const currency = po?.currency === 'USD' ? 'USD' : 'LKR';
 
   let items: any[] = [];
   try {
@@ -325,10 +326,10 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
             {mrIds.length > 1 && <th className="p-1 px-1.5 border-r border-black font-bold text-center">MR REF</th>}
             <th className="p-1 px-1.5 border-r border-black font-bold text-center">QTY</th>
             <th className="p-1.5 border-r border-black font-bold text-center leading-tight">
-              UNIT PRICE<br />(LKR)
+              UNIT PRICE<br />({currency})
             </th>
             <th className="p-1 px-1.5 font-bold text-center leading-tight">
-              AMOUNT<br />(LKR)
+              AMOUNT<br />({currency})
             </th>
           </tr>
         </thead>
@@ -386,7 +387,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                   )}
                   {discount > 0 && (
                     <div className="text-[9.5px] font-mono text-red-600 mt-0.5">
-                      Less Item Discount: -{formatCurrency(discount, true)}
+                      Less Item Discount: -{(currency === "USD" ? `USD ${Number(discount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatCurrency(discount, true))}
                     </div>
                   )}
                 </td>
@@ -424,7 +425,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
               {isTaxInclusive ? 'Base Supply Value (Excl. Tax)' : 'Sub Total'}
             </td>
             <td className="font-bold text-center border-l border-black font-mono">
-              LKR
+              {currency}
             </td>
             <td className="text-right font-bold p-1 border-l border-black pr-2 font-mono">
               {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -438,7 +439,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 Total Order Discount
               </td>
               <td className="font-bold text-center border-l border-black font-mono">
-                LKR
+                {currency}
               </td>
               <td className="text-right p-1 border-l border-black pr-2 font-mono font-semibold">
                 -{totalDiscount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -455,7 +456,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                     {taxBreakdown.tax1Name || 'SSCL'} ({Number(taxBreakdown.tax1Rate || 0)}%)
                   </td>
                   <td className="text-center border-l border-black font-mono font-semibold">
-                    LKR
+                    {currency}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
                     {Number(taxBreakdown.tax1Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -468,7 +469,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                     {taxBreakdown.tax2Name || 'VAT'} ({Number(taxBreakdown.tax2Rate || 0)}%{isTaxInclusive ? ' Extracted' : ''})
                   </td>
                   <td className="text-center border-l border-black font-mono font-semibold">
-                    LKR
+                    {currency}
                   </td>
                   <td className="text-right p-1 border-l border-black pr-2 font-mono">
                     {Number(taxBreakdown.tax2Amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -483,7 +484,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                   VAT / Total Tax
                 </td>
                 <td className="text-center border-l border-black font-mono font-semibold">
-                  LKR
+                  {currency}
                 </td>
                 <td className="text-right p-1 border-l border-black pr-2 font-mono">
                   {tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -499,7 +500,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
                 Shipping & Handling Cost
               </td>
               <td className="text-center border-l border-black font-mono font-semibold">
-                LKR
+                {currency}
               </td>
               <td className="text-right p-1 border-l border-black pr-2 font-mono">
                 {shippingCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -513,7 +514,7 @@ export const POPrintView: React.FC<POPrintViewProps> = ({ po, supplier, settings
               Total Order Value
             </td>
             <td className="text-center border-l border-black font-mono font-black">
-              LKR
+              {currency}
             </td>
             <td className="text-right p-1.5 border-l border-black pr-2 font-mono font-black text-black">
               {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

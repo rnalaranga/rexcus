@@ -1559,6 +1559,7 @@ export const POBuilder: React.FC = () => {
             terms,
             shippingMethod,
             paymentTerms,
+            currency,
             status,
             mrIds: selectedMrIds,
             taxBreakdown,
