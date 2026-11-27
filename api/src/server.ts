@@ -4890,23 +4890,6 @@ app.get('/api/quotations/:leadId', async (req, res) => {
       return res.json(rows);
     }
 
-    // Fallback 1: If lead is linked to an existing customer, check customer's quotations
-    const [linkedLead]: any = await db.query(`
-      SELECT customerId, company FROM leads WHERE id = ? OR id = CONCAT('LEAD-', LPAD(?, 3, '0')) LIMIT 1
-    `, [leadId, leadId]);
-    if (linkedLead && linkedLead.length > 0 && linkedLead[0].customerId) {
-      const cId = linkedLead[0].customerId;
-      const [custQuotes]: any = await db.query(`
-        SELECT * FROM quotations 
-        WHERE (leadId = ? OR leadId = REPLACE(?, 'LEAD-', '') OR leadId = CONCAT('LEAD-', LPAD(?, 3, '0')))
-           AND deletedAt IS NULL
-        ORDER BY type ASC, version DESC
-      `, [cId, cId, cId]);
-      if (custQuotes && custQuotes.length > 0) {
-        return res.json(custQuotes);
-      }
-    }
-
     // Fallback: Check if leadId is actually a quotation id, quoNo, or docNo
     const [byQuote]: any = await db.query(`
       SELECT q.*, 
