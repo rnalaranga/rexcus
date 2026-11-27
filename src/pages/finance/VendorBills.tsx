@@ -304,11 +304,22 @@ export const VendorBills: React.FC = () => {
       key: 'amount',
       header: 'Gross Amount',
       align: 'right',
-      render: (val, row) => (
-        <span className="font-mono font-bold text-xs text-primary">
-          {formatCurrency(Number(row.amount || row.totalAmount || 0))}
-        </span>
-      )
+      render: (val, row) => {
+        const isUsd = String(row.currency || '').toUpperCase() === 'USD';
+        const amt = Number(row.amount || row.totalAmount || 0);
+        return (
+          <div className="flex items-center justify-end gap-1">
+            {isUsd && (
+              <span className="px-1 py-0.2 rounded text-[9px] font-mono font-black bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                USD
+              </span>
+            )}
+            <span className="font-mono font-bold text-xs text-primary">
+              {isUsd ? `$${amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatCurrency(amt)}
+            </span>
+          </div>
+        );
+      }
     },
     {
       key: 'paidAmount',

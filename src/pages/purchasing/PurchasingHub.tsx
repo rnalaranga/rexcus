@@ -1099,9 +1099,21 @@ export const PurchasingHub: React.FC = () => {
             const advPaid = Number(row.advancePaid || 0);
             const advVouchers: any[] = Array.isArray(row.advanceVouchers) ? row.advanceVouchers : [];
             const totalPaid = Math.max(billPaid, advPaid);
+            const isUsd = String(row.currency || '').toUpperCase() === 'USD';
+            const fmtPoAmt = (amt: number, compact = false) =>
+              isUsd
+                ? `$${Number(amt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : formatCurrency(amt, compact);
             return (
               <div className="text-right">
-                <span className="text-xs font-black font-mono text-primary block">{formatCurrency(Number(v || 0))}</span>
+                <div className="flex items-center justify-end gap-1">
+                  {isUsd && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-black bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                      USD
+                    </span>
+                  )}
+                  <span className="text-xs font-black font-mono text-primary">{fmtPoAmt(Number(v || 0))}</span>
+                </div>
                 {renderTaxPills(row)}
                 {advPaid > 0 && (
                   <button
@@ -1123,12 +1135,12 @@ export const PurchasingHub: React.FC = () => {
                     className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer"
                     title="Click to View / Print PO Advance Payment Voucher"
                   >
-                    Adv Paid: {formatCurrency(advPaid, true)}
+                    Adv Paid: {fmtPoAmt(advPaid, true)}
                   </button>
                 )}
                 {billPaid > 0 && billPaid > advPaid && (
                   <span className="inline-block mt-1 ml-1 px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-blue-500/10 text-blue-600 border border-blue-500/25">
-                    Paid: {formatCurrency(totalPaid, true)}
+                    Paid: {fmtPoAmt(totalPaid, true)}
                   </span>
                 )}
               </div>

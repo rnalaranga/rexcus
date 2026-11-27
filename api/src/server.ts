@@ -1538,9 +1538,11 @@ async function runDatabaseSync() {
     // Ensure Master Setup Settings & Default Advance Accounts exist if not already configured
     await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES ('acc_2150', '2150', 'Customer Advances / Unearned Revenue', 'Liability', 'Current Liability', 0.00, 0, 1, NOW())`);
     await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES ('acc_1450', '1450', 'Advance to Suppliers / Prepayments', 'Asset', 'Current Asset', 0.00, 0, 1, NOW())`);
+    await db.query(`INSERT IGNORE INTO chart_of_accounts (id, code, name, type, subtype, balance, isTaxAccount, includeInBalanceSheet, createdAt) VALUES ('acc_2010', '2010', 'Accounts Payable (USD)', 'Liability', 'Current Liability', 0.00, 0, 1, NOW())`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('usd_master_account_id', 'acc_1010') ON DUPLICATE KEY UPDATE val=val`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('default_supplier_advance_account_id', 'acc_1450') ON DUPLICATE KEY UPDATE val=val`);
     await db.query(`INSERT INTO settings (id, val) VALUES ('default_customer_advance_account_id', 'acc_2150') ON DUPLICATE KEY UPDATE val=val`);
+    await db.query(`INSERT INTO settings (id, val) VALUES ('default_usd_ap_account_id', 'acc_2010') ON DUPLICATE KEY UPDATE val=val`);
 
     // Clean up any historical journal lines where Bank/Cash was incorrectly tagged with partyType='Customer'
     await db.query(`
@@ -10626,14 +10628,28 @@ async function syncBillGLEntry(billData: any, ledgerDate: string) {
     }
     if (!expAccId) expAccId = 'acc_4000';
 
-    // Accounts Payable: User setting or fallback to standard Liability
-    const [apSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_ap_account_id' LIMIT 1");
-    let apAccId = apSetting.length && apSetting[0].val ? apSetting[0].val : null;
+    // Accounts Payable: Use USD AP account for USD bills, otherwise standard LKR AP account
+    const isUsdBill = String(bill.currency || '').toUpperCase() === 'USD';
+    let apAccId: string | null = null;
+    if (isUsdBill) {
+      const [usdApSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_usd_ap_account_id' LIMIT 1");
+      apAccId = usdApSetting.length && usdApSetting[0].val ? usdApSetting[0].val : null;
+      if (!apAccId) {
+        const [usdApAcc]: any = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (id = "acc_2010" OR code = "2010" OR name LIKE "%Accounts Payable (USD)%") AND type = "Liability" LIMIT 1'
+        );
+        apAccId = usdApAcc.length ? usdApAcc[0].id : 'acc_2010';
+      }
+    }
     if (!apAccId) {
-      const [apAcc]: any = await db.query(
-        'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Trade Payable%") AND type = "Liability" AND isTaxAccount = 0 ORDER BY (code = "2000") DESC LIMIT 1'
-      );
-      apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+      const [apSetting]: any = await db.query("SELECT val FROM settings WHERE id = 'default_ap_account_id' LIMIT 1");
+      apAccId = apSetting.length && apSetting[0].val ? apSetting[0].val : null;
+      if (!apAccId) {
+        const [apAcc]: any = await db.query(
+          'SELECT id FROM chart_of_accounts WHERE (code = "2000" OR name LIKE "%Accounts Payable%" OR name LIKE "%Trade Payable%") AND type = "Liability" AND isTaxAccount = 0 ORDER BY (code = "2000") DESC LIMIT 1'
+        );
+        apAccId = apAcc.length ? apAcc[0].id : 'acc_2000';
+      }
     }
 
     // VAT Input Tax (Receivable): User setting or fallback to Asset

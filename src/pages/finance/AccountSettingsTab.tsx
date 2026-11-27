@@ -88,6 +88,14 @@ const MAPPING_SECTIONS: MappingSection[] = [
         defaultName: 'Accounts Payable'
       },
       {
+        key: 'default_usd_ap_account_id',
+        label: 'Accounts Payable (USD Vendors)',
+        description: 'Credited when recording supplier bills in USD (Foreign Currency Payables).',
+        typeFilter: 'Liability',
+        defaultCode: '2010',
+        defaultName: 'Accounts Payable (USD)'
+      },
+      {
         key: 'default_supplier_advance_account_id',
         label: 'Supplier Advances / Vendor Prepayments',
         description: 'Asset account debited when advances are paid to suppliers, and credited upon bill set-off.',
