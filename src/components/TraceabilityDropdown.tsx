@@ -99,8 +99,8 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
   const calculatePosition = () => {
     if (!buttonRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
-    const DROPDOWN_WIDTH = 340
-    const ESTIMATED_HEIGHT = Math.min(480, 70 + accessibleTraces.length * 58)
+    const DROPDOWN_WIDTH = Math.min(720, window.innerWidth - 24)
+    const ESTIMATED_HEIGHT = 240
     const PADDING = 12
 
     let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
@@ -446,15 +446,18 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                   }
 
                   return (
-                    <div
-                      key={trace.id || `${trace.type}-${idx}`}
-                      onClick={isClickable ? handleItemClick : undefined}
-                      className={`group/item p-2.5 flex items-start gap-2.5 transition-colors ${
-                        isClickable
-                          ? 'hover:bg-primary/5 cursor-pointer'
-                          : 'cursor-default'
-                      }`}
-                    >
+                    <React.Fragment key={trace.id || `${trace.type}-${idx}`}>
+                      {idx > 0 && (
+                        <ArrowRight size={14} className="text-muted shrink-0" />
+                      )}
+                      <div
+                        onClick={isClickable ? handleItemClick : undefined}
+                        className={`group/item p-2.5 rounded border border-theme-subtle bg-surface2/30 flex items-start gap-2 min-w-[180px] max-w-[220px] transition-colors ${
+                          isClickable
+                            ? 'hover:bg-primary/5 hover:border-blue-500/40 cursor-pointer'
+                            : 'cursor-default'
+                        }`}
+                      >
                       {/* Icon */}
                       <div className={`p-1.5 rounded-none border shrink-0 mt-0.5 ${meta.bg}`}>
                         <Icon size={13} />
@@ -482,10 +485,10 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                               <ExternalLink size={10} className="text-muted group-hover/item:text-blue-500 shrink-0 transition-colors" />
                             )}
                           </div>
-                          {canInlinePreview && (
+                          {(canInlinePreview || isClickable) && (
                             <button
                               type="button"
-                              onClick={handleInlinePreview}
+                              onClick={canInlinePreview ? handleInlinePreview : (e) => { e.stopPropagation(); handleItemClick(); }}
                               className="p-1 rounded bg-surface2 hover:bg-blue-500/15 text-muted hover:text-blue-500 border border-theme-subtle transition-colors shrink-0"
                               title={`Quick Preview ${trace.reference}`}
                             >
@@ -501,6 +504,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                         )}
                       </div>
                     </div>
+                    </React.Fragment>
                   )
                 })
               )}
