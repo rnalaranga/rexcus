@@ -99,8 +99,8 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
   const calculatePosition = () => {
     if (!buttonRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
-    const DROPDOWN_WIDTH = Math.min(720, window.innerWidth - 24)
-    const ESTIMATED_HEIGHT = 240
+    const DROPDOWN_WIDTH = 340
+    const ESTIMATED_HEIGHT = Math.min(480, 70 + accessibleTraces.length * 58)
     const PADDING = 12
 
     let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
@@ -299,7 +299,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
             top: coords.openUpwards ? undefined : coords.top,
             bottom: coords.openUpwards ? window.innerHeight - coords.top : undefined,
             left: coords.left,
-            width: Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 24 : 720)
+            width: 340
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -346,8 +346,8 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
               </div>
             </div>
 
-            {/* Horizontal Flow Traces */}
-            <div className="p-3 max-h-[380px] overflow-y-auto flex flex-wrap items-center gap-2 overscroll-contain custom-scrollbar">
+            {/* Traces List */}
+            <div className="divide-y divide-theme-subtle/50 p-1 max-h-[380px] overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar">
               {!hasTraces ? (
                 <div className="py-6 px-4 text-center">
                   <div className="w-8 h-8 mx-auto rounded-none bg-surface2/60 flex items-center justify-center text-muted mb-2 border border-theme-subtle">
@@ -446,18 +446,15 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                   }
 
                   return (
-                    <React.Fragment key={trace.id || `${trace.type}-${idx}`}>
-                      {idx > 0 && (
-                        <ArrowRight size={14} className="text-muted shrink-0" />
-                      )}
-                      <div
-                        onClick={isClickable ? handleItemClick : undefined}
-                        className={`group/item p-2.5 rounded border border-theme-subtle bg-surface2/30 flex items-start gap-2 min-w-[180px] max-w-[220px] transition-colors ${
-                          isClickable
-                            ? 'hover:bg-primary/5 hover:border-blue-500/40 cursor-pointer'
-                            : 'cursor-default'
-                        }`}
-                      >
+                    <div
+                      key={trace.id || `${trace.type}-${idx}`}
+                      onClick={isClickable ? handleItemClick : undefined}
+                      className={`group/item p-2.5 flex items-start gap-2.5 transition-colors ${
+                        isClickable
+                          ? 'hover:bg-primary/5 cursor-pointer'
+                          : 'cursor-default'
+                      }`}
+                    >
                       {/* Icon */}
                       <div className={`p-1.5 rounded-none border shrink-0 mt-0.5 ${meta.bg}`}>
                         <Icon size={13} />
@@ -504,7 +501,6 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
                         )}
                       </div>
                     </div>
-                    </React.Fragment>
                   )
                 })
               )}
