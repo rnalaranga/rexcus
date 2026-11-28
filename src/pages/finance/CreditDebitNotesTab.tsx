@@ -28,6 +28,21 @@ interface NoteLineItem {
   amount: number;
 }
 
+const formatMMDDYYYY = (dateStr?: string | null) => {
+  if (!dateStr) return '-';
+  const clean = String(dateStr).slice(0, 10);
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    return `${parts[1]}-${parts[2]}-${parts[0]}`;
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return clean;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${mm}-${dd}-${yyyy}`;
+};
+
 export const CreditDebitNotesTab: React.FC = () => {
   const { settings } = useSettings();
   const { data: accounts = [] } = useAccounts();
@@ -74,6 +89,7 @@ export const CreditDebitNotesTab: React.FC = () => {
   const [taxProfileId, setTaxProfileId] = useState('tp_vat18');
   const [isTaxInclusive, setIsTaxInclusive] = useState(false);
   const [remarks, setRemarks] = useState('');
+  const [externalRef, setExternalRef] = useState('');
   const [attachment, setAttachment] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
@@ -136,19 +152,16 @@ export const CreditDebitNotesTab: React.FC = () => {
   }, []);
 
   const computeLocalFallbackNoteNo = (type: 'credit_note' | 'debit_note') => {
-    const prefix = type === 'credit_note' ? 'CN-' : 'DN-';
-    const currentYY = String(new Date().getFullYear()).slice(-2);
-    let maxSeq = 1000;
-    for (const n of notes) {
-      if (n.type === type && n.noteNo) {
-        const m = String(n.noteNo).match(/(\d+)$/);
-        if (m && m[1]) {
-          const val = parseInt(m[1], 10);
-          if (!isNaN(val) && val > maxSeq) maxSeq = val;
-        }
-      }
-    }
-    return `${prefix}${currentYY}-${String(maxSeq + 1).padStart(4, '0')}`;
+    const typeCode = type === 'credit_note' ? 'CN' : 'DN';
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mon = now.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    const prefix = `${yy}${mon}-${typeCode}-REX`;
+    // Count existing local notes this month with this prefix
+    const thisMonthCount = notes.filter(n =>
+      n.type === type && n.noteNo && String(n.noteNo).startsWith(`${prefix}-`)
+    ).length;
+    return `${prefix}-${String(thisMonthCount + 1).padStart(4, '0')}`;
   };
 
   const fetchNextSequentialNo = async (type: 'credit_note' | 'debit_note') => {
@@ -190,6 +203,7 @@ export const CreditDebitNotesTab: React.FC = () => {
     setTaxProfileId('tp_vat18');
     setIsTaxInclusive(false);
     setRemarks('');
+    setExternalRef('');
     setAttachment('');
     setAttachmentName('');
 
@@ -672,7 +686,8 @@ export const CreditDebitNotesTab: React.FC = () => {
         items: cleanedItems,
         notes: remarks.trim() || null,
         attachment: attachment || null,
-        attachmentName: attachmentName || null
+        attachmentName: attachmentName || null,
+        externalRef: externalRef.trim() || null
       };
 
       const res = await createCreditDebitNote(payload);
@@ -1031,94 +1046,86 @@ export const CreditDebitNotesTab: React.FC = () => {
         </div>
       </GlassCard>
 
-      {/* MODAL: Issue Credit or Debit Note */}
+      {/* MODAL: Issue Credit or Debit Note (Xero / QuickBooks Accounting Grade) */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={`Issue ${noteType === 'credit_note' ? 'Credit Note (CN)' : 'Debit Note (DN)'}`}
+        title={`New ${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'}`}
         size="xl"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Top Sequential Number & Type Banner */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-surface2/70 border border-theme-subtle">
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                noteType === 'credit_note'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-blue-600 text-white'
-              }`}>
-                {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'}
-              </span>
-              <span className="text-xs text-muted">Sequential Note No:</span>
-              <span className="font-mono text-sm font-black text-primary bg-surface px-2.5 py-0.5 rounded border border-theme-subtle">
-                {previewNoteNo || 'Auto-Generated'}
-              </span>
-              <span className="ml-2 px-2.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono text-xs font-black">
-                Total: {formatCurrency(totalAmount, true)}
-              </span>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* 1. Top Accounting Banner: Type Switcher + Note # on Left | Big Total on Right */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-theme-subtle">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex rounded-lg bg-surface2 p-1 border border-theme-subtle">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNoteType('credit_note');
+                    fetchNextSequentialNo('credit_note');
+                    if (partyType === 'supplier' && relatedDocType === 'Supplier Bill') {
+                      setPartyType('customer');
+                      setPartyId('');
+                      setPartyName('');
+                      setRelatedDocType('Invoice');
+                      setRelatedDocNo('');
+                      setLinkedDocMeta(null);
+                    }
+                  }}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    noteType === 'credit_note'
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-muted hover:text-primary'
+                  }`}
+                >
+                  Credit Note
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNoteType('debit_note');
+                    fetchNextSequentialNo('debit_note');
+                    if (partyType === 'customer' && relatedDocType === 'Invoice') {
+                      setPartyType('supplier');
+                      setPartyId('');
+                      setPartyName('');
+                      setRelatedDocType('Supplier Bill');
+                      setRelatedDocNo('');
+                      setLinkedDocMeta(null);
+                    }
+                  }}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    noteType === 'debit_note'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-muted hover:text-primary'
+                  }`}
+                >
+                  Debit Note
+                </button>
+              </div>
+
+              <div className="pl-2 border-l border-theme-subtle">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Note Number</div>
+                <div className="font-mono text-sm font-black text-primary tracking-tight">
+                  {previewNoteNo || 'Auto-Generated'}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px]">
-              <button
-                type="button"
-                onClick={() => {
-                  setNoteType('credit_note');
-                  fetchNextSequentialNo('credit_note');
-                  if (partyType === 'supplier' && relatedDocType === 'Supplier Bill') {
-                    setPartyType('customer');
-                    setPartyId('');
-                    setPartyName('');
-                    setRelatedDocType('Invoice');
-                    setRelatedDocNo('');
-                    setLinkedDocMeta(null);
-                  }
-                }}
-                className={`px-2 py-0.5 rounded font-semibold border transition-colors ${
-                  noteType === 'credit_note'
-                    ? 'bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/40'
-                    : 'text-muted border-transparent hover:text-primary'
-                }`}
-              >
-                Credit Note (CN)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setNoteType('debit_note');
-                  fetchNextSequentialNo('debit_note');
-                  if (partyType === 'customer' && relatedDocType === 'Invoice') {
-                    setPartyType('supplier');
-                    setPartyId('');
-                    setPartyName('');
-                    setRelatedDocType('Supplier Bill');
-                    setRelatedDocNo('');
-                    setLinkedDocMeta(null);
-                  }
-                }}
-                className={`px-2 py-0.5 rounded font-semibold border transition-colors ${
-                  noteType === 'debit_note'
-                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/40'
-                    : 'text-muted border-transparent hover:text-primary'
-                }`}
-              >
-                Debit Note (DN)
-              </button>
+
+            <div className="text-right">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                {noteType === 'credit_note' ? 'Credit Total' : 'Debit Total'}
+              </div>
+              <div className="font-mono text-2xl font-black text-primary tracking-tight">
+                {formatCurrency(totalAmount, true)}
+              </div>
             </div>
           </div>
 
-          {/* Row 1: Date, Party Type, Customer/Vendor Autocomplete */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">Note Date *</label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-mono font-bold focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">Party Classification *</label>
+          {/* 2. Party & Document Details (Clean 3-Column Grid, No Heavy Boxes) */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">Party</label>
               <select
                 value={partyType}
                 onChange={e => {
@@ -1130,15 +1137,16 @@ export const CreditDebitNotesTab: React.FC = () => {
                   setRelatedDocNo('');
                   setLinkedDocMeta(null);
                 }}
-                className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-semibold focus:border-primary"
+                className="w-full bg-surface border border-theme-subtle px-2.5 py-2 rounded-lg text-xs font-semibold focus:border-primary"
               >
-                <option value="customer">Customer (Sales / Invoice Adjustment)</option>
-                <option value="supplier">Vendor / Supplier (Bill / Purchase Adjustment)</option>
+                <option value="customer">Customer</option>
+                <option value="supplier">Supplier</option>
               </select>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                Select {partyType === 'customer' ? 'Customer' : 'Vendor / Supplier'} *
+
+            <div className="md:col-span-4">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                {partyType === 'customer' ? 'Customer Name' : 'Vendor / Supplier Name'} <span className="text-rose-500">*</span>
               </label>
               {partyType === 'customer' ? (
                 <CustomerAutocomplete
@@ -1147,7 +1155,7 @@ export const CreditDebitNotesTab: React.FC = () => {
                     setPartyId(cId);
                     setPartyName(cust?.company || cust?.name || cId);
                   }}
-                  placeholder="Search customer by name, company..."
+                  placeholder="Select customer..."
                   required
                 />
               ) : (
@@ -1157,28 +1165,41 @@ export const CreditDebitNotesTab: React.FC = () => {
                     setPartyId(sId);
                     setPartyName(supp?.company || supp?.name || sId);
                   }}
-                  placeholder="Search vendor / supplier..."
+                  placeholder="Select supplier..."
                   required
                 />
               )}
             </div>
+
+            <div className="md:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">Note Date <span className="text-rose-500">*</span></label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono font-semibold text-primary focus:border-primary"
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                External {noteType === 'credit_note' ? 'CN' : 'DN'} Ref
+              </label>
+              <input
+                type="text"
+                placeholder="Supplier / Customer Ref #"
+                value={externalRef}
+                onChange={e => setExternalRef(e.target.value)}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs font-mono text-primary focus:border-primary"
+              />
+            </div>
           </div>
 
-          {/* Row 2: Traceability (Against Invoice / Vendor Bill Autocomplete) & GL Account */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-bold text-muted uppercase">Against Document Type *</label>
-                {noteType === 'debit_note' && (
-                  <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ${
-                    relatedDocType === 'GRN'
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                      : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                  }`}>
-                    {relatedDocType === 'GRN' ? 'GRN Itemized Mode' : 'Direct Amount Mode'}
-                  </span>
-                )}
-              </div>
+          {/* 3. Traceability & Accounting Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 p-3.5 rounded-xl bg-surface2/35">
+            <div className="sm:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">Against Document</label>
               <select
                 value={relatedDocType}
                 onChange={e => {
@@ -1197,40 +1218,31 @@ export const CreditDebitNotesTab: React.FC = () => {
                     }]);
                   }
                 }}
-                className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-semibold focus:border-primary"
+                className="w-full bg-surface border border-theme-subtle px-2.5 py-2 rounded-lg text-xs font-medium focus:border-primary"
               >
-                <option value="Invoice">Sales Invoice (Customer)</option>
-                <option value="Supplier Bill">Vendor Bill / Supplier Invoice</option>
-                <option value="GRN">Goods Receipt Note (GRN — With Line Items)</option>
-                <option value="Purchase Order">Purchase Order (PO)</option>
+                <option value="Invoice">Sales Invoice</option>
+                <option value="Supplier Bill">Vendor Bill</option>
+                <option value="GRN">GRN (With Items)</option>
+                <option value="Purchase Order">Purchase Order</option>
                 <option value="Sales Order">Sales Order</option>
-                <option value="Other">Other (Description & Amount Only)</option>
-                <option value="Direct Adjustment">Direct Ledger Adjustment (No GRN)</option>
+                <option value="Other">Other (Amount Only)</option>
+                <option value="Direct Adjustment">Direct Adjustment</option>
               </select>
             </div>
 
-            {/* Searchable Document Autocomplete */}
-            <div ref={docDropdownRef} className="relative">
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                Against {relatedDocType} # (Type to Autocomplete)
-              </label>
+            <div ref={docDropdownRef} className="relative sm:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">{relatedDocType} #</label>
               <div className="relative">
                 <input
                   type="text"
-                  placeholder={
-                    relatedDocType === 'Invoice'
-                      ? 'Search Invoice # or customer...'
-                      : relatedDocType === 'Supplier Bill'
-                      ? 'Search Vendor Bill # or supplier...'
-                      : `Search ${relatedDocType} #...`
-                  }
+                  placeholder={`Search ${relatedDocType}...`}
                   value={relatedDocNo}
                   onFocus={() => setShowDocDropdown(true)}
                   onChange={e => {
                     setRelatedDocNo(e.target.value);
                     setShowDocDropdown(true);
                   }}
-                  className="w-full bg-surface border border-theme-subtle pl-3 pr-7 py-1.5 rounded text-xs font-mono font-bold text-primary focus:border-primary"
+                  className="w-full bg-surface border border-theme-subtle pl-3 pr-7 py-2 rounded-lg text-xs font-mono font-semibold text-primary focus:border-primary"
                 />
                 {relatedDocNo && (
                   <button
@@ -1282,37 +1294,51 @@ export const CreditDebitNotesTab: React.FC = () => {
                     ))
                   ) : (
                     <div className="p-3 text-center text-[11px] text-muted">
-                      No matching {relatedDocType} found. You can still type a custom reference number.
+                      No matching {relatedDocType} found.
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                Adjustment Account (GL) *
+            <div className="sm:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                GL Account <span className="text-rose-500">*</span>
               </label>
               <AccountAutocomplete
                 value={accountId}
                 onChange={setAccountId}
                 typeFilter={['Revenue', 'Expense', 'Asset', 'Liability']}
-                placeholder="Search account code or name..."
+                placeholder="Select account..."
                 required
+              />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                Reason <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Reason for adjustment..."
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs text-primary focus:border-primary"
               />
             </div>
           </div>
 
           {/* Linked Document Traceability Pill */}
           {linkedDocMeta && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>
                   Linked to <strong>{linkedDocMeta.docType} #{linkedDocMeta.docNo}</strong>
                   {linkedDocMeta.partyName ? ` (${linkedDocMeta.partyName})` : ''}
-                  {linkedDocMeta.date ? ` · Date: ${linkedDocMeta.date}` : ''}
-                  {` · Doc Value: `}
+                  {linkedDocMeta.date ? ` · ${linkedDocMeta.date}` : ''}
+                  {` · Value: `}
                   <strong className="font-mono">{formatCurrency(linkedDocMeta.total, true)}</strong>
                 </span>
               </div>
@@ -1329,29 +1355,13 @@ export const CreditDebitNotesTab: React.FC = () => {
             </div>
           )}
 
-          {/* Reason */}
-          <div>
-            <label className="block text-[10px] font-bold text-muted uppercase mb-1">Reason for Credit / Debit Note *</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Return of damaged goods / Price adjustment against Invoice"
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-              className="w-full bg-surface border border-theme-subtle px-3 py-1.5 rounded text-xs font-semibold focus:border-primary"
-            />
-          </div>
-
-          {/* Line Items Table (Shown for Credit Notes with doc OR Debit Note Against GRN) vs QuickBooks-style Description & Amount (for Other / Non-GRN) */}
+          {/* 4. Line Items / Amount Entry */}
           {relatedDocType === 'Other' || (noteType === 'debit_note' && relatedDocType !== 'GRN') ? (
-            <div className="border border-blue-500/30 rounded-lg p-3.5 bg-blue-500/[0.03] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-theme-subtle">
-                <div className="flex items-center gap-2">
-                  <FileText size={14} className="text-blue-500" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                    {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} Description & Amount ({relatedDocType === 'Other' ? 'Other' : 'Non-GRN Adjustment'})
-                  </span>
-                </div>
+            <div className="rounded-xl border border-theme-subtle bg-surface p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-theme-subtle/60">
+                <span className="text-xs font-bold text-primary">
+                  Adjustment Particulars & Amount
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1359,22 +1369,22 @@ export const CreditDebitNotesTab: React.FC = () => {
                     setRelatedDocNo('');
                     setLinkedDocMeta(null);
                   }}
-                  className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded transition-colors"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
                 >
-                  <PackageCheck size={12} />
-                  <span>Switch to Against GRN (Select Items)</span>
+                  <PackageCheck size={13} />
+                  <span>Switch to GRN Itemized Mode</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
-                <div className="sm:col-span-2">
-                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                    Description / Particulars *
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start">
+                <div className="sm:col-span-8">
+                  <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                    Description / Particulars <span className="text-rose-500">*</span>
                   </label>
                   <textarea
                     rows={2}
                     required
-                    placeholder="Enter debit note description (e.g. Price difference, short supply claim, quality deduction, service charge adjustment)..."
+                    placeholder="e.g. Price difference, short supply claim, quality deduction..."
                     value={lineItems[0]?.description || ''}
                     onChange={e => {
                       const val = e.target.value;
@@ -1383,12 +1393,12 @@ export const CreditDebitNotesTab: React.FC = () => {
                         return [{ ...first, description: val, qty: 1 }];
                       });
                     }}
-                    className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded text-xs text-primary font-medium focus:border-primary resize-none"
+                    className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs text-primary focus:border-primary resize-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-muted uppercase mb-1">
-                    {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} Amount (LKR) *
+                <div className="sm:col-span-4">
+                  <label className="block text-[11px] font-semibold text-secondary mb-1.5">
+                    Amount (LKR) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -1400,40 +1410,30 @@ export const CreditDebitNotesTab: React.FC = () => {
                     onChange={e => {
                       const num = Math.max(0, Number(e.target.value) || 0);
                       setLineItems(prev => {
-                        const first = prev[0] || { id: '1', description: reason || 'Debit Note Adjustment', qty: 1, unitPrice: 0, amount: 0 };
+                        const first = prev[0] || { id: '1', description: reason || 'Adjustment', qty: 1, unitPrice: 0, amount: 0 };
                         return [{
                           ...first,
-                          description: first.description || reason || 'Debit Note Adjustment',
+                          description: first.description || reason || 'Adjustment',
                           qty: 1,
                           unitPrice: num,
                           amount: Number(num.toFixed(2))
                         }];
                       });
                     }}
-                    className="w-full bg-surface border-2 border-blue-500/40 focus:border-blue-500 px-3 py-2 rounded text-sm font-mono font-black text-right text-primary"
+                    className="w-full bg-surface border border-theme-subtle focus:border-primary px-3 py-2 rounded-lg text-sm font-mono font-bold text-right text-primary"
                   />
-                  <span className="text-[10px] text-muted block mt-1 text-right">
-                    {taxEnabled
-                      ? isTaxInclusive
-                        ? `Includes VAT (${formatCurrency(taxAmount, true)})`
-                        : `+ VAT: ${formatCurrency(taxAmount, true)} → Total: ${formatCurrency(totalAmount, true)}`
-                      : `Net Debit Value: ${formatCurrency(totalAmount, true)}`}
-                  </span>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="border border-theme-subtle rounded-lg overflow-hidden bg-surface">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-surface2/60 border-b border-theme-subtle">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <FileText size={13} className="text-rex-500" />
-                    {noteType === 'debit_note' && relatedDocType === 'GRN'
-                      ? `GRN Line Items ${linkedDocMeta?.docNo ? `(${linkedDocMeta.docNo})` : '(Select GRN # above to load items)'}`
-                      : 'Note Line Items & Particulars'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
+            <div className="rounded-xl border border-theme-subtle overflow-hidden bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-surface2/40 border-b border-theme-subtle">
+                <span className="text-xs font-bold text-primary">
+                  {noteType === 'debit_note' && relatedDocType === 'GRN'
+                    ? `GRN Line Items ${linkedDocMeta?.docNo ? `(${linkedDocMeta.docNo})` : ''}`
+                    : 'Line Items'}
+                </span>
+                <div className="flex items-center gap-3">
                   {noteType === 'debit_note' && relatedDocType === 'GRN' && !linkedDocMeta && candidateDocs.length > 0 && (
                     <select
                       value=""
@@ -1441,12 +1441,12 @@ export const CreditDebitNotesTab: React.FC = () => {
                         const doc = candidateDocs.find(d => d.docNo === e.target.value);
                         if (doc) applySelectedDocument(doc, true);
                       }}
-                      className="bg-surface border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-[11px] font-bold"
+                      className="bg-surface border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-md text-[11px] font-semibold"
                     >
-                      <option value="">⚡ Quick Select GRN ({candidateDocs.length})...</option>
+                      <option value="">Quick Select GRN ({candidateDocs.length})...</option>
                       {candidateDocs.map((d, i) => (
                         <option key={`${d.docNo}-${i}`} value={d.docNo}>
-                          {d.docNo} — {d.partyName || 'Vendor'} ({d.items.length} items · {formatCurrency(d.total, true)})
+                          {d.docNo} — {d.partyName || 'Vendor'} ({d.items.length} items)
                         </option>
                       ))}
                     </select>
@@ -1454,40 +1454,41 @@ export const CreditDebitNotesTab: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleAddLineItem}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold bg-rex-600 hover:bg-rex-700 text-white transition-colors"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-rex-600 dark:text-rex-400 hover:underline"
                   >
-                    <Plus size={12} />
-                    Add Item
+                    <Plus size={13} />
+                    Add Line
                   </button>
                 </div>
               </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-theme-subtle bg-surface2/30 text-[10px] font-bold uppercase text-muted">
-                      <th className="py-2 px-2.5 text-center w-10">#</th>
-                      <th className="py-2 px-2.5 text-left">Item Description / Particulars</th>
-                      <th className="py-2 px-2.5 text-right w-24">Qty</th>
-                      <th className="py-2 px-2.5 text-right w-36">Unit Price (LKR)</th>
-                      <th className="py-2 px-2.5 text-right w-36">Amount (LKR)</th>
-                      <th className="py-2 px-2 text-center w-10"></th>
+                    <tr className="border-b border-theme-subtle bg-surface2/20 text-[10px] font-bold uppercase tracking-wider text-muted">
+                      <th className="py-2.5 px-3 text-center w-10">#</th>
+                      <th className="py-2.5 px-3 text-left">Description</th>
+                      <th className="py-2.5 px-3 text-right w-24">Qty</th>
+                      <th className="py-2.5 px-3 text-right w-36">Unit Price</th>
+                      <th className="py-2.5 px-3 text-right w-36">Amount</th>
+                      <th className="py-2.5 px-2 text-center w-10"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-theme-subtle/60">
+                  <tbody className="divide-y divide-theme-subtle/50">
                     {lineItems.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-surface2/20">
-                        <td className="py-1.5 px-2.5 text-center font-mono text-muted">{idx + 1}</td>
-                        <td className="py-1.5 px-2.5">
+                      <tr key={item.id} className="hover:bg-surface2/20 transition-colors">
+                        <td className="py-2 px-3 text-center font-mono text-muted">{idx + 1}</td>
+                        <td className="py-2 px-3">
                           <input
                             type="text"
                             required
-                            placeholder="Enter item description or adjustment particulars..."
+                            placeholder="Item description or adjustment..."
                             value={item.description}
                             onChange={e => handleLineItemChange(item.id, 'description', e.target.value)}
-                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2.5 py-1 rounded text-xs text-primary"
+                            className="w-full bg-transparent border-b border-transparent focus:border-primary px-1 py-1 text-xs text-primary outline-none"
                           />
                         </td>
-                        <td className="py-1.5 px-2.5">
+                        <td className="py-2 px-3">
                           <input
                             type="number"
                             step="any"
@@ -1495,10 +1496,10 @@ export const CreditDebitNotesTab: React.FC = () => {
                             required
                             value={item.qty}
                             onChange={e => handleLineItemChange(item.id, 'qty', e.target.value)}
-                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono text-right text-primary"
+                            className="w-full bg-transparent border-b border-transparent focus:border-primary px-1 py-1 text-xs font-mono text-right text-primary outline-none"
                           />
                         </td>
-                        <td className="py-1.5 px-2.5">
+                        <td className="py-2 px-3">
                           <input
                             type="number"
                             step="0.01"
@@ -1507,13 +1508,13 @@ export const CreditDebitNotesTab: React.FC = () => {
                             placeholder="0.00"
                             value={item.unitPrice || ''}
                             onChange={e => handleLineItemChange(item.id, 'unitPrice', e.target.value)}
-                            className="w-full bg-transparent border border-theme-subtle/70 focus:border-primary px-2 py-1 rounded text-xs font-mono font-bold text-right text-primary"
+                            className="w-full bg-transparent border-b border-transparent focus:border-primary px-1 py-1 text-xs font-mono font-semibold text-right text-primary outline-none"
                           />
                         </td>
-                        <td className="py-1.5 px-2.5 text-right font-mono font-bold text-primary">
+                        <td className="py-2 px-3 text-right font-mono font-bold text-primary">
                           {formatCurrency(item.amount, false)}
                         </td>
-                        <td className="py-1.5 px-2 text-center">
+                        <td className="py-2 px-2 text-center">
                           {lineItems.length > 1 && (
                             <button
                               type="button"
@@ -1533,88 +1534,70 @@ export const CreditDebitNotesTab: React.FC = () => {
             </div>
           )}
 
-          {/* Supporting Document / Attachment Upload */}
-          <div className="p-3 bg-surface2/40 border border-theme-subtle rounded-lg space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-muted uppercase flex items-center gap-1.5">
-                <Paperclip size={12} className="text-emerald-500" />
-                <span>Supporting Document / Attachment (Optional)</span>
-              </label>
-              <span className="text-[9.5px] text-muted font-mono">PDF, JPG, PNG (Max 25MB)</span>
-            </div>
-
-            {attachment ? (
-              <div className="flex items-center justify-between p-2.5 bg-surface border border-emerald-500/30 rounded-lg">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 shrink-0 overflow-hidden">
-                    {attachment.startsWith('data:image/') || /\.(jpg|jpeg|png|webp)($|\?)/i.test(attachment) ? (
-                      <img src={attachment} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <FileText size={15} />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-primary truncate">
-                      {attachmentName || `${previewNoteNo || 'Note'}_Attachment`}
-                    </div>
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 size={10} />
-                      <span>{isUploadingAttachment ? 'Uploading to storage...' : 'Document attached'}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openDataUriOrUrl(attachment, attachmentName || 'Note Attachment')}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-blue-600 hover:bg-blue-500/10 transition-colors"
-                  >
-                    <Eye size={12} />
-                    <span>View</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachment('');
-                      setAttachmentName('');
-                    }}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-rose-600 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <Trash2 size={12} />
-                    <span>Remove</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-theme-subtle hover:border-emerald-500 bg-surface hover:bg-surface2/50 rounded-lg cursor-pointer transition-colors text-xs text-secondary hover:text-primary">
-                <UploadCloud size={16} className="text-emerald-500 shrink-0" />
-                <span className="font-semibold">Click to attach supporting document, debit note copy, photo, or PDF</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  onChange={handleAttachmentUpload}
-                  className="hidden"
+          {/* 5. Bottom Split: Remarks & Attachment (Left) | Tax & Totals (Right) */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 pt-2">
+            <div className="md:col-span-7 space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-secondary mb-1.5">Memo / Remarks</label>
+                <textarea
+                  rows={3}
+                  placeholder="Optional remarks to print on the note..."
+                  value={remarks}
+                  onChange={e => setRemarks(e.target.value)}
+                  className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded-lg text-xs resize-none focus:border-primary"
                 />
-              </label>
-            )}
-          </div>
+              </div>
 
-          {/* VAT / Tax Section & Remarks */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-bold text-muted uppercase mb-1">Additional Remarks / Internal Notes</label>
-              <textarea
-                rows={4}
-                placeholder="Optional remarks to print on the Credit/Debit Note..."
-                value={remarks}
-                onChange={e => setRemarks(e.target.value)}
-                className="w-full bg-surface border border-theme-subtle px-3 py-2 rounded text-xs resize-none focus:border-primary"
-              />
+              <div>
+                {attachment ? (
+                  <div className="flex items-center justify-between px-3 py-2 bg-surface2/40 border border-emerald-500/30 rounded-lg">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Paperclip size={14} className="text-emerald-600 shrink-0" />
+                      <span className="text-xs font-semibold text-primary truncate">
+                        {attachmentName || `${previewNoteNo || 'Note'}_Attachment`}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        {isUploadingAttachment ? 'Uploading...' : 'Attached'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openDataUriOrUrl(attachment, attachmentName || 'Note Attachment')}
+                        className="text-[11px] font-semibold text-blue-600 hover:underline"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachment('');
+                          setAttachmentName('');
+                        }}
+                        className="text-[11px] font-semibold text-rose-600 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-theme-subtle hover:border-primary rounded-lg cursor-pointer transition-colors text-xs text-muted hover:text-primary">
+                    <UploadCloud size={15} className="shrink-0" />
+                    <span>Attach supporting document (PDF, JPG, PNG — Max 25MB)</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      onChange={handleAttachmentUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
-            <div className="p-3 bg-surface2/50 border border-theme-subtle rounded-lg space-y-2.5">
+            <div className="md:col-span-5 bg-surface2/35 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 text-xs font-bold text-primary cursor-pointer">
+                <label className="flex items-center gap-2 text-xs font-semibold text-primary cursor-pointer">
                   <input
                     type="checkbox"
                     checked={taxEnabled}
@@ -1624,21 +1607,21 @@ export const CreditDebitNotesTab: React.FC = () => {
                   <span>Apply VAT ({vatRate}%)</span>
                 </label>
                 {taxEnabled && (
-                  <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-bold">
-                    {isVatAbsorbed ? `VAT Included (${formatCurrency(taxAmount, true)})` : `+ ${formatCurrency(taxAmount, true)} VAT`}
+                  <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-semibold">
+                    {isVatAbsorbed ? `Incl. ${formatCurrency(taxAmount, true)}` : `+${formatCurrency(taxAmount, true)}`}
                   </span>
                 )}
               </div>
 
               {taxEnabled && (
-                <div className="space-y-2">
+                <div className="space-y-2 pt-1">
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => setTaxProfileId('tp_vat18')}
-                      className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center ${
+                      className={`py-1 text-[10px] font-bold rounded-md border transition-all ${
                         !isVatAbsorbed
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-surface text-muted hover:text-primary border-theme-subtle'
                       }`}
                     >
@@ -1647,9 +1630,9 @@ export const CreditDebitNotesTab: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setTaxProfileId('tp_vat18_absorbed')}
-                      className={`p-1.5 text-[10px] font-bold rounded border transition-all text-center ${
+                      className={`py-1 text-[10px] font-bold rounded-md border transition-all ${
                         isVatAbsorbed
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-surface text-muted hover:text-primary border-theme-subtle'
                       }`}
                     >
@@ -1657,17 +1640,12 @@ export const CreditDebitNotesTab: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Tax Inclusive Pricing Toggle */}
-                  <div className="flex items-center justify-between pt-1.5 border-t border-theme-subtle/50">
-                    <div>
-                      <div className="text-[11px] font-semibold text-primary">Tax Inclusive Pricing</div>
-                      <div className="text-[9.5px] text-muted">Entered item prices already include VAT</div>
-                    </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-secondary">Tax Inclusive Pricing</span>
                     <button
                       type="button"
                       onClick={() => setIsTaxInclusive(!isTaxInclusive)}
                       className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isTaxInclusive ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'}`}
-                      title="Toggle tax inclusive pricing"
                     >
                       <span className={`block w-3 h-3 rounded-full bg-white shadow transition-transform mx-0.5 ${isTaxInclusive ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
@@ -1675,31 +1653,32 @@ export const CreditDebitNotesTab: React.FC = () => {
                 </div>
               )}
 
-              <div className="pt-2 border-t border-theme-subtle space-y-1 text-xs">
+              <div className="pt-2.5 border-t border-theme-subtle space-y-1.5 text-xs">
                 <div className="flex justify-between text-secondary">
-                  <span>{isVatAbsorbed ? 'Total Supply Value (VAT Included):' : 'Subtotal (Excl. VAT):'}</span>
+                  <span>{isVatAbsorbed ? 'Total Supply Value:' : 'Subtotal:'}</span>
                   <span className="font-mono font-semibold">{formatCurrency(numSubtotal, true)}</span>
                 </div>
                 {taxEnabled && !isVatAbsorbed && (
                   <div className="flex justify-between text-blue-600 dark:text-blue-400">
-                    <span>VAT Amount ({vatRate}%):</span>
+                    <span>VAT ({vatRate}%):</span>
                     <span className="font-mono font-semibold">+{formatCurrency(taxAmount, true)}</span>
                   </div>
                 )}
-                <div className="flex justify-between items-center pt-1.5 border-t border-theme-subtle font-bold text-primary">
-                  <span>Total {noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} Value:</span>
-                  <span className="font-mono text-sm">{formatCurrency(totalAmount, true)}</span>
+                <div className="flex justify-between items-center pt-2 border-t border-theme-subtle font-bold text-primary text-sm">
+                  <span>Total:</span>
+                  <span className="font-mono">{formatCurrency(totalAmount, true)}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-theme-subtle">
+          {/* 6. Footer Actions */}
+          <div className="flex justify-end gap-2.5 pt-4 border-t border-theme-subtle">
             <Button variant="ghost" size="sm" onClick={() => setIsModalOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" size="sm" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Issuing...' : `Issue ${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'} (${previewNoteNo})`}
+              {isSubmitting ? 'Issuing...' : `Issue ${noteType === 'credit_note' ? 'Credit Note' : 'Debit Note'}`}
             </Button>
           </div>
         </form>
@@ -1896,7 +1875,7 @@ export const CreditDebitNotesTab: React.FC = () => {
                           Date of Issue
                         </td>
                         <td style={{ padding: '6px 8px', fontWeight: 600 }}>
-                          {formatGazetteDate(activePrintNote.date ? String(activePrintNote.date).slice(0, 10) : new Date().toISOString().slice(0, 10))}
+                          {formatMMDDYYYY(activePrintNote.date ? String(activePrintNote.date).slice(0, 10) : new Date().toISOString().slice(0, 10))}
                         </td>
                       </tr>
                       <tr style={{ borderBottom: '1.2px solid #000000' }}>
@@ -1913,7 +1892,7 @@ export const CreditDebitNotesTab: React.FC = () => {
                             Ref. Doc Date
                           </td>
                           <td style={{ padding: '5px 8px' }}>
-                            {formatGazetteDate(printContext.linkedDate)}
+                            {formatMMDDYYYY(printContext.linkedDate)}
                           </td>
                         </tr>
                       )}
