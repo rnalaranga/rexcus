@@ -299,7 +299,7 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
             top: coords.openUpwards ? undefined : coords.top,
             bottom: coords.openUpwards ? window.innerHeight - coords.top : undefined,
             left: coords.left,
-            width: 340
+            width: Math.min(720, typeof window !== 'undefined' ? window.innerWidth - 24 : 720)
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -346,8 +346,8 @@ export const TraceabilityDropdown: React.FC<TraceabilityDropdownProps> = ({
               </div>
             </div>
 
-            {/* Traces List */}
-            <div className="divide-y divide-theme-subtle/50 p-1 max-h-[380px] overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar">
+            {/* Horizontal Flow Traces */}
+            <div className="p-3 max-h-[380px] overflow-y-auto flex flex-wrap items-center gap-2 overscroll-contain custom-scrollbar">
               {!hasTraces ? (
                 <div className="py-6 px-4 text-center">
                   <div className="w-8 h-8 mx-auto rounded-none bg-surface2/60 flex items-center justify-center text-muted mb-2 border border-theme-subtle">

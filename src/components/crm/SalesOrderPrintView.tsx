@@ -161,7 +161,8 @@ export const SalesOrderPrintView: React.FC<SalesOrderPrintViewProps> = ({ order,
     }
     taxDivisor = 1;
   } else if (isOpt2SsclAbsorbed && totalPrice > 0 && !rawIsTaxInclusive) {
-    const ssclAbsorbedSub = Number((netSupplyBase * 1.025).toFixed(2));
+    const baseForSscl = rawSubtotal > 0 ? rawSubtotal : netSupplyBase;
+    const ssclAbsorbedSub = Number((baseForSscl * 1.025).toFixed(2));
     if (ssclAbsorbedSub > 0 && ssclAbsorbedSub < totalPrice) {
       ssclAmount = 0;
       vatAmount = Number((totalPrice - ssclAbsorbedSub).toFixed(2));
